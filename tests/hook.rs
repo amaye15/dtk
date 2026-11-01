@@ -231,3 +231,21 @@ fn init_refuses_invalid_settings() {
         "{ not json"
     );
 }
+
+#[test]
+fn a_closed_pipe_is_not_a_panic() {
+    let home = temp_home("pipe");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_dtk"))
+        .arg("doctor")
+        .env("HOME", &home)
+        .env("PATH", "/usr/bin:/bin")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    drop(child.stdout.take()); // the reader goes away before dtk prints
+    let out = child.wait_with_output().unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!err.contains("panicked"), "{err}");
+}
