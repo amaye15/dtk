@@ -20,6 +20,8 @@ pub enum Format {
     Csv,
     Tsv,
     Aligned,
+    /// Tables drawn with borders: polars, psql, MySQL, SQLite, Markdown.
+    Bordered,
 }
 
 impl Format {
@@ -29,7 +31,7 @@ impl Format {
             Format::JsonArray => "json-array",
             Format::Csv => "csv",
             Format::Tsv => "tsv",
-            Format::Aligned => "table",
+            Format::Aligned | Format::Bordered => "table",
         }
     }
 }
@@ -62,7 +64,97 @@ pub fn detect(text: &str) -> Option<Table> {
         b'{' => return parse_jsonl(text),
         _ => {}
     }
-    parse_delimited(text).or_else(|| parse_aligned(text))
+    parse_bordered(text)
+        .or_else(|| parse_delimited(text))
+        .or_else(|| parse_aligned(text))
+}
+
+/// Characters that appear in table borders and rules.
+const BORDER_CHARS: &str = "+-=─━═┌┐└┘├┤┬┴┼╞╡╪╒╕╘╛╟╢╤╧╫╔╗╚╝╠╣╦╩╬┏┓┗┛┣┫┳┻╋ |│┃║┆┊:";
+/// Characters that separate cells.
+const CELL_SEPS: [char; 6] = ['|', '│', '┃', '║', '┆', '┊'];
+
+/// A rule line such as `+----+----+`, `|---|---|`, `----+----` or `┌────┬────┐`.
+fn is_border(line: &str) -> bool {
+    let t = line.trim();
+    t.chars().count() >= 3
+        && t.chars().all(|c| BORDER_CHARS.contains(c))
+        && t.chars().any(|c| "-─━═=".contains(c))
+}
+
+fn split_bordered(line: &str) -> Vec<String> {
+    let t = line.trim();
+    let mut cells: Vec<String> = t
+        .split(|c| CELL_SEPS.contains(&c))
+        .map(|s| s.trim().to_string())
+        .collect();
+    if t.starts_with(|c| CELL_SEPS.contains(&c)) {
+        cells.remove(0);
+    }
+    if t.ends_with(|c| CELL_SEPS.contains(&c)) {
+        cells.pop();
+    }
+    cells
+}
+
+/// Tables with borders. A rule line is required, which keeps shell pipelines and prose out.
+fn parse_bordered(text: &str) -> Option<Table> {
+    let lines: Vec<&str> = text.lines().collect();
+    if !lines.iter().any(|l| is_border(l)) {
+        return None;
+    }
+    let is_content = |l: &str| !l.trim().is_empty() && !is_border(l) && l.contains(CELL_SEPS);
+    let header_at = lines.iter().position(|l| is_content(l))?;
+    let headers = split_bordered(lines[header_at]);
+    if !valid_header(&headers) {
+        return None;
+    }
+    let mut notes: Vec<String> = Vec::new();
+    for l in &lines[..header_at] {
+        if !l.trim().is_empty() && !is_border(l) && notes.len() < 5 {
+            notes.push(l.trim().to_string());
+        }
+    }
+    let mut i = header_at + 1;
+    // polars prints a "---" row and a data-type row under the header, then a ═ rule.
+    // Everything up to that rule is metadata, not data.
+    let rule = (header_at + 1..lines.len().min(header_at + 5))
+        .find(|&k| is_border(lines[k]) && lines[k].contains(['═', '╪']));
+    if let Some(k) = rule {
+        i = k + 1;
+    }
+    let mut rows = Vec::new();
+    let mut bad = 0usize;
+    for l in &lines[i..] {
+        if l.trim().is_empty() || is_border(l) {
+            continue;
+        }
+        if !is_content(l) {
+            if notes.len() < 5 {
+                notes.push(l.trim().to_string());
+            }
+            continue;
+        }
+        let cells = split_bordered(l);
+        if cells.iter().all(|c| c == "…" || c == "...") {
+            if notes.len() < 5 {
+                notes.push("(the printer elided rows here)".to_string());
+            }
+        } else if cells.len() == headers.len() {
+            rows.push(cells);
+        } else {
+            bad += 1;
+        }
+    }
+    if rows.len() < MIN_ROWS || bad * 20 > rows.len() {
+        return None;
+    }
+    Some(Table {
+        format: Format::Bordered,
+        headers,
+        rows,
+        notes,
+    })
 }
 
 fn cell(v: &Value) -> String {
@@ -288,6 +380,18 @@ fn split_cols(line: &str) -> Vec<String> {
     out
 }
 
+/// True when the first cell of every row is a whole number counting up by one from 0 or 1.
+fn first_column_is_an_index(rows: &[Vec<String>]) -> bool {
+    let nums: Vec<i64> = rows
+        .iter()
+        .filter_map(|r| r.first()?.parse().ok())
+        .collect();
+    nums.len() == rows.len()
+        && nums.len() >= 2
+        && (nums[0] == 0 || nums[0] == 1)
+        && nums.windows(2).all(|w| w[1] == w[0] + 1)
+}
+
 /// Whitespace-aligned tables such as `DataFrame.to_string()`.
 fn parse_aligned(text: &str) -> Option<Table> {
     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
@@ -304,7 +408,9 @@ fn parse_aligned(text: &str) -> Option<Table> {
     let mut headers = split[0].clone();
     if h + 1 == m {
         headers.insert(0, "idx".to_string());
-    } else if h != m {
+    } else if h != m || first_column_is_an_index(&split[1..]) {
+        // Same count as the header, but the first column counts 0,1,2...: that is a pandas
+        // index plus two columns that a single space glued together. Labels would be wrong.
         return None;
     }
     if !valid_header(&headers) {
@@ -470,6 +576,127 @@ pub mod tests {
     #[test]
     fn rejects_numeric_header() {
         let s = "1,2,3\n".to_string() + &"4,5,6\n".repeat(40);
+        assert!(detect(&s).is_none());
+    }
+
+    #[test]
+    fn real_pandas_output_without_datetimes_is_labelled_correctly() {
+        let t = detect(include_str!("../tests/fixtures/pandas_plain.txt")).expect("pandas table");
+        assert_eq!(
+            t.headers,
+            [
+                "idx",
+                "order_id",
+                "customer",
+                "region",
+                "amount",
+                "latency_ms"
+            ]
+        );
+        assert_eq!(t.rows.len(), 30);
+        assert_eq!(t.rows[0][1], "100000");
+        assert!(t.rows[0][2].starts_with("cust_"));
+    }
+
+    #[test]
+    fn real_pandas_output_with_a_datetime_column_is_refused_not_mislabelled() {
+        // pandas can join a datetime column to its neighbour with one space, so the columns
+        // cannot be told apart safely. No summary is better than wrong labels.
+        assert!(detect(include_str!("../tests/fixtures/pandas_datetime.txt")).is_none());
+    }
+
+    pub fn polars_text(n: usize) -> String {
+        let mut s = String::from(
+            "shape: (500, 3)\n┌──────┬───────┬────────┐\n│ id   ┆ name  ┆ amount │\n│ ---  ┆ ---   ┆ ---    │\n│ i64  ┆ str   ┆ f64    │\n╞══════╪═══════╪════════╡\n",
+        );
+        for i in 0..n {
+            s.push_str(&format!(
+                "│ {:<4} ┆ user{} ┆ {:<6} │\n",
+                i,
+                i % 5,
+                i as f64 * 1.5
+            ));
+        }
+        s.push_str("│ …    ┆ …     ┆ …      │\n└──────┴───────┴────────┘\n");
+        s
+    }
+
+    #[test]
+    fn detects_polars_tables() {
+        let t = detect(&polars_text(30)).expect("polars");
+        assert_eq!(t.format, Format::Bordered);
+        assert_eq!(t.headers, ["id", "name", "amount"]);
+        assert_eq!(
+            t.rows.len(),
+            30,
+            "the --- row and the dtype row are not data"
+        );
+        assert_eq!(t.rows[0], ["0", "user0", "0"]);
+        assert!(
+            t.notes.iter().any(|n| n == "shape: (500, 3)"),
+            "{:?}",
+            t.notes
+        );
+        assert!(
+            t.notes.iter().any(|n| n.contains("elided")),
+            "{:?}",
+            t.notes
+        );
+    }
+
+    #[test]
+    fn detects_psql_mysql_sqlite_and_markdown_tables() {
+        let rows: Vec<(usize, &str, f64)> = (0..30)
+            .map(|i| (i, ["alice", "bob", "carol"][i % 3], i as f64 * 2.5))
+            .collect();
+        let mut psql = String::from(" id |  name  | amount\n----+--------+--------\n");
+        let mut mysql = String::from(
+            "+----+-------+--------+\n| id | name  | amount |\n+----+-------+--------+\n",
+        );
+        let mut sqlite = String::from(
+            "┌────┬───────┬────────┐\n│ id │ name  │ amount │\n├────┼───────┼────────┤\n",
+        );
+        let mut md = String::from("| id | name  | amount |\n|----|-------|--------|\n");
+        for (i, n, a) in &rows {
+            psql.push_str(&format!(" {:>2} | {:<6} | {:>6}\n", i, n, a));
+            mysql.push_str(&format!("| {:>2} | {:<5} | {:>6} |\n", i, n, a));
+            sqlite.push_str(&format!("│ {:<2} │ {:<5} │ {:<6} │\n", i, n, a));
+            md.push_str(&format!("| {} | {} | {} |\n", i, n, a));
+        }
+        psql.push_str("(30 rows)\n");
+        mysql.push_str("+----+-------+--------+\n");
+        sqlite.push_str("└────┴───────┴────────┘\n");
+        for (name, text) in [
+            ("psql", psql),
+            ("mysql", mysql),
+            ("sqlite", sqlite),
+            ("markdown", md),
+        ] {
+            let t = detect(&text).unwrap_or_else(|| panic!("{name} not detected"));
+            assert_eq!(t.format, Format::Bordered, "{name}");
+            assert_eq!(t.headers, ["id", "name", "amount"], "{name}");
+            assert_eq!(t.rows.len(), 30, "{name}");
+            assert_eq!(t.rows[1], ["1", "bob", "2.5"], "{name}");
+        }
+    }
+
+    #[test]
+    fn pipes_without_a_rule_line_are_not_a_table() {
+        let log = "cat access.log | grep error | sort | uniq -c | head\n".repeat(30);
+        assert!(detect(&log).is_none());
+        let rows = "| a | b |\n".to_string() + &"| 1 | 2 |\n".repeat(30);
+        assert!(
+            detect(&rows).is_none(),
+            "a Markdown-style table needs its rule line"
+        );
+    }
+
+    #[test]
+    fn ragged_bordered_text_is_not_a_table() {
+        let mut s = String::from("+---+---+\n| a | b |\n+---+---+\n");
+        for i in 0..40 {
+            s.push_str(&format!("| {} | x | y | z |\n", i));
+        }
         assert!(detect(&s).is_none());
     }
 }

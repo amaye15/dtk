@@ -113,6 +113,16 @@ fn top_values(distinct: &HashMap<&str, usize>, limit: usize) -> String {
         .join(", ")
 }
 
+/// " p50 X p95 Y" (nearest rank), or nothing when there are too few values to mean much.
+fn percentiles(nums: &mut [f64]) -> String {
+    if nums.len() < 20 {
+        return String::new();
+    }
+    nums.sort_by(|a, b| a.total_cmp(b));
+    let at = |p: f64| nums[((nums.len() - 1) as f64 * p).round() as usize];
+    format!(" p50 {} p95 {}", fnum(at(0.5)), fnum(at(0.95)))
+}
+
 fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
     let mut nonempty = 0usize;
     let mut nulls = 0usize;
@@ -122,6 +132,7 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
     let (mut tmin, mut tmax): (Option<&str>, Option<&str>) = (None, None);
     let mut distinct: HashMap<&str, usize> = HashMap::new();
     let mut overflow = false;
+    let mut nums: Vec<f64> = Vec::new();
     for v in vals {
         if v.is_empty() {
             nulls += 1;
@@ -144,8 +155,12 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
                     fmin = fmin.min(f);
                     fmax = fmax.max(f);
                     fsum += f;
+                    nums.push(f);
                 }
-                _ => all_float = false,
+                _ => {
+                    all_float = false;
+                    nums = Vec::new();
+                }
             }
         }
         if all_bool && !is_bool(v) {
@@ -198,8 +213,20 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
         Kind::Int | Kind::Float if few_values => {
             format!("{} distinct: {}", distinct.len(), top_values(&distinct, 8))
         }
-        Kind::Int => format!("{}..{} mean {}", imin, imax, fnum(mean)),
-        Kind::Float => format!("{}..{} mean {}", fnum(fmin), fnum(fmax), fnum(mean)),
+        Kind::Int => format!(
+            "{}..{} mean {}{}",
+            imin,
+            imax,
+            fnum(mean),
+            percentiles(&mut nums)
+        ),
+        Kind::Float => format!(
+            "{}..{} mean {}{}",
+            fnum(fmin),
+            fnum(fmax),
+            fnum(mean),
+            percentiles(&mut nums)
+        ),
         Kind::Time => format!("{}..{}", tmin.unwrap_or(""), tmax.unwrap_or("")),
         Kind::Bool => top_values(&distinct, 2),
         Kind::Str => {
@@ -551,6 +578,21 @@ mod tests {
         let t = detect(&text).unwrap();
         let r = render(&t, &ctx(), 2500);
         assert!(est_tokens(&r.text) * 20 < est_tokens(&text));
+    }
+
+    #[test]
+    fn numbers_get_percentiles() {
+        let mut s = String::from("name,ms\n");
+        for i in 0..200 {
+            s.push_str(&format!("row{},{}\n", i, i));
+        }
+        let t = detect(&s).unwrap();
+        let info = analyze(&t);
+        assert!(
+            info[1].summary.contains("p50 100 p95 189"),
+            "{}",
+            info[1].summary
+        );
     }
 
     #[test]

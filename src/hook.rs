@@ -287,6 +287,8 @@ fn run_chain(argv: &[String], input: &[u8]) -> i32 {
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(CHAIN_TIMEOUT_MS);
     let start = Instant::now();
+    // Check often at first (hooks usually answer in a few milliseconds), then back off.
+    let mut nap = Duration::from_micros(200);
     let status = loop {
         match child.try_wait() {
             Ok(Some(st)) => break Some(st),
@@ -295,7 +297,10 @@ fn run_chain(argv: &[String], input: &[u8]) -> i32 {
                 let _ = child.wait();
                 break None;
             }
-            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+            Ok(None) => {
+                std::thread::sleep(nap);
+                nap = (nap * 2).min(Duration::from_millis(10));
+            }
             Err(_) => break None,
         }
     };
@@ -316,9 +321,134 @@ fn handle(input: &str) -> Option<String> {
         return None;
     }
     let ev: Value = serde_json::from_str(input).ok()?;
-    if ev.get("hook_event_name")?.as_str()? != "PostToolUse"
-        || ev.get("tool_name")?.as_str()? != "Bash"
+    if ev.get("hook_event_name")?.as_str()? != "PostToolUse" {
+        return None;
+    }
+    match ev.get("tool_name")?.as_str()? {
+        "Bash" => handle_bash(&ev),
+        "Read" => handle_read(&ev),
+        _ => None,
+    }
+}
+
+/// Commands that ask for specific rows must get them, not a summary of them.
+fn wants_raw(cmd: &str) -> bool {
+    const MARKERS: [&str; 6] = [
+        "DTK_RAW",
+        "qsv slice",
+        "qsv sample",
+        "sed -n",
+        "--max-lines",
+        "--tail-lines",
+    ];
+    if MARKERS.iter().any(|m| cmd.contains(m)) {
+        return true;
+    }
+    cmd.split(|c: char| c.is_whitespace() || matches!(c, '|' | ';' | '&'))
+        .any(|t| t == "head" || t == "tail")
+}
+
+/// One line of the decision log.
+struct Decision<'a> {
+    tool: &'a str,
+    what: String,
+    table: &'a table::Table,
+    persisted: bool,
+    rendered: &'a Rendered,
+    tokens_full: usize,
+    baseline: usize,
+    would_apply: bool,
+    applied: bool,
+    live: bool,
+}
+
+fn log_table(d: &Decision) {
+    log_decision(json!({
+        "ts": now_secs(),
+        "mode": if d.live { "live" } else { "shadow" },
+        "tool": d.tool,
+        "format": d.table.format.name(),
+        "rows": d.table.rows.len(),
+        "cols": d.table.headers.len(),
+        "persisted": d.persisted,
+        "lossless": d.rendered.lossless,
+        "tokens_full": d.tokens_full,
+        "tokens_baseline": d.baseline,
+        "tokens_after": est_tokens(&d.rendered.text),
+        "would_apply": d.would_apply,
+        "applied": d.applied,
+        "cmd": d.what,
+    }));
+}
+
+/// File types that can hold a table. Source code is never read or checked.
+const DATA_EXTS: [&str; 11] = [
+    "csv", "tsv", "psv", "jsonl", "ndjson", "json", "log", "txt", "dat", "out", "tbl",
+];
+
+/// The `Read` tool on a data file. By now `Read` has passed the permission rules, so replacing
+/// its content cannot reveal anything the model was not allowed to read.
+fn handle_read(ev: &Value) -> Option<String> {
+    let resp = ev.get("tool_response")?.as_object()?;
+    let file = resp.get("file")?.as_object()?;
+    let path = file.get("filePath")?.as_str()?;
+    let ext = Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
+    if !DATA_EXTS.contains(&ext.as_str()) {
+        return None;
+    }
+    // A range is a request for exact lines: leave it alone.
+    let input = ev.get("tool_input");
+    if input.and_then(|i| i.get("offset")).is_some() || input.and_then(|i| i.get("limit")).is_some()
     {
+        return None;
+    }
+    let lines = file.get("numLines")?.as_u64()?;
+    if file.get("startLine").and_then(Value::as_u64).unwrap_or(1) != 1
+        || file.get("totalLines")?.as_u64()? != lines
+    {
+        return None;
+    }
+    let text = file.get("content")?.as_str()?;
+    let table = table::detect(text)?;
+    let live = is_live();
+    let tokens_full = est_tokens(text);
+    let rendered = build(&table, text, Some(Path::new(path)), live);
+    let after = est_tokens(&rendered.text);
+    let would_apply = tokens_full >= MIN_TOKENS && after * 10 <= tokens_full * 7;
+    let applied = live && would_apply;
+    log_table(&Decision {
+        tool: "Read",
+        what: path.chars().take(100).collect(),
+        table: &table,
+        persisted: false,
+        rendered: &rendered,
+        tokens_full,
+        baseline: tokens_full,
+        would_apply,
+        applied,
+        live,
+    });
+    if !applied {
+        return None;
+    }
+    let shown = rendered.text.lines().count();
+    let mut new_file = file.clone();
+    new_file.insert("content".to_string(), Value::String(rendered.text));
+    new_file.insert("numLines".to_string(), json!(shown));
+    new_file.insert("totalLines".to_string(), json!(shown));
+    let mut updated = resp.clone();
+    updated.insert("file".to_string(), Value::Object(new_file));
+    let out = json!({"hookSpecificOutput": {"hookEventName": "PostToolUse", "updatedToolOutput": Value::Object(updated)}});
+    Some(out.to_string())
+}
+
+fn handle_bash(ev: &Value) -> Option<String> {
+    let command = ev
+        .get("tool_input")
+        .and_then(|i| i.get("command"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if wants_raw(command) {
         return None;
     }
     let resp = ev.get("tool_response")?.as_object()?;
@@ -353,29 +483,18 @@ fn handle(input: &str) -> Option<String> {
         tokens_full >= MIN_TOKENS && after * 10 <= tokens_full * 7
     };
     let applied = live && would_apply;
-    let cmd: String = ev
-        .get("tool_input")
-        .and_then(|i| i.get("command"))
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .chars()
-        .take(100)
-        .collect();
-    log_decision(json!({
-        "ts": now_secs(),
-        "mode": if live { "live" } else { "shadow" },
-        "format": table.format.name(),
-        "rows": table.rows.len(),
-        "cols": table.headers.len(),
-        "persisted": persisted.is_some(),
-        "lossless": rendered.lossless,
-        "tokens_full": tokens_full,
-        "tokens_baseline": baseline,
-        "tokens_after": after,
-        "would_apply": would_apply,
-        "applied": applied,
-        "cmd": cmd,
-    }));
+    log_table(&Decision {
+        tool: "Bash",
+        what: command.chars().take(100).collect(),
+        table: &table,
+        persisted: persisted.is_some(),
+        rendered: &rendered,
+        tokens_full,
+        baseline,
+        would_apply,
+        applied,
+        live,
+    });
     if !applied {
         return None;
     }

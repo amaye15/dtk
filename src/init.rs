@@ -60,9 +60,12 @@ pub fn rtk_on_path() -> bool {
         .unwrap_or(false)
 }
 
-/// Union of matchers, always including `Bash`. `*` or an empty matcher means every tool.
+/// Tools dtk handles itself: Bash output and whole-file reads of data files.
+const OWN_MATCHER: &str = "Bash|Read";
+
+/// Union of matchers, always including dtk's own. `*` or an empty matcher means every tool.
 fn union_matchers(parts: &[String]) -> String {
-    let mut out: Vec<String> = vec!["Bash".to_string()];
+    let mut out: Vec<String> = OWN_MATCHER.split('|').map(String::from).collect();
     for m in parts {
         if m.is_empty() || m == "*" {
             return "*".to_string();
@@ -213,7 +216,7 @@ pub fn run(args: &[String]) -> i32 {
         let matcher = if use_chain {
             union_matchers(&matchers)
         } else {
-            "Bash".to_string()
+            OWN_MATCHER.to_string()
         };
         let mut command = format!("{exe} hook claude");
         if use_chain {

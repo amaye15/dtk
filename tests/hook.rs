@@ -249,3 +249,138 @@ fn a_closed_pipe_is_not_a_panic() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(!err.contains("panicked"), "{err}");
 }
+
+fn read_event(path: &str, content: &str, extra_input: Value) -> String {
+    let lines = content.lines().count();
+    let mut input = json!({"file_path": path});
+    if let (Some(o), Some(e)) = (input.as_object_mut(), extra_input.as_object()) {
+        for (k, v) in e {
+            o.insert(k.clone(), v.clone());
+        }
+    }
+    json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Read",
+        "tool_input": input,
+        "tool_response": {"type": "text", "file": {
+            "filePath": path, "content": content,
+            "numLines": lines, "startLine": 1, "totalLines": lines
+        }},
+    })
+    .to_string()
+}
+
+#[test]
+fn a_whole_data_file_read_with_the_read_tool_is_summarized() {
+    let home = temp_home("read");
+    let content = jsonl(300);
+    let ev = read_event("/work/data/events.jsonl", &content, json!({}));
+    let (code, out, _) = run(&home, &["hook", "claude"], &ev, &[]);
+    assert_eq!(code, 0);
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let file = &v["hookSpecificOutput"]["updatedToolOutput"]["file"];
+    let text = file["content"].as_str().unwrap();
+    assert!(text.starts_with("[dtk] jsonl: 300 rows x 4 cols"), "{text}");
+    assert!(
+        text.contains("raw: /work/data/events.jsonl"),
+        "the hint points at the real file: {text}"
+    );
+    assert_eq!(file["filePath"], "/work/data/events.jsonl");
+    assert_eq!(file["numLines"], text.lines().count());
+    assert_eq!(v["hookSpecificOutput"]["updatedToolOutput"]["type"], "text");
+}
+
+#[test]
+fn reads_with_a_range_other_files_and_small_files_are_left_alone() {
+    let home = temp_home("readskip");
+    let big = jsonl(300);
+    let run_ev = |ev: String| run(&home, &["hook", "claude"], &ev, &[]).1;
+    assert_eq!(
+        run_ev(read_event("/w/e.jsonl", &big, json!({"offset": 10}))),
+        "",
+        "offset means exact lines"
+    );
+    assert_eq!(
+        run_ev(read_event("/w/e.jsonl", &big, json!({"limit": 50}))),
+        "",
+        "limit means exact lines"
+    );
+    assert_eq!(
+        run_ev(read_event("/w/main.rs", &big, json!({}))),
+        "",
+        "source files are never checked"
+    );
+    assert_eq!(
+        run_ev(read_event("/w/e.jsonl", &jsonl(15), json!({}))),
+        "",
+        "small files pass"
+    );
+    // A partial read: the tool returned fewer lines than the file has.
+    let mut partial: Value =
+        serde_json::from_str(&read_event("/w/e.jsonl", &big, json!({}))).unwrap();
+    partial["tool_response"]["file"]["totalLines"] = json!(9999);
+    assert_eq!(run_ev(partial.to_string()), "");
+}
+
+#[test]
+fn commands_that_ask_for_rows_get_rows() {
+    let home = temp_home("raw");
+    let resp = json!({"stdout": jsonl(300), "stderr": "", "interrupted": false, "isImage": false});
+    for cmd in [
+        "qsv slice -s 100 -l 200 /tmp/x.csv",
+        "DTK_RAW=1 cat data.jsonl",
+        "cat data.jsonl | head -300",
+        "tail -n 300 app.log",
+        "sed -n '1,300p' data.jsonl",
+        "rtk read app.log --tail-lines 300",
+    ] {
+        let ev = json!({
+            "hook_event_name": "PostToolUse", "tool_name": "Bash",
+            "tool_input": {"command": cmd}, "tool_response": resp,
+        })
+        .to_string();
+        let (code, out, _) = run(&home, &["hook", "claude"], &ev, &[]);
+        assert_eq!((code, out.as_str()), (0, ""), "{cmd}");
+    }
+    // The same output from a plain cat is summarized.
+    let ev = json!({
+        "hook_event_name": "PostToolUse", "tool_name": "Bash",
+        "tool_input": {"command": "cat data.jsonl"}, "tool_response": resp,
+    })
+    .to_string();
+    assert!(run(&home, &["hook", "claude"], &ev, &[])
+        .1
+        .contains("[dtk] jsonl"));
+}
+
+#[test]
+fn a_polars_table_from_a_python_command_is_summarized() {
+    let home = temp_home("polars");
+    let mut s = String::from("shape: (400, 3)\n┌──────┬───────┬────────┐\n│ id   ┆ name  ┆ amount │\n│ ---  ┆ ---   ┆ ---    │\n│ i64  ┆ str   ┆ f64    │\n╞══════╪═══════╪════════╡\n");
+    for i in 0..400 {
+        s.push_str(&format!(
+            "│ {:<4} ┆ user{} ┆ {:<6} │\n",
+            i,
+            i % 5,
+            i as f64 * 1.5
+        ));
+    }
+    s.push_str("└──────┴───────┴────────┘\n");
+    let resp = json!({"stdout": s, "stderr": "", "interrupted": false, "isImage": false});
+    let ev = json!({
+        "hook_event_name": "PostToolUse", "tool_name": "Bash",
+        "tool_input": {"command": "python3 report.py"}, "tool_response": resp,
+    })
+    .to_string();
+    let (_, out, _) = run(&home, &["hook", "claude"], &ev, &[]);
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let text = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
+        .as_str()
+        .unwrap();
+    assert!(text.starts_with("[dtk] table: 400 rows x 3 cols"), "{text}");
+    assert!(text.contains("note: shape: (400, 3)"), "{text}");
+    assert!(
+        text.contains("cols: id:int name:str amount:float"),
+        "{text}"
+    );
+}

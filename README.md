@@ -6,13 +6,14 @@ It is one small Rust binary (about 600 KB) with no runtime dependencies.
 
 ## What it does
 
-Claude Code sends the output of a Bash command to the model. For `cat data.csv`, `python report.py` or `tail -n 500 app.log`, that output can be tens of thousands of tokens of rows. `dtk` runs after the command (a `PostToolUse` hook) and checks whether the output is a table.
+Claude Code sends the output of a Bash command to the model. For `cat data.csv`, `python report.py` or `tail -n 500 app.log`, that output can be tens of thousands of tokens of rows. `dtk` runs after the command (a `PostToolUse` hook) and checks whether the output is a table. It also checks data files that Claude reads with the `Read` tool.
 
 | Input found in the output | Treated as |
 |---|---|
 | JSON Lines (one object per line) | `jsonl` |
 | JSON array of objects | `json-array` |
 | CSV, or TSV, `;` and `\|` separated text with a header row | `csv`, `tsv` |
+| Tables drawn with borders: polars, psql, MySQL, SQLite, Markdown | `table` |
 | Whitespace-aligned tables, such as `DataFrame.to_string()` | `table` |
 
 Anything else passes through untouched.
@@ -21,7 +22,7 @@ For a table of 60 rows or fewer, `dtk` re-encodes it as CSV and drops nothing. F
 
 - the shape and the size
 - the column names with types
-- per-column statistics: min, max and mean for numbers; value counts for categories and codes; the time range for timestamps; null counts
+- per-column statistics: min, max, mean, median (p50) and p95 for numbers; value counts for categories and codes; the time range for timestamps; null counts
 - the first rows and the last rows
 - the rows where a `level` or `severity` column says warn or error
 - the exact commands to query the full data, with `qsv` and `jaq`
@@ -37,6 +38,8 @@ Measured with OpenAI's `o200k_base` tokenizer, as a stand-in for Claude's:
 | CSV, 200 rows | 6,871 | 842 |
 
 Claude Code already saves outputs of 30,000 characters or more to a file and shows the model a preview of the first lines. `dtk` reads that saved file, so its summary covers all rows, not only the first lines.
+
+**The `Read` tool.** When Claude reads a whole data file (`.csv`, `.tsv`, `.jsonl`, `.json`, `.log`, `.txt` and a few more), the model gets the summary instead of every row. A read with `offset` or `limit` is a request for exact lines, so it is left alone. Source code is never checked. `dtk` works on the result after `Read` ran, so it cannot show anything that your permission rules blocked. Claude Code refuses `Read` on files over 256 KB; use `cat` or `dtk view` for those.
 
 ## Install
 
@@ -84,6 +87,8 @@ dtk must go first. A table that rtk had already cut to its first and last lines 
 
 Use `dtk init --global --no-rtk` to skip the chain. If rtk is not installed, dtk works alone.
 
+The two programs run one after the other, so the hook takes about the sum of both. Measured on one Mac, as medians: dtk alone 2 to 7 ms (about 2 ms for a typical event, about 7 ms for a 331 KB CSV), rtk alone 4 to 13 ms, both through the chain 17 to 21 ms. That is small next to a model call.
+
 Tested end to end with real rtk 1.1.0 and Claude Code: with `rtk:posthook` enabled, a 150-row JSONL log became a dtk summary (864 tokens), and an 850-line plain text output went through the chain to rtk, which cut it to 252 lines and added its `[full output: ...]` pointer.
 
 ## Control
@@ -93,6 +98,9 @@ Tested end to end with real rtk 1.1.0 and Claude Code: with `rtk:posthook` enabl
 | `dtk mode shadow` | Decide and log, but change no output. Use it to see what `dtk` would do. |
 | `dtk mode live` | Replace output (the default). |
 | `DTK_DISABLED=1` | dtk passes every output through. The rtk chain still runs. |
+| `DTK_RAW=1 cat data.csv` | Pass this one command's output through. |
+
+Commands that ask for specific rows are never summarized: `qsv slice`, `qsv sample`, `head`, `tail`, `sed -n`, and rtk's `--max-lines` and `--tail-lines`. That includes the `rows:` command in a summary.
 | `dtk gain` | Totals from the decision log, with rtk's totals beside them. |
 | `dtk view FILE` | Show the lean view of a file or standard input. |
 | `dtk doctor` | Check the setup. |
@@ -103,7 +111,7 @@ Tested end to end with real rtk 1.1.0 and Claude Code: with `rtk:posthook` enabl
 - It only reads files under `~/.claude/`, the folder where Claude Code saves large outputs.
 - A summary is used only if it is clearly smaller: at least 30% fewer tokens for mid-size output, and always for output that Claude Code saved to a file.
 - Strict detection: prose, source code, single JSON objects, cargo output and numeric headers are not tables.
-- It handles Bash output only. The `Read` tool and MCP tools are not touched.
+- It handles Bash output and whole-file `Read` of data files. MCP tools are not touched.
 
 ## Where data lives
 
@@ -124,7 +132,7 @@ if let Some((table, view)) = dtk::summarize(&text, &ctx, 2500) {
 
 ## Limits
 
-- Detection of aligned text tables is a heuristic. The default `print(df)` of pandas hides columns behind `...`, so `dtk` does not treat it as a table. Print with `df.to_string()`, `df.to_csv()` or `df.to_json(orient="records", lines=True)`.
+- Detection of whitespace-aligned text tables is a heuristic. The default `print(df)` of pandas hides columns behind `...`, so `dtk` does not treat it as a table. A pandas `to_string()` table with a datetime column is refused too, because pandas can join that column to its neighbour with one space and the column labels could come out wrong. Print with `df.to_csv()`, `df.to_json(orient="records", lines=True)` or polars, which `dtk` reads correctly.
 - Inputs above 128 MB are skipped.
 - Statistics cover the whole table. For columns with more than 5,000 distinct values, only a count is shown.
 - dtk is a separate program that calls rtk. It is not an rtk plugin: a plugin needs a custom rtk build, links rtk's source-available license, and would see only the first 30,000 characters of a large output.
@@ -137,7 +145,7 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 ```
 
-The unit tests cover detection and rendering. `tests/hook.rs` runs the real binary against simulated Claude Code events, and `tests/rtk_integration.rs` tests the rtk chain, the folding and the restore with a fake `rtk`. All of them use a temporary home folder.
+The unit tests cover detection and rendering. `tests/hook.rs` runs the real binary against simulated Claude Code events (including real pandas output in `tests/fixtures/`), and `tests/rtk_integration.rs` tests the rtk chain, the folding and the restore with a fake `rtk`. All of them use a temporary home folder.
 
 ## License
 

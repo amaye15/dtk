@@ -73,6 +73,12 @@ pub fn run() -> i32 {
             chained = cmd.contains("--then");
             let exe = cmd.split_whitespace().next().unwrap_or("");
             let matcher = e.get("matcher").and_then(Value::as_str).unwrap_or("");
+            if matcher != "*" && !matcher.split('|').any(|m| m == "Read") {
+                line(
+                    "warn",
+                    "the hook was registered before Read support, so data files read with the Read tool are not summarized. Run: dtk init --global",
+                );
+            }
             if std::path::Path::new(exe).exists() {
                 line(
                     "ok",
