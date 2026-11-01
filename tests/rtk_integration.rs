@@ -166,7 +166,8 @@ fn a_missing_or_slow_chain_command_fails_open() {
         &[],
     );
     assert_eq!((code, out.as_str()), (0, ""));
-    let bin = fake_rtk(&home, "sleep 5");
+    // `exec` makes the sleeper the chained process itself, so the kill reaches it.
+    let bin = fake_rtk(&home, "exec sleep 5");
     let start = Instant::now();
     let (code, out, _) = run(
         &home,
@@ -177,6 +178,25 @@ fn a_missing_or_slow_chain_command_fails_open() {
     );
     assert_eq!((code, out.as_str()), (0, ""));
     assert!(start.elapsed().as_secs() < 4, "the chain must be cut off");
+}
+
+#[test]
+fn a_chain_that_leaves_a_child_holding_the_pipe_does_not_hang_dtk() {
+    let home = temp_home("orphan");
+    // The answer is printed and the script exits, but a background sleeper keeps stdout open.
+    let bin = fake_rtk(
+        &home,
+        "cat >/dev/null; sleep 3 2>/dev/null &\nprintf '%s' '{\"from\":\"rtk\"}'",
+    );
+    let ev = event("Read", json!({"stdout": "x"}));
+    let start = Instant::now();
+    let (code, out, _) = run(&home, Some(&bin), &THEN, &ev, &[]);
+    assert_eq!((code, out.as_str()), (0, "{\"from\":\"rtk\"}"));
+    assert!(
+        start.elapsed().as_millis() < 2500,
+        "dtk waited for the orphan: {:?}",
+        start.elapsed()
+    );
 }
 
 #[test]

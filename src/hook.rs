@@ -14,6 +14,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Smallest output (estimated tokens) worth replacing when Claude Code shows it in full.
@@ -257,14 +258,27 @@ fn run_chain(argv: &[String], input: &[u8]) -> i32 {
     else {
         return 0;
     };
-    let mut out = child.stdout.take();
-    let reader = std::thread::spawn(move || {
-        let mut s = Vec::new();
-        if let Some(o) = out.as_mut() {
-            let _ = o.read_to_end(&mut s);
-        }
-        s
-    });
+    // The reader fills a shared buffer and is never joined: if the chained command leaves a
+    // child process holding the pipe open, dtk must still return on time.
+    let collected = Arc::new(Mutex::new(Vec::<u8>::new()));
+    let (done_tx, done_rx) = mpsc::channel::<()>();
+    if let Some(mut o) = child.stdout.take() {
+        let sink = Arc::clone(&collected);
+        std::thread::spawn(move || {
+            let mut chunk = [0u8; 8192];
+            loop {
+                match o.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        if let Ok(mut b) = sink.lock() {
+                            b.extend_from_slice(&chunk[..n]);
+                        }
+                    }
+                }
+            }
+            let _ = done_tx.send(());
+        });
+    }
     if let Some(mut si) = child.stdin.take() {
         let _ = si.write_all(input);
     }
@@ -285,8 +299,10 @@ fn run_chain(argv: &[String], input: &[u8]) -> i32 {
             Err(_) => break None,
         }
     };
-    let bytes = reader.join().unwrap_or_default();
     let Some(status) = status else { return 0 };
+    // The command has exited; give the reader a moment to drain the pipe, then take what we have.
+    let _ = done_rx.recv_timeout(Duration::from_millis(500));
+    let bytes = collected.lock().map(|b| b.clone()).unwrap_or_default();
     let _ = std::io::stdout().write_all(&bytes);
     status.code().unwrap_or(0)
 }
