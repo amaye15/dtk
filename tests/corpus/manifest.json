@@ -778,6 +778,60 @@
         "c1",
         "c2"
       ]
+    },
+    {
+      "file": "positive/psql_expanded.txt",
+      "format": "records",
+      "rows": 40,
+      "cols": 6,
+      "headers": [
+        "id",
+        "name",
+        "email",
+        "amount",
+        "created_at",
+        "active"
+      ]
+    },
+    {
+      "file": "positive/mysql_vertical.txt",
+      "format": "records",
+      "rows": 40,
+      "cols": 4,
+      "headers": [
+        "id",
+        "name",
+        "total",
+        "status"
+      ]
+    },
+    {
+      "file": "positive/sqlite_line.txt",
+      "format": "records",
+      "rows": 300,
+      "cols": 3,
+      "headers": [
+        "id",
+        "name",
+        "amt"
+      ]
+    },
+    {
+      "file": "positive/pandas_table.html",
+      "format": "html-table",
+      "rows": 60,
+      "cols": 9,
+      "headers": [
+        "index",
+        "order_id",
+        "ts",
+        "customer",
+        "region",
+        "tier",
+        "amount",
+        "qty",
+        "ok"
+      ]
     }
   ],
   "negative": [

@@ -253,6 +253,77 @@ fn top_pairs(distinct: &HashMap<&str, usize>, limit: usize) -> Vec<(String, usiz
         .collect()
 }
 
+/// The order of the parts of a date written with slashes, dashes or dots and the year last.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum DateOrder {
+    MonthFirst,
+    DayFirst,
+}
+
+impl DateOrder {
+    fn label(self) -> &'static str {
+        match self {
+            DateOrder::MonthFirst => "MM/DD/YYYY",
+            DateOrder::DayFirst => "DD/MM/YYYY",
+        }
+    }
+}
+
+/// `3/21/2025`, `21.03.2025`, `21-03-2025` as (first, second, year), or `None`.
+fn slash_parts(v: &str) -> Option<(u32, u32, u32)> {
+    let sep = v.chars().find(|c| matches!(c, '/' | '-' | '.'))?;
+    let mut it = v.trim().split(sep);
+    let (a, b, y) = (it.next()?, it.next()?, it.next()?);
+    if it.next().is_some()
+        || !(1..=2).contains(&a.len())
+        || !(1..=2).contains(&b.len())
+        || y.len() != 4
+        || !(a.bytes().chain(b.bytes()).chain(y.bytes())).all(|c| c.is_ascii_digit())
+    {
+        return None;
+    }
+    Some((a.parse().ok()?, b.parse().ok()?, y.parse().ok()?))
+}
+
+/// A column of dates whose order the data settles: some value has a first part above 12 (day
+/// first) or a second part above 12 (month first), and none says the opposite. A column where
+/// every part is 12 or less could be either, so it is left as text.
+fn slash_date_order<'a>(vals: impl Iterator<Item = &'a str>) -> Option<DateOrder> {
+    let (mut month_first_ok, mut day_first_ok, mut n) = (true, true, 0usize);
+    for v in vals.filter(|v| !v.is_empty() && !is_placeholder(v)) {
+        let (a, b, y) = slash_parts(v)?;
+        if !(1..=31).contains(&a) || !(1..=31).contains(&b) || !(1000..=2999).contains(&y) {
+            return None;
+        }
+        if a > 12 {
+            month_first_ok = false;
+        }
+        if b > 12 {
+            day_first_ok = false;
+        }
+        n += 1;
+    }
+    match (n >= 8, month_first_ok, day_first_ok) {
+        (true, true, false) => Some(DateOrder::MonthFirst),
+        (true, false, true) => Some(DateOrder::DayFirst),
+        _ => None,
+    }
+}
+
+fn slash_to_iso(v: &str, order: DateOrder) -> String {
+    match slash_parts(v) {
+        Some((a, b, y)) => {
+            let (m, d) = if order == DateOrder::MonthFirst {
+                (a, b)
+            } else {
+                (b, a)
+            };
+            format!("{y:04}-{m:02}-{d:02}")
+        }
+        None => v.to_string(), // an empty cell or a placeholder
+    }
+}
+
 /// How a number is written.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NumFmt {
@@ -357,6 +428,14 @@ pub fn is_placeholder(v: &str) -> bool {
 /// and set aside when the rest of the column is numbers, times or flags, and more than half of
 /// the cells hold real values. Otherwise they are ordinary values.
 fn analyze_col<'a>(vals: impl Iterator<Item = &'a str> + Clone) -> ColInfo {
+    // `03/21/2025`: dates in the order the data itself settles. Read as ISO dates, they get a
+    // range like any time column.
+    if let Some(order) = slash_date_order(vals.clone()) {
+        let iso: Vec<String> = vals.clone().map(|v| slash_to_iso(v, order)).collect();
+        let mut c = analyze_col(iso.iter().map(String::as_str));
+        put_note(&mut c.summary, &format!("dates written {}", order.label()));
+        return c;
+    }
     if vals.clone().any(is_placeholder) {
         let c = analyze_col_impl(vals.clone(), true);
         let typed = matches!(c.kind, Kind::Int | Kind::Float | Kind::Bool | Kind::Time);
@@ -1579,6 +1658,63 @@ mod tests {
         }
         let t = detect(&s).unwrap();
         assert_eq!(analyze(&t)[1].kind, Kind::Str);
+    }
+
+    #[test]
+    fn dates_with_slashes_are_dates_when_the_data_says_which_order() {
+        let mk = |f: &dyn Fn(usize) -> String| {
+            let mut s = String::from("id,when\n");
+            for i in 0..40 {
+                s.push_str(&format!("{i},{}\n", f(i)));
+            }
+            detect(&s).unwrap()
+        };
+        // a second part above 12: month first
+        let t = mk(&|i| format!("{:02}/{:02}/2025", i % 12 + 1, i % 28 + 1));
+        let c = &analyze(&t)[1];
+        assert_eq!(c.kind, Kind::Time);
+        assert!(
+            c.summary.starts_with("2025-01-01..2025-12-"),
+            "{}",
+            c.summary
+        );
+        assert!(
+            c.summary.contains("dates written MM/DD/YYYY"),
+            "{}",
+            c.summary
+        );
+        // a first part above 12: day first
+        let t = mk(&|i| format!("{:02}.{:02}.2025", i % 28 + 1, i % 12 + 1));
+        let c = &analyze(&t)[1];
+        assert_eq!(c.kind, Kind::Time);
+        assert!(
+            c.summary.contains("dates written DD/MM/YYYY"),
+            "{}",
+            c.summary
+        );
+        // every part 12 or less: the data does not say, so it stays text
+        let t = mk(&|i| format!("{:02}/{:02}/2025", i % 12 + 1, (i / 4) % 12 + 1));
+        assert_eq!(analyze(&t)[1].kind, Kind::Str);
+        // both orders in one column: not a date column
+        let t = mk(&|i| {
+            if i % 2 == 0 {
+                "25/01/2025".into()
+            } else {
+                "01/25/2025".into()
+            }
+        });
+        assert_eq!(analyze(&t)[1].kind, Kind::Str);
+        // a placeholder does not spoil it
+        let t = mk(&|i| {
+            if i % 9 == 0 {
+                "N/A".into()
+            } else {
+                format!("{:02}/{:02}/2025", i % 12 + 1, i % 18 + 13)
+            }
+        });
+        let c = &analyze(&t)[1];
+        assert_eq!(c.kind, Kind::Time, "{}", c.summary);
+        assert_eq!(c.stats.placeholders, 5);
     }
 
     #[test]

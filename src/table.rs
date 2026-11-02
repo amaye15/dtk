@@ -40,6 +40,10 @@ pub enum Format {
     Grid,
     /// Delimited text with no header row.
     Headerless,
+    /// One block per row: `psql -x`, `sqlite3 -line`, MySQL `\G`.
+    Records,
+    /// A page that is one HTML table.
+    Html,
 }
 
 impl Format {
@@ -54,6 +58,8 @@ impl Format {
             Format::PyRepr => "python-repr",
             Format::Grid => "number-grid",
             Format::Headerless => "delimited",
+            Format::Records => "records",
+            Format::Html => "html-table",
             Format::JsonObject => "json-object",
             Format::Logfmt => "logfmt",
             Format::AccessLog => "access-log",
@@ -107,6 +113,7 @@ pub fn detect(text: &str) -> Option<Table> {
                 })
                 .or_else(|| crate::foreign::parse_python_repr(text));
         }
+        b'<' => return crate::foreign::parse_html_table(text),
         _ => {}
     }
     crate::logs::parse_access_log(text)
@@ -117,6 +124,7 @@ pub fn detect(text: &str) -> Option<Table> {
         .or_else(|| parse_aligned(text))
         .or_else(|| crate::textcols::parse_tail_text(text))
         .or_else(|| crate::foreign::parse_number_grid(text))
+        .or_else(|| crate::foreign::parse_records(text))
         .or_else(|| crate::logs::parse_text_log(text))
         .or_else(|| crate::foreign::parse_headerless(text))
 }

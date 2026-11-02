@@ -522,6 +522,175 @@ fn headerless_with(text: &str, d: u8) -> Option<Table> {
     })
 }
 
+// ---- record blocks -----------------------------------------------------------------------------
+
+/// Expanded output, one block per row: `psql -x`, `sqlite3 -line`, MySQL `\G`.
+///
+/// ```text
+/// -[ RECORD 1 ]--+-------      *************************** 1. row ***************************
+/// id   | 1                          id: 1                    id = 1
+/// name | alice                    name: alice              name = alice
+/// ```
+pub fn parse_records(text: &str) -> Option<Table> {
+    let first = text.lines().find(|l| !l.trim().is_empty())?;
+    let (sep, by_blank) = if first.starts_with("-[ RECORD") {
+        ('|', false)
+    } else if first.starts_with('*') && first.contains(" row ") {
+        (':', false)
+    } else if first.contains(" = ") {
+        ('=', true)
+    } else {
+        return None;
+    };
+    let is_marker = |l: &str| {
+        (sep == '|' && l.starts_with("-[ RECORD"))
+            || (sep == ':' && l.starts_with('*') && l.contains(" row "))
+    };
+    let mut blocks: Vec<Vec<(String, String)>> = Vec::new();
+    let mut cur: Vec<(String, String)> = Vec::new();
+    for line in text.lines() {
+        let blank = line.trim().is_empty();
+        if is_marker(line) || (by_blank && blank) {
+            if !cur.is_empty() {
+                blocks.push(std::mem::take(&mut cur));
+            }
+            continue;
+        }
+        if blank {
+            continue;
+        }
+        match line.split_once(sep) {
+            Some((k, v))
+                if !k.trim().is_empty()
+                    && k.trim().len() <= 64
+                    && !k.trim().contains(char::is_whitespace) =>
+            {
+                cur.push((k.trim().to_string(), v.trim().to_string()));
+            }
+            // A value that wraps onto the next line.
+            _ => match cur.last_mut() {
+                Some(last) => {
+                    last.1.push('\n');
+                    last.1.push_str(line.trim());
+                }
+                None => return None,
+            },
+        }
+    }
+    if !cur.is_empty() {
+        blocks.push(cur);
+    }
+    if blocks.len() < MIN_ROWS {
+        return None;
+    }
+    let headers: Vec<String> = blocks[0].iter().map(|(k, _)| k.clone()).collect();
+    if !valid_header(&headers) {
+        return None;
+    }
+    let same = blocks
+        .iter()
+        .filter(|b| b.len() == headers.len() && b.iter().zip(&headers).all(|((k, _), h)| k == h))
+        .count();
+    if same * 20 < blocks.len() * 19 {
+        return None;
+    }
+    let rows = blocks
+        .into_iter()
+        .filter(|b| b.len() == headers.len())
+        .map(|b| b.into_iter().map(|(_, v)| v).collect())
+        .collect();
+    Some(Table {
+        format: Format::Records,
+        headers,
+        rows,
+        notes: Vec::new(),
+    })
+}
+
+// ---- HTML tables -------------------------------------------------------------------------------
+
+fn decode_entities(s: &str) -> String {
+    s.replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+}
+
+/// The text of a cell: its tags removed, its entities decoded, its white space folded.
+fn cell_text(html: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' if in_tag => in_tag = false,
+            c if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    decode_entities(&out)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A page that is one `<table>`, as `df.to_html()` writes it. The first row names the columns; a
+/// row header (the pandas index) is a column with an empty name, called `index`.
+pub fn parse_html_table(text: &str) -> Option<Table> {
+    let t = text.trim();
+    let lower = t.to_ascii_lowercase();
+    if !lower.starts_with("<table")
+        || !lower.trim_end().ends_with("</table>")
+        || lower.matches("<table").count() != 1
+    {
+        return None;
+    }
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut pos = 0;
+    while let Some(start) = lower[pos..].find("<tr") {
+        let row_start = pos + start;
+        let end = lower[row_start..].find("</tr>").map(|e| row_start + e)?;
+        let mut cells = Vec::new();
+        let mut p = row_start;
+        loop {
+            let rest = &lower[p..end];
+            let next = match (rest.find("<th"), rest.find("<td")) {
+                (Some(a), Some(b)) => a.min(b),
+                (Some(a), None) | (None, Some(a)) => a,
+                (None, None) => break,
+            };
+            let open = p + next;
+            let gt = lower[open..end].find('>')? + open + 1;
+            let close = lower[gt..end].find("</t").map_or(end, |c| gt + c);
+            cells.push(cell_text(&t[gt..close]));
+            p = close.max(gt);
+        }
+        rows.push(cells);
+        pos = end + 5;
+    }
+    if rows.len() < MIN_ROWS + 1 {
+        return None;
+    }
+    let mut headers = rows.remove(0);
+    if headers.first().is_some_and(String::is_empty) && !headers.iter().any(|h| h == "index") {
+        headers[0] = "index".to_string();
+    }
+    let w = headers.len();
+    let ok = rows.iter().filter(|r| r.len() == w).count();
+    if ok * 20 < rows.len() * 19 || !valid_header(&headers) {
+        return None;
+    }
+    rows.retain(|r| r.len() == w);
+    Some(Table {
+        format: Format::Html,
+        headers,
+        rows,
+        notes: Vec::new(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -676,5 +845,84 @@ mod tests {
             parse_headerless(&ragged).is_none(),
             "the field count changes"
         );
+    }
+
+    #[test]
+    fn reads_psql_expanded_output() {
+        let mut s = String::new();
+        for i in 0..20 {
+            s.push_str(&format!("-[ RECORD {} ]--+-----------------\nid           | {i}\nname         | user | {i}\namount       | {}.5\n", i + 1, i * 3));
+        }
+        let t = parse_records(&s).expect("psql -x");
+        assert_eq!(t.format, Format::Records);
+        assert_eq!(t.headers, ["id", "name", "amount"]);
+        assert_eq!(t.rows.len(), 20);
+        assert_eq!(
+            t.rows[4],
+            ["4", "user | 4", "12.5"],
+            "a value may hold the separator"
+        );
+    }
+
+    #[test]
+    fn reads_sqlite_line_mode_and_mysql_vertical_output() {
+        let mut s = String::new();
+        for i in 0..15 {
+            s.push_str(&format!(
+                "     id = {i}\n   name = n{i}\n  score = {}.25\n\n",
+                i * 2
+            ));
+        }
+        let t = parse_records(&s).expect("sqlite -line");
+        assert_eq!(t.rows.len(), 15);
+        assert_eq!(t.rows[3], ["3", "n3", "6.25"]);
+        let mut m = String::new();
+        for i in 0..15 {
+            m.push_str(&format!("*************************** {}. row ***************************\n   id: {i}\n name: n:{i}\nwhen: 2026-01-0{}\n", i + 1, i % 9 + 1));
+        }
+        let t = parse_records(&m).expect("mysql \\G");
+        assert_eq!(t.headers, ["id", "name", "when"]);
+        assert_eq!(t.rows[2][1], "n:2");
+    }
+
+    #[test]
+    fn records_need_the_same_keys_in_every_block() {
+        let mut s = String::new();
+        for i in 0..20 {
+            if i % 2 == 0 {
+                s.push_str(&format!("-[ RECORD {} ]--\nid | {i}\nname | a\n", i + 1));
+            } else {
+                s.push_str(&format!("-[ RECORD {} ]--\nkey | {i}\ncolor | b\n", i + 1));
+            }
+        }
+        assert!(parse_records(&s).is_none());
+        assert!(parse_records("just some text\nwith lines\n").is_none());
+        // key = value lines in a config file are one block, not rows
+        let cfg: String = (0..30).map(|i| format!("key{i} = value{i}\n")).collect();
+        assert!(parse_records(&cfg).is_none());
+    }
+
+    #[test]
+    fn reads_an_html_table_as_pandas_writes_it() {
+        let mut s = String::from("<table border=\"1\" class=\"dataframe\">\n  <thead>\n    <tr style=\"text-align: right;\">\n      <th></th>\n      <th>id</th>\n      <th>name</th>\n      <th>note</th>\n    </tr>\n  </thead>\n  <tbody>\n");
+        for i in 0..20 {
+            s.push_str(&format!("    <tr>\n      <th>{i}</th>\n      <td>{}</td>\n      <td>a &amp; b {i}</td>\n      <td><b>x</b></td>\n    </tr>\n", 100 + i));
+        }
+        s.push_str("  </tbody>\n</table>\n");
+        let t = parse_html_table(&s).expect("html");
+        assert_eq!(t.format, Format::Html);
+        assert_eq!(t.headers, ["index", "id", "name", "note"]);
+        assert_eq!(t.rows.len(), 20);
+        assert_eq!(t.rows[3], ["3", "103", "a & b 3", "x"]);
+    }
+
+    #[test]
+    fn html_that_is_a_page_or_two_tables_is_left_alone() {
+        let row = "<tr><td>1</td><td>2</td></tr>".repeat(30);
+        assert!(
+            parse_html_table(&format!("<html><body><table>{row}</table></body></html>")).is_none()
+        );
+        assert!(parse_html_table(&format!("<table>{row}</table><table>{row}</table>")).is_none());
+        assert!(parse_html_table("not html").is_none());
     }
 }
