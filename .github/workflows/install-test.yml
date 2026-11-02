@@ -36,7 +36,11 @@ jobs:
         run: |
           export PATH="$RUNNER_TEMP/bin:$PATH"
           dtk --version
-          dtk verify | grep "built-in checks passed"
+          out="$(dtk verify || true)"
+          echo "$out"
+          # verify exits 1 for setup warnings (hook not registered, no qsv); the checks are what count
+          echo "$out" | grep -q "built-in checks passed"
+          ! echo "$out" | grep -q "^FAIL"
       - name: A release that does not exist must stop the install
         run: |
           # Point the installer at a tag that does not exist: it must fail, not install something.
@@ -61,7 +65,8 @@ jobs:
           & $dtk --version
           $out = & $dtk verify | Out-String
           Write-Host $out
-          if ($out -notmatch 'built-in checks passed') { exit 1 }
+          if ($out -notmatch 'built-in checks passed' -or $out -match '(?m)^FAIL') { exit 1 }
+          exit 0
 
   cargo:
     strategy:
@@ -79,7 +84,11 @@ jobs:
         shell: bash
         run: |
           dtk --version
-          dtk verify | grep "built-in checks passed"
+          out="$(dtk verify || true)"
+          echo "$out"
+          # verify exits 1 for setup warnings (hook not registered, no qsv); the checks are what count
+          echo "$out" | grep -q "built-in checks passed"
+          ! echo "$out" | grep -q "^FAIL"
 
   homebrew:
     strategy:
@@ -102,7 +111,11 @@ jobs:
       - name: Check the result
         run: |
           dtk --version
-          dtk verify | grep "built-in checks passed"
+          out="$(dtk verify || true)"
+          echo "$out"
+          # verify exits 1 for setup warnings (hook not registered, no qsv); the checks are what count
+          echo "$out" | grep -q "built-in checks passed"
+          ! echo "$out" | grep -q "^FAIL"
       - name: brew uninstall
         run: |
           brew uninstall dtk
@@ -125,7 +138,8 @@ jobs:
           dtk --version
           $out = dtk verify | Out-String
           Write-Host $out
-          if ($out -notmatch 'built-in checks passed') { exit 1 }
+          if ($out -notmatch 'built-in checks passed' -or $out -match '(?m)^FAIL') { exit 1 }
+          exit 0
       - name: scoop uninstall
         shell: pwsh
         run: |
@@ -152,7 +166,11 @@ jobs:
       - name: Check the result
         run: |
           dtk --version
-          dtk verify | grep "built-in checks passed"
+          out="$(dtk verify || true)"
+          echo "$out"
+          # verify exits 1 for setup warnings (hook not registered, no qsv); the checks are what count
+          echo "$out" | grep -q "built-in checks passed"
+          ! echo "$out" | grep -q "^FAIL"
       - name: Remove
         run: |
           sudo dpkg -r dtk
@@ -178,7 +196,11 @@ jobs:
           docker run --rm -v "$PWD:/pkg" fedora:latest bash -ec '
             dnf install -y /pkg/${{ matrix.file }}
             dtk --version
-            dtk verify | grep "built-in checks passed"
+            out="$(dtk verify || true)"
+            echo "$out"
+            # verify exits 1 for setup warnings (hook not registered, no qsv); the checks are what count
+            echo "$out" | grep -q "built-in checks passed"
+            ! echo "$out" | grep -q "^FAIL"
             dnf remove -y dtk
             test ! -e /usr/bin/dtk
           '
@@ -186,7 +208,6 @@ jobs:
   # The manifests are checked by winget itself, then installed from the local files.
   winget:
     runs-on: windows-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Generate the manifests for the release
@@ -214,4 +235,5 @@ jobs:
           dtk --version
           $out = dtk verify | Out-String
           Write-Host $out
-          if ($out -notmatch 'built-in checks passed') { exit 1 }
+          if ($out -notmatch 'built-in checks passed' -or $out -match '(?m)^FAIL') { exit 1 }
+          exit 0

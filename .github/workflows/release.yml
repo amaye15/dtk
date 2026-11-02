@@ -133,7 +133,11 @@ jobs:
           dpkg-deb --contents "$deb"
           sudo dpkg -i "$deb"
           dtk --version
-          dtk verify | grep "built-in checks passed"
+          out="$(dtk verify || true)"
+          echo "$out"
+          # verify exits 1 for setup warnings (hook not registered, no qsv); the checks are what count
+          echo "$out" | grep -q "built-in checks passed"
+          ! echo "$out" | grep -q "^FAIL"
           sudo dpkg -r dtk
           # bash remembers where it ran dtk before, so ask the file system and not the hash table
           test ! -e /usr/bin/dtk

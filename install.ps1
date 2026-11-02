@@ -14,6 +14,16 @@ $ProgressPreference = 'SilentlyContinue'
 function Info($m) { Write-Host "dtk install: $m" }
 function Fail($m) { Write-Error "dtk install: $m"; exit 1 }
 
+# GitHub serves release files as application/octet-stream, and then Invoke-WebRequest and
+# Invoke-RestMethod return the body as bytes, not text. Save the file and read it as text.
+function Get-Text($url) {
+  $f = Join-Path ([IO.Path]::GetTempPath()) ("dtk-" + [Guid]::NewGuid().ToString('N') + '.txt')
+  try {
+    Invoke-WebRequest $url -OutFile $f
+    return [IO.File]::ReadAllText($f)
+  } finally { Remove-Item $f -Force -ErrorAction SilentlyContinue }
+}
+
 $repo = 'amaye15/dtk'
 $dest = if ($env:DTK_INSTALL_DIR) { $env:DTK_INSTALL_DIR } else { Join-Path $env:USERPROFILE '.local\bin' }
 if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64' -and $env:PROCESSOR_ARCHITEW6432 -ne 'AMD64') {
@@ -41,12 +51,12 @@ try {
   } else {
     $want = $null
     try {
-      $sums = (Invoke-WebRequest "$base/checksums.txt").Content -split "`n"
+      $sums = (Get-Text "$base/checksums.txt") -split "`n"
       $line = $sums | Where-Object { $_ -match "\s$([regex]::Escape($archive))\s*$" } | Select-Object -First 1
       if ($line) { $want = ($line -split '\s+')[0] }
     } catch { }
     if (-not $want) {
-      try { $want = ((Invoke-WebRequest "$base/$archive.sha256").Content -split '\s+')[0] } catch { }
+      try { $want = ((Get-Text "$base/$archive.sha256").Trim() -split '\s+')[0] } catch { }
     }
     if (-not $want) { Fail "could not download a checksum for $archive; refusing to install an unverified file (DTK_SKIP_CHECKSUM=1 bypasses this)" }
     $got = (Get-FileHash (Join-Path $tmp $archive) -Algorithm SHA256).Hash.ToLower()
