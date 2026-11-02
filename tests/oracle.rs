@@ -228,3 +228,242 @@ fn json_statistics_match_jaq() {
     check_json_file("positive/jsonl_orders.jsonl", true);
     check_json_file("positive/json_array_orders.json", false);
 }
+
+fn sh(script: &str) -> String {
+    let o = Command::new("sh")
+        .arg("-c")
+        .arg(script)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(
+        o.status.success(),
+        "{script}: {}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    String::from_utf8_lossy(&o.stdout).to_string()
+}
+
+fn column<'a>(t: &'a dtk::table::Table, info: &'a [ColInfo], name: &str) -> &'a ColInfo {
+    &info[t
+        .headers
+        .iter()
+        .position(|h| h == name)
+        .unwrap_or_else(|| panic!("no column {name}: {:?}", t.headers))]
+}
+
+fn load(file: &str) -> (dtk::table::Table, Vec<ColInfo>) {
+    let t = detect(&std::fs::read_to_string(corpus(file)).unwrap())
+        .unwrap_or_else(|| panic!("{file}: not detected"));
+    let info = analyze(&t);
+    (t, info)
+}
+
+#[test]
+fn wrapped_json_matches_jaq() {
+    if !have("jaq") {
+        eprintln!("SKIPPED: jaq is not installed");
+        return;
+    }
+    for (file, array) in [
+        ("positive/gh_search_items.json", ".items"),
+        ("positive/wrapped_items.json", ".items"),
+    ] {
+        let (t, info) = load(file);
+        let p = corpus(file);
+        let p = p.to_str().unwrap();
+        let rows: usize = out("jaq", &[&format!("{array} | length"), p])
+            .trim()
+            .parse()
+            .unwrap();
+        assert_eq!(t.rows.len(), rows, "{file}: rows");
+        let col = if file.contains("gh_search") {
+            "stargazers_count"
+        } else {
+            "restarts"
+        };
+        let num = |f: &str| -> f64 {
+            out("jaq", &[&format!("[{array}[].{col}] | {f}"), p])
+                .trim()
+                .parse()
+                .unwrap()
+        };
+        let c = column(&t, &info, col);
+        assert!(
+            close(c.stats.min.unwrap(), num("min"), 1e-9),
+            "{file}.{col}: min"
+        );
+        assert!(
+            close(c.stats.max.unwrap(), num("max"), 1e-9),
+            "{file}.{col}: max"
+        );
+        assert!(
+            close(c.stats.mean.unwrap(), num("add / length"), 1e-9),
+            "{file}.{col}: mean"
+        );
+    }
+    // The scalar next to the array is kept as a note.
+    let (t, _) = load("positive/gh_search_items.json");
+    assert!(
+        t.notes.iter().any(|n| n.starts_with("total_count: ")),
+        "{:?}",
+        t.notes
+    );
+}
+
+#[test]
+fn keyed_json_matches_jaq() {
+    if !have("jaq") {
+        eprintln!("SKIPPED: jaq is not installed");
+        return;
+    }
+    let (t, info) = load("positive/keyed_by_id.json");
+    let p = corpus("positive/keyed_by_id.json");
+    let p = p.to_str().unwrap();
+    assert_eq!(t.rows.len().to_string(), out("jaq", &["length", p]).trim());
+    let num = |f: &str| -> f64 {
+        out("jaq", &[&format!("[.[].age] | {f}"), p])
+            .trim()
+            .parse()
+            .unwrap()
+    };
+    let age = column(&t, &info, "age");
+    assert!(
+        close(age.stats.min.unwrap(), num("min"), 1e-9)
+            && close(age.stats.max.unwrap(), num("max"), 1e-9)
+    );
+    assert!(close(age.stats.mean.unwrap(), num("add / length"), 1e-9));
+    // Every id is a row key.
+    let keys = out("jaq", &["-r", "keys[]", p]);
+    let ours: Vec<&str> = t.rows.iter().map(|r| r[0].as_str()).collect();
+    assert_eq!(keys.lines().collect::<Vec<_>>(), ours);
+}
+
+#[test]
+fn logfmt_matches_grep_and_awk() {
+    let file = "positive/logfmt_service.log";
+    let (t, info) = load(file);
+    let p = corpus(file);
+    let p = p.to_str().unwrap();
+    let lines: usize = sh(&format!("grep -c . '{p}'")).trim().parse().unwrap();
+    assert_eq!(t.rows.len(), lines, "rows");
+    for level in ["info", "warn", "error", "debug"] {
+        let n: usize = sh(&format!("grep -c ' level={level} ' '{p}'"))
+            .trim()
+            .parse()
+            .unwrap();
+        let ours = column(&t, &info, "level")
+            .stats
+            .top
+            .iter()
+            .find(|(v, _)| v == level)
+            .map_or(0, |(_, c)| *c);
+        assert_eq!(ours, n, "lines with level={level}");
+    }
+    let mean: f64 = sh(&format!(
+        "awk '{{for(i=1;i<=NF;i++) if($i ~ /^latency_ms=/){{split($i,a,\"=\"); s+=a[2]; n++}}}} END{{printf \"%.6f\", s/n}}' '{p}'"
+    ))
+    .trim()
+    .parse()
+    .unwrap();
+    assert!(
+        close(
+            column(&t, &info, "latency_ms").stats.mean.unwrap(),
+            mean,
+            1e-6
+        ),
+        "latency_ms mean"
+    );
+    // A quoted value that holds a space and an escaped quote survives intact.
+    assert!(column(&t, &info, "msg")
+        .stats
+        .top
+        .iter()
+        .any(|(v, _)| v == "user said \"hi there\""));
+}
+
+#[test]
+fn access_log_matches_awk() {
+    for (file, cols) in [
+        ("positive/access_combined.log", 10),
+        ("positive/access_common.log", 8),
+    ] {
+        let (t, info) = load(file);
+        assert_eq!(t.headers.len(), cols, "{file}: columns");
+        let p = corpus(file);
+        let p = p.to_str().unwrap();
+        assert_eq!(
+            t.rows.len().to_string(),
+            sh(&format!("grep -c . '{p}'")).trim(),
+            "{file}: rows"
+        );
+        // Status code counts: the field right after the quoted request.
+        let by_status = sh(&format!(
+            "awk -F'\"' '{{split($3,a,\" \"); c[a[1]]++}} END{{for(k in c) print k, c[k]}}' '{p}'"
+        ));
+        let theirs: HashMap<String, usize> = by_status
+            .lines()
+            .map(|l| {
+                let (k, v) = l.split_once(' ').unwrap();
+                (k.to_string(), v.parse().unwrap())
+            })
+            .collect();
+        let ours: HashMap<String, usize> = column(&t, &info, "status")
+            .stats
+            .top
+            .iter()
+            .cloned()
+            .collect();
+        assert_eq!(ours, theirs, "{file}: status counts");
+        // Mean of the bytes that are numbers ("-" is no value).
+        let mean: f64 = sh(&format!(
+            "awk -F'\"' '{{split($3,a,\" \"); if (a[2] != \"-\") {{s+=a[2]; n++}}}} END{{printf \"%.6f\", s/n}}' '{p}'"
+        ))
+        .trim()
+        .parse()
+        .unwrap();
+        let bytes = column(&t, &info, "bytes");
+        assert_eq!(
+            bytes.kind,
+            Kind::Int,
+            "{file}: bytes is a number once '-' is no value"
+        );
+        assert!(
+            close(bytes.stats.mean.unwrap(), mean, 1e-6),
+            "{file}: bytes mean"
+        );
+    }
+}
+
+#[test]
+fn prefixed_jsonl_matches_sed_and_jaq() {
+    if !have("jaq") {
+        eprintln!("SKIPPED: jaq is not installed");
+        return;
+    }
+    let file = "positive/docker_compose_logs.txt";
+    let (t, info) = load(file);
+    let p = corpus(file);
+    let p = p.to_str().unwrap();
+    let strip = format!("sed 's/^[^{{]*//' '{p}'");
+    let mean: f64 = sh(&format!("{strip} | jaq -s '[.[].ms] | add / length'"))
+        .trim()
+        .parse()
+        .unwrap();
+    assert!(
+        close(column(&t, &info, "ms").stats.mean.unwrap(), mean, 1e-9),
+        "ms mean"
+    );
+    let services = sh(&format!("sed 's/ *|.*//' '{p}' | sort | uniq -c"));
+    for l in services.lines() {
+        let mut it = l.split_whitespace();
+        let (n, name): (usize, &str) = (it.next().unwrap().parse().unwrap(), it.next().unwrap());
+        let ours = column(&t, &info, "source")
+            .stats
+            .top
+            .iter()
+            .find(|(v, _)| v == name)
+            .map_or(0, |(_, c)| *c);
+        assert_eq!(ours, n, "lines from {name}");
+    }
+}

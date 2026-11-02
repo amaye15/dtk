@@ -405,6 +405,110 @@
     "amount",
     "status"
    ]
+  },
+  {
+   "file": "positive/gh_search_items.json",
+   "format": "json-object",
+   "rows": 30,
+   "cols": null
+  },
+  {
+   "file": "positive/gh_actions_runs.json",
+   "format": "json-object",
+   "rows": 30,
+   "cols": null
+  },
+  {
+   "file": "positive/wrapped_items.json",
+   "format": "json-object",
+   "rows": 70,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "phase",
+    "restarts"
+   ]
+  },
+  {
+   "file": "positive/wrapped_data_results.json",
+   "format": "json-object",
+   "rows": 70,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "phase",
+    "restarts"
+   ]
+  },
+  {
+   "file": "positive/keyed_by_id.json",
+   "format": "json-object",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "key",
+    "name",
+    "age",
+    "active"
+   ]
+  },
+  {
+   "file": "positive/logfmt_service.log",
+   "format": "logfmt",
+   "rows": 120,
+   "cols": 6,
+   "headers": [
+    "ts",
+    "level",
+    "msg",
+    "request_id",
+    "latency_ms",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/logfmt_docker.log",
+   "format": "logfmt",
+   "rows": 40,
+   "cols": 6
+  },
+  {
+   "file": "positive/access_combined.log",
+   "format": "access-log",
+   "rows": 100,
+   "cols": 10
+  },
+  {
+   "file": "positive/access_common.log",
+   "format": "access-log",
+   "rows": 100,
+   "cols": 8
+  },
+  {
+   "file": "positive/docker_compose_logs.txt",
+   "format": "jsonl-prefixed",
+   "rows": 80,
+   "cols": 4,
+   "headers": [
+    "source",
+    "level",
+    "msg",
+    "ms"
+   ]
+  },
+  {
+   "file": "positive/kubectl_logs_prefix.txt",
+   "format": "jsonl-prefixed",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "source",
+    "ts",
+    "lvl",
+    "n"
+   ]
   }
  ],
  "negative": [
@@ -483,6 +587,46 @@
   {
    "file": "negative/shell_script.sh",
    "note": "comment lines then commands"
+  },
+  {
+   "file": "negative/dotenv_file.env",
+   "note": "one pair per line"
+  },
+  {
+   "file": "negative/sentence_equals.txt",
+   "note": "prose with = signs"
+  },
+  {
+   "file": "negative/shell_assignments.sh",
+   "note": "two pairs per line"
+  },
+  {
+   "file": "negative/syslog_lines.log",
+   "note": "free text with quotes and brackets absent"
+  },
+  {
+   "file": "negative/quoted_text_lines.log",
+   "note": "bracket and quote shapes but not an access log"
+  },
+  {
+   "file": "negative/app_log_brackets.log",
+   "note": "bracketed timestamp, free text"
+  },
+  {
+   "file": "negative/prefixed_text.txt",
+   "note": "prefix with a brace but not JSON"
+  },
+  {
+   "file": "negative/wrapper_scalars_only.json",
+   "note": "package.json shape: map of strings"
+  },
+  {
+   "file": "negative/wrapper_small_arrays.json",
+   "note": "no array of objects is big enough"
+  },
+  {
+   "file": "negative/wrapper_two_big_arrays.json",
+   "note": "two equal candidates: ambiguous"
   }
  ],
  "either": [

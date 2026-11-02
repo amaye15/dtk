@@ -1,0 +1,120 @@
+ts=2026-11-02T10:00:00Z level=warn msg="cache miss" request_id=req-1197619 latency_ms=456 status=404
+ts=2026-11-02T10:00:01Z level=debug msg="slow query" request_id=req-3769689 latency_ms=632 status=500
+ts=2026-11-02T10:00:02Z level=info msg="user said \"hi there\"" request_id=req-5000093 latency_ms=559 status=404
+ts=2026-11-02T10:00:03Z level=warn msg="slow query" request_id=req-6013956 latency_ms=791 status=200
+ts=2026-11-02T10:00:04Z level=info msg="request handled" request_id=req-1424579 latency_ms=647 status=200
+ts=2026-11-02T10:00:05Z level=info msg="job finished" request_id=req-8221841 latency_ms=255 status=200
+ts=2026-11-02T10:00:06Z level=debug msg="request handled" request_id=req-6668680 latency_ms=576 status=200
+ts=2026-11-02T10:00:07Z level=info msg="job finished" request_id=req-8897488 latency_ms=819 status=500
+ts=2026-11-02T10:00:08Z level=debug msg="retrying upstream" request_id=req-1066135 latency_ms=347 status=500
+ts=2026-11-02T10:00:09Z level=info msg="cache miss" request_id=req-7740340 latency_ms=209 status=200
+ts=2026-11-02T10:00:10Z level=info msg="user said \"hi there\"" request_id=req-8538405 latency_ms=764 status=500
+ts=2026-11-02T10:00:11Z level=info msg="slow query" request_id=req-5651701 latency_ms=492 status=200
+ts=2026-11-02T10:00:12Z level=error msg="job finished" request_id=req-5996163 latency_ms=272 status=200
+ts=2026-11-02T10:00:13Z level=info msg="request handled" request_id=req-9351806 latency_ms=387 status=200
+ts=2026-11-02T10:00:14Z level=debug msg="slow query" request_id=req-7909926 latency_ms=299 status=404
+ts=2026-11-02T10:00:15Z level=warn msg="retrying upstream" request_id=req-6069600 latency_ms=281 status=404
+ts=2026-11-02T10:00:16Z level=info msg="slow query" request_id=req-1717930 latency_ms=430 status=500
+ts=2026-11-02T10:00:17Z level=error msg="retrying upstream" request_id=req-5665238 latency_ms=708 status=200
+ts=2026-11-02T10:00:18Z level=warn msg="cache miss" request_id=req-5427308 latency_ms=873 status=200
+ts=2026-11-02T10:00:19Z level=error msg="retrying upstream" request_id=req-2852022 latency_ms=636 status=500
+ts=2026-11-02T10:00:20Z level=info msg="retrying upstream" request_id=req-8417778 latency_ms=8 status=200
+ts=2026-11-02T10:00:21Z level=info msg="request handled" request_id=req-5154081 latency_ms=781 status=500
+ts=2026-11-02T10:00:22Z level=info msg="slow query" request_id=req-2336136 latency_ms=283 status=200
+ts=2026-11-02T10:00:23Z level=info msg="job finished" request_id=req-3459263 latency_ms=637 status=200
+ts=2026-11-02T10:00:24Z level=info msg="user said \"hi there\"" request_id=req-9540635 latency_ms=406 status=404
+ts=2026-11-02T10:00:25Z level=info msg="request handled" request_id=req-3846800 latency_ms=42 status=200
+ts=2026-11-02T10:00:26Z level=debug msg="cache miss" request_id=req-1320443 latency_ms=140 status=200
+ts=2026-11-02T10:00:27Z level=debug msg="retrying upstream" request_id=req-8866427 latency_ms=727 status=404
+ts=2026-11-02T10:00:28Z level=error msg="request handled" request_id=req-1722632 latency_ms=618 status=200
+ts=2026-11-02T10:00:29Z level=info msg="request handled" request_id=req-3249657 latency_ms=359 status=200
+ts=2026-11-02T10:00:30Z level=info msg="cache miss" request_id=req-4457609 latency_ms=437 status=404
+ts=2026-11-02T10:00:31Z level=error msg="cache miss" request_id=req-9948067 latency_ms=602 status=500
+ts=2026-11-02T10:00:32Z level=debug msg="retrying upstream" request_id=req-9919640 latency_ms=667 status=200
+ts=2026-11-02T10:00:33Z level=debug msg="job finished" request_id=req-6231650 latency_ms=468 status=200
+ts=2026-11-02T10:00:34Z level=info msg="slow query" request_id=req-6207045 latency_ms=851 status=200
+ts=2026-11-02T10:00:35Z level=warn msg="slow query" request_id=req-6876514 latency_ms=742 status=200
+ts=2026-11-02T10:00:36Z level=debug msg="job finished" request_id=req-3714184 latency_ms=216 status=404
+ts=2026-11-02T10:00:37Z level=warn msg="slow query" request_id=req-1982222 latency_ms=42 status=404
+ts=2026-11-02T10:00:38Z level=debug msg="slow query" request_id=req-8927684 latency_ms=843 status=200
+ts=2026-11-02T10:00:39Z level=error msg="slow query" request_id=req-7149566 latency_ms=252 status=404
+ts=2026-11-02T10:00:40Z level=info msg="user said \"hi there\"" request_id=req-5970126 latency_ms=457 status=200
+ts=2026-11-02T10:00:41Z level=warn msg="retrying upstream" request_id=req-9359079 latency_ms=17 status=500
+ts=2026-11-02T10:00:42Z level=error msg="cache miss" request_id=req-8384690 latency_ms=195 status=500
+ts=2026-11-02T10:00:43Z level=info msg="slow query" request_id=req-1052967 latency_ms=401 status=500
+ts=2026-11-02T10:00:44Z level=info msg="request handled" request_id=req-1572580 latency_ms=432 status=500
+ts=2026-11-02T10:00:45Z level=info msg="user said \"hi there\"" request_id=req-5578051 latency_ms=737 status=200
+ts=2026-11-02T10:00:46Z level=info msg="job finished" request_id=req-2066384 latency_ms=770 status=500
+ts=2026-11-02T10:00:47Z level=error msg="request handled" request_id=req-2134131 latency_ms=434 status=500
+ts=2026-11-02T10:00:48Z level=debug msg="cache miss" request_id=req-6193152 latency_ms=121 status=200
+ts=2026-11-02T10:00:49Z level=error msg="job finished" request_id=req-4499238 latency_ms=545 status=200
+ts=2026-11-02T10:00:50Z level=info msg="retrying upstream" request_id=req-5505843 latency_ms=721 status=404
+ts=2026-11-02T10:00:51Z level=warn msg="slow query" request_id=req-5953358 latency_ms=347 status=200
+ts=2026-11-02T10:00:52Z level=info msg="user said \"hi there\"" request_id=req-3568010 latency_ms=65 status=200
+ts=2026-11-02T10:00:53Z level=debug msg="request handled" request_id=req-6209002 latency_ms=257 status=200
+ts=2026-11-02T10:00:54Z level=error msg="request handled" request_id=req-2363863 latency_ms=815 status=200
+ts=2026-11-02T10:00:55Z level=debug msg="slow query" request_id=req-1592144 latency_ms=524 status=404
+ts=2026-11-02T10:00:56Z level=info msg="job finished" request_id=req-8076813 latency_ms=651 status=200
+ts=2026-11-02T10:00:57Z level=info msg="user said \"hi there\"" request_id=req-2188743 latency_ms=673 status=200
+ts=2026-11-02T10:00:58Z level=info msg="cache miss" request_id=req-9199372 latency_ms=63 status=200
+ts=2026-11-02T10:00:59Z level=info msg="request handled" request_id=req-7478720 latency_ms=778 status=200
+ts=2026-11-02T10:01:00Z level=error msg="job finished" request_id=req-8067813 latency_ms=818 status=200
+ts=2026-11-02T10:01:01Z level=debug msg="request handled" request_id=req-3338261 latency_ms=150 status=200
+ts=2026-11-02T10:01:02Z level=info msg="user said \"hi there\"" request_id=req-9597226 latency_ms=572 status=500
+ts=2026-11-02T10:01:03Z level=info msg="slow query" request_id=req-2372477 latency_ms=468 status=404
+ts=2026-11-02T10:01:04Z level=info msg="user said \"hi there\"" request_id=req-1578414 latency_ms=853 status=200
+ts=2026-11-02T10:01:05Z level=info msg="retrying upstream" request_id=req-2928889 latency_ms=147 status=200
+ts=2026-11-02T10:01:06Z level=info msg="job finished" request_id=req-2861458 latency_ms=629 status=500
+ts=2026-11-02T10:01:07Z level=error msg="cache miss" request_id=req-3874206 latency_ms=535 status=200
+ts=2026-11-02T10:01:08Z level=info msg="retrying upstream" request_id=req-2660316 latency_ms=843 status=200
+ts=2026-11-02T10:01:09Z level=info msg="job finished" request_id=req-8218621 latency_ms=367 status=200
+ts=2026-11-02T10:01:10Z level=info msg="user said \"hi there\"" request_id=req-9402029 latency_ms=388 status=404
+ts=2026-11-02T10:01:11Z level=info msg="user said \"hi there\"" request_id=req-5156220 latency_ms=152 status=404
+ts=2026-11-02T10:01:12Z level=debug msg="slow query" request_id=req-8709086 latency_ms=223 status=200
+ts=2026-11-02T10:01:13Z level=error msg="job finished" request_id=req-5147767 latency_ms=344 status=200
+ts=2026-11-02T10:01:14Z level=error msg="job finished" request_id=req-2614446 latency_ms=795 status=200
+ts=2026-11-02T10:01:15Z level=debug msg="cache miss" request_id=req-2179416 latency_ms=576 status=404
+ts=2026-11-02T10:01:16Z level=debug msg="request handled" request_id=req-1598239 latency_ms=458 status=200
+ts=2026-11-02T10:01:17Z level=info msg="retrying upstream" request_id=req-6858232 latency_ms=757 status=200
+ts=2026-11-02T10:01:18Z level=warn msg="user said \"hi there\"" request_id=req-6666143 latency_ms=308 status=200
+ts=2026-11-02T10:01:19Z level=warn msg="slow query" request_id=req-2751823 latency_ms=414 status=500
+ts=2026-11-02T10:01:20Z level=warn msg="user said \"hi there\"" request_id=req-1280953 latency_ms=179 status=200
+ts=2026-11-02T10:01:21Z level=info msg="request handled" request_id=req-6512637 latency_ms=710 status=200
+ts=2026-11-02T10:01:22Z level=info msg="user said \"hi there\"" request_id=req-6629493 latency_ms=402 status=200
+ts=2026-11-02T10:01:23Z level=warn msg="retrying upstream" request_id=req-3141090 latency_ms=543 status=404
+ts=2026-11-02T10:01:24Z level=error msg="job finished" request_id=req-9588796 latency_ms=411 status=200
+ts=2026-11-02T10:01:25Z level=error msg="retrying upstream" request_id=req-7751656 latency_ms=743 status=404
+ts=2026-11-02T10:01:26Z level=debug msg="cache miss" request_id=req-1182986 latency_ms=345 status=404
+ts=2026-11-02T10:01:27Z level=error msg="request handled" request_id=req-9144981 latency_ms=492 status=404
+ts=2026-11-02T10:01:28Z level=debug msg="request handled" request_id=req-7932225 latency_ms=682 status=200
+ts=2026-11-02T10:01:29Z level=info msg="cache miss" request_id=req-2950833 latency_ms=20 status=200
+ts=2026-11-02T10:01:30Z level=info msg="slow query" request_id=req-5122956 latency_ms=617 status=200
+ts=2026-11-02T10:01:31Z level=debug msg="job finished" request_id=req-5373764 latency_ms=263 status=200
+ts=2026-11-02T10:01:32Z level=info msg="user said \"hi there\"" request_id=req-3888705 latency_ms=551 status=200
+ts=2026-11-02T10:01:33Z level=warn msg="user said \"hi there\"" request_id=req-6391540 latency_ms=764 status=500
+ts=2026-11-02T10:01:34Z level=info msg="retrying upstream" request_id=req-4713151 latency_ms=603 status=500
+ts=2026-11-02T10:01:35Z level=debug msg="request handled" request_id=req-7294945 latency_ms=323 status=200
+ts=2026-11-02T10:01:36Z level=info msg="request handled" request_id=req-3137667 latency_ms=119 status=200
+ts=2026-11-02T10:01:37Z level=info msg="slow query" request_id=req-5765828 latency_ms=887 status=200
+ts=2026-11-02T10:01:38Z level=info msg="cache miss" request_id=req-2696984 latency_ms=687 status=404
+ts=2026-11-02T10:01:39Z level=info msg="retrying upstream" request_id=req-8648575 latency_ms=751 status=200
+ts=2026-11-02T10:01:40Z level=error msg="slow query" request_id=req-5734852 latency_ms=517 status=200
+ts=2026-11-02T10:01:41Z level=debug msg="cache miss" request_id=req-1638049 latency_ms=845 status=500
+ts=2026-11-02T10:01:42Z level=error msg="slow query" request_id=req-1734841 latency_ms=130 status=500
+ts=2026-11-02T10:01:43Z level=info msg="user said \"hi there\"" request_id=req-7063136 latency_ms=801 status=500
+ts=2026-11-02T10:01:44Z level=info msg="job finished" request_id=req-3361918 latency_ms=674 status=200
+ts=2026-11-02T10:01:45Z level=debug msg="request handled" request_id=req-5706548 latency_ms=900 status=200
+ts=2026-11-02T10:01:46Z level=info msg="retrying upstream" request_id=req-9157371 latency_ms=602 status=200
+ts=2026-11-02T10:01:47Z level=info msg="retrying upstream" request_id=req-9132667 latency_ms=535 status=500
+ts=2026-11-02T10:01:48Z level=info msg="job finished" request_id=req-8291174 latency_ms=432 status=200
+ts=2026-11-02T10:01:49Z level=info msg="user said \"hi there\"" request_id=req-4448336 latency_ms=397 status=200
+ts=2026-11-02T10:01:50Z level=warn msg="request handled" request_id=req-5552837 latency_ms=185 status=404
+ts=2026-11-02T10:01:51Z level=info msg="cache miss" request_id=req-5020422 latency_ms=8 status=404
+ts=2026-11-02T10:01:52Z level=error msg="cache miss" request_id=req-7957460 latency_ms=88 status=200
+ts=2026-11-02T10:01:53Z level=warn msg="cache miss" request_id=req-4322846 latency_ms=43 status=200
+ts=2026-11-02T10:01:54Z level=info msg="user said \"hi there\"" request_id=req-1336010 latency_ms=4 status=200
+ts=2026-11-02T10:01:55Z level=info msg="request handled" request_id=req-1434582 latency_ms=528 status=500
+ts=2026-11-02T10:01:56Z level=debug msg="retrying upstream" request_id=req-9123156 latency_ms=898 status=200
+ts=2026-11-02T10:01:57Z level=info msg="retrying upstream" request_id=req-2017123 latency_ms=791 status=200
+ts=2026-11-02T10:01:58Z level=info msg="request handled" request_id=req-2013753 latency_ms=199 status=200
+ts=2026-11-02T10:01:59Z level=info msg="cache miss" request_id=req-3341321 latency_ms=870 status=200

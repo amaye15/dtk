@@ -95,3 +95,15 @@ Run G1 to G6, record the real-tokenizer results, publish 0.3.0.
 ### S2. Cleaner input: DONE
 ANSI colour codes, a byte-order mark, `#` comment headers, header rule rows and the full
 box-drawing range are handled. Checks: the new fixtures above pass (G2), all gates green (G1).
+
+### S3. More formats: DONE
+JSON objects that wrap one big array (also two levels down, and objects keyed by id), logfmt,
+web access logs (common and combined), and JSONL with a per-line prefix.
+- G2: 11 new positive and 10 new negative fixtures, all as expected. The positives include two
+  real GitHub API responses (`{"total_count":...,"items":[...]}`, 83 columns per item).
+- G4: five new oracle tests against tools that share no code with dtk: wrapped and keyed JSON
+  against `jaq`; logfmt line counts and level counts against `grep`, mean latency against `awk`;
+  access-log status counts and mean bytes against `awk`; prefixed JSONL against `sed` and `jaq`.
+- Real defects the new fixtures found, now fixed: a wide table with few rows was shown in full
+  (83 columns of nested JSON, no saving); a tiny table could get a summary bigger than itself;
+  a `-` in the bytes column made it text instead of a number.

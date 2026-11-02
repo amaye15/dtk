@@ -71,13 +71,11 @@ fn every_positive_fixture_is_detected_as_expected() {
                 t.format.name()
             ));
         }
-        let (rows, cols) = (
-            e["rows"].as_u64().unwrap() as usize,
-            e["cols"].as_u64().unwrap() as usize,
-        );
-        if t.rows.len() != rows || t.headers.len() != cols {
+        let rows = e["rows"].as_u64().unwrap() as usize;
+        let cols = e["cols"].as_u64().map(|c| c as usize);
+        if t.rows.len() != rows || cols.is_some_and(|c| t.headers.len() != c) {
             failures.push(format!(
-                "{file}: {} rows x {} cols (want {rows} x {cols}); headers {:?}",
+                "{file}: {} rows x {} cols (want {rows} x {cols:?}); headers {:?}",
                 t.rows.len(),
                 t.headers.len(),
                 t.headers

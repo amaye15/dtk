@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 /// Fewest data rows that count as a table.
 pub const MIN_ROWS: usize = 10;
 /// Most columns a table may have.
-const MAX_COLS: usize = 80;
+const MAX_COLS: usize = 150;
 /// Largest input the parsers accept.
 pub const MAX_INPUT: usize = 128 * 1024 * 1024;
 
@@ -22,6 +22,14 @@ pub enum Format {
     Aligned,
     /// Tables drawn with borders: polars, psql, MySQL, SQLite, Markdown.
     Bordered,
+    /// An object that wraps one big array of objects, or an object keyed by id.
+    JsonObject,
+    /// `key=value` lines.
+    Logfmt,
+    /// Apache or nginx access log lines.
+    AccessLog,
+    /// JSON lines with a prefix such as `web-1  | ` in front of each object.
+    PrefixedJsonl,
 }
 
 impl Format {
@@ -32,6 +40,10 @@ impl Format {
             Format::Csv => "csv",
             Format::Tsv => "tsv",
             Format::Aligned | Format::Bordered => "table",
+            Format::JsonObject => "json-object",
+            Format::Logfmt => "logfmt",
+            Format::AccessLog => "access-log",
+            Format::PrefixedJsonl => "jsonl-prefixed",
         }
     }
 }
@@ -62,12 +74,123 @@ pub fn detect(text: &str) -> Option<Table> {
                 return Some(t);
             }
         }
-        b'{' => return parse_jsonl(text),
+        b'{' => return parse_jsonl(text).or_else(|| parse_json_container(text)),
         _ => {}
     }
-    parse_bordered(text)
+    crate::logs::parse_access_log(text)
+        .or_else(|| crate::logs::parse_prefixed_jsonl(text))
+        .or_else(|| crate::logs::parse_logfmt(text))
+        .or_else(|| parse_bordered(text))
         .or_else(|| parse_delimited(text))
         .or_else(|| parse_aligned(text))
+}
+
+/// The objects of a JSON array, or the entries of a JSON object whose values are objects.
+enum Rows<'a> {
+    Array(Vec<&'a Map<String, Value>>),
+    Keyed(Vec<(&'a String, &'a Map<String, Value>)>),
+}
+
+impl Rows<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Rows::Array(v) => v.len(),
+            Rows::Keyed(v) => v.len(),
+        }
+    }
+}
+
+fn rows_of(v: &Value) -> Option<Rows<'_>> {
+    match v {
+        Value::Array(a) => {
+            let objs: Vec<_> = a.iter().filter_map(Value::as_object).collect();
+            (objs.len() >= MIN_ROWS && objs.len() * 20 >= a.len() * 19).then_some(Rows::Array(objs))
+        }
+        Value::Object(m) => {
+            let kv: Vec<_> = m
+                .iter()
+                .filter_map(|(k, x)| x.as_object().map(|o| (k, o)))
+                .collect();
+            (kv.len() >= MIN_ROWS && kv.len() * 20 >= m.len() * 19).then_some(Rows::Keyed(kv))
+        }
+        _ => None,
+    }
+}
+
+fn scalar_note(k: &str, v: &Value) -> Option<String> {
+    match v {
+        Value::String(s) => Some(format!("{k}: {}", s.chars().take(80).collect::<String>())),
+        Value::Number(_) | Value::Bool(_) => Some(format!("{k}: {v}")),
+        _ => None,
+    }
+}
+
+/// A JSON object that wraps one big array of objects (`{"items": [...]}`, as `kubectl` and many
+/// REST APIs return), or that is keyed by id. The array is looked for at most two levels down.
+/// Two similar candidates are ambiguous, so the answer is then no table.
+fn parse_json_container(text: &str) -> Option<Table> {
+    let root: Value = serde_json::from_str(text).ok()?;
+    let top = root.as_object()?;
+    let mut cands: Vec<(Vec<&str>, Rows)> = Vec::new();
+    if let Some(r) = rows_of(&root) {
+        cands.push((Vec::new(), r));
+    }
+    for (k, v) in top {
+        if let Some(r) = rows_of(v) {
+            cands.push((vec![k.as_str()], r));
+        } else if let Some(inner) = v.as_object() {
+            for (k2, v2) in inner {
+                if let Some(r) = rows_of(v2) {
+                    cands.push((vec![k.as_str(), k2.as_str()], r));
+                }
+            }
+        }
+    }
+    cands.sort_by_key(|c| std::cmp::Reverse(c.1.len()));
+    if cands.is_empty() || (cands.len() > 1 && cands[0].1.len() < cands[1].1.len() * 3) {
+        return None;
+    }
+    let (path, rows) = cands.remove(0);
+    // Scalars next to the table (total_count, status, page...) are kept as notes.
+    let mut notes = Vec::new();
+    let mut level = Some(&root);
+    for depth in 0..=path.len() {
+        if let Some(m) = level.and_then(Value::as_object) {
+            for (k, v) in m {
+                if path.get(depth).is_some_and(|p| p == k) {
+                    continue;
+                }
+                if let Some(n) = scalar_note(k, v) {
+                    if notes.len() < 5 {
+                        notes.push(n);
+                    }
+                }
+            }
+        }
+        level = path.get(depth).and_then(|p| level.and_then(|l| l.get(*p)));
+    }
+    match rows {
+        Rows::Array(objs) => from_objects(Format::JsonObject, objs.into_iter(), notes),
+        Rows::Keyed(kv) => {
+            let maps: Vec<Map<String, Value>> = kv
+                .iter()
+                .map(|(k, o)| {
+                    let mut m = Map::new();
+                    m.insert("key".to_string(), Value::String((*k).clone()));
+                    for (kk, vv) in o.iter() {
+                        let name = if kk == "key" {
+                            "_key".to_string()
+                        } else {
+                            kk.clone()
+                        };
+                        m.insert(name, vv.clone());
+                    }
+                    m
+                })
+                .collect();
+            from_objects(Format::JsonObject, maps.iter(), notes)
+        }
+    }
 }
 
 /// Removes what makes a table unreadable to a parser but invisible to a person: a byte-order mark

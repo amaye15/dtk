@@ -5,6 +5,8 @@ use std::collections::HashMap;
 
 /// Tables up to this many rows are re-encoded as CSV and nothing is dropped.
 pub const LOSSLESS_ROWS: usize = 60;
+/// ...but only when that CSV is no bigger than this many estimated tokens.
+const LOSSLESS_TOKENS: usize = 1500;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
@@ -393,6 +395,7 @@ const PROFILES: [Profile; 3] = [
 pub fn render(t: &Table, ctx: &Ctx, budget: usize) -> Rendered {
     let n = t.rows.len();
     let cols = t.headers.len();
+    let mut fallback: Option<String> = None;
     if n <= LOSSLESS_ROWS {
         let rows: Vec<&Vec<String>> = t.rows.iter().collect();
         let mut text = format!(
@@ -405,10 +408,16 @@ pub fn render(t: &Table, ctx: &Ctx, budget: usize) -> Rendered {
         for note in &t.notes {
             text.push_str(&format!("\nnote: {}", note));
         }
-        return Rendered {
-            text,
-            lossless: true,
-        };
+        // Showing every row only pays when the CSV is small and clearly smaller than the source.
+        // A wide table with nested JSON cells is neither, and gets the summary instead.
+        let (own, source) = (est_tokens(&text), ctx.bytes.div_ceil(4));
+        if own <= LOSSLESS_TOKENS && (source == 0 || own * 10 <= source * 7) {
+            return Rendered {
+                text,
+                lossless: true,
+            };
+        }
+        fallback = Some(text);
     }
     let info = analyze(t);
     let mut last = String::new();
@@ -416,6 +425,16 @@ pub fn render(t: &Table, ctx: &Ctx, budget: usize) -> Rendered {
         last = summary(t, &info, ctx, p);
         if est_tokens(&last) <= budget {
             break;
+        }
+    }
+    // A small table that was too wide or too heavy for the full CSV can still be smaller that way
+    // than behind the summary's fixed lines.
+    if let Some(full) = fallback {
+        if est_tokens(&full) < est_tokens(&last) {
+            return Rendered {
+                text: full,
+                lossless: true,
+            };
         }
     }
     Rendered {
@@ -441,15 +460,21 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
     if let Some(p) = &ctx.raw_path {
         out.push_str(&format!("raw: {} ({})\n", shell_quote(p), t.format.name()));
     }
+    // A wide table shows its first columns only; the rest is in the data file.
+    let k = p.stat_cols.min(cols);
     out.push_str("cols: ");
     out.push_str(
         &t.headers
             .iter()
             .zip(info)
+            .take(k)
             .map(|(h, i)| format!("{}:{}", h, i.kind.name()))
             .collect::<Vec<_>>()
             .join(" "),
     );
+    if cols > k {
+        out.push_str(&format!(" (+{} more columns in the data file)", cols - k));
+    }
     out.push('\n');
     for (h, i) in t.headers.iter().zip(info).take(p.stat_cols) {
         out.push_str(&format!("{}: {}\n", h, i.summary));
@@ -460,18 +485,23 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
             cols - p.stat_cols
         ));
     }
+    let clip = |rows: &[&Vec<String>]| -> Vec<Vec<String>> {
+        rows.iter().map(|r| r[..k].to_vec()).collect()
+    };
+    let show = |rows: &[&Vec<String>]| -> String {
+        let clipped = clip(rows);
+        let refs: Vec<&Vec<String>> = clipped.iter().collect();
+        write_csv(None, &refs, Some(p.max_cell))
+    };
     let head: Vec<&Vec<String>> = t.rows.iter().take(p.head).collect();
     out.push_str(&format!(
         "head {} (columns in order above):\n{}\n",
         head.len(),
-        write_csv(None, &head, Some(p.max_cell))
+        show(&head)
     ));
-    let tail: Vec<&Vec<String>> = t.rows.iter().skip(n.saturating_sub(p.tail)).collect();
-    out.push_str(&format!(
-        "tail {}:\n{}\n",
-        tail.len(),
-        write_csv(None, &tail, Some(p.max_cell))
-    ));
+    let tail_from = n.saturating_sub(p.tail).max(p.head.min(n));
+    let tail: Vec<&Vec<String>> = t.rows.iter().skip(tail_from).collect();
+    out.push_str(&format!("tail {}:\n{}\n", tail.len(), show(&tail)));
     if let Some(li) = t
         .headers
         .iter()
@@ -490,7 +520,7 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
                 t.headers[li],
                 shown.len(),
                 bad.len(),
-                write_csv(None, &shown, Some(p.max_cell))
+                show(&shown)
             ));
         }
     }
