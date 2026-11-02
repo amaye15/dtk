@@ -98,18 +98,19 @@ pub fn explain(args: &[String]) -> i32 {
         &cfg,
         false,
     );
-    match (&v.table, &v.rendered) {
-        (Some(t), Some(r)) => {
-            println!(
-                "detected:  {}, {} rows x {} cols",
-                t.format.name(),
-                t.rows.len(),
-                t.headers.len()
-            );
+    match (&v.detected, &v.rendered) {
+        (Some(d), Some(r)) => {
+            if d.name == "json-document" {
+                println!("detected:  {}, {} entries at the top", d.name, d.rows);
+            } else {
+                println!("detected:  {}, {} rows x {} cols", d.name, d.rows, d.cols);
+            }
             println!(
                 "view:      {}",
                 if r.lossless {
                     "every row, as CSV"
+                } else if d.name == "json-document" {
+                    "outline of the document"
                 } else {
                     "summary of all rows"
                 }

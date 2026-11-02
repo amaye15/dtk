@@ -158,6 +158,23 @@ fn parse_json_container(text: &str) -> Option<Table> {
         return None;
     }
     let (path, rows) = cands.remove(0);
+    // The rows must be most of the document. If a small array sits beside a big object (a plan
+    // with 40 outputs and 120 resources somewhere else), summarizing the array would silently
+    // drop the rest of the document. That is a job for an outline, not for a table.
+    let rows_bytes: usize = match &rows {
+        Rows::Array(v) => v
+            .iter()
+            .map(|o| serde_json::to_string(o).map_or(0, |s| s.len()))
+            .sum(),
+        Rows::Keyed(v) => v
+            .iter()
+            .map(|(k, o)| k.len() + serde_json::to_string(o).map_or(0, |s| s.len()))
+            .sum(),
+    };
+    let total_bytes = serde_json::to_string(&root).ok()?.len();
+    if rows_bytes * 10 < total_bytes * 7 {
+        return None;
+    }
     // Scalars next to the table (total_count, status, page...) are kept as notes.
     let mut notes = Vec::new();
     let mut level = Some(&root);

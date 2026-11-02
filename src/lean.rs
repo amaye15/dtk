@@ -521,7 +521,7 @@ pub fn to_csv(t: &Table) -> String {
     s
 }
 
-fn shell_quote(p: &str) -> String {
+pub(crate) fn shell_quote(p: &str) -> String {
     // Windows accepts forward slashes everywhere, and a backslash path would need quoting.
     let p = if cfg!(windows) {
         p.replace('\\', "/")

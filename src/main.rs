@@ -105,6 +105,7 @@ fn config_command(args: &[String]) -> i32 {
     println!("min_tokens:         {}", cfg.min_tokens);
     println!("budget:             {}", cfg.budget);
     println!("min_persisted_rows: {}", cfg.min_persisted_rows);
+    println!("min_outline_tokens: {}", cfg.min_outline_tokens);
     0
 }
 

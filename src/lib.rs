@@ -10,6 +10,7 @@
 
 pub mod lean;
 mod logs;
+pub mod outline;
 pub mod table;
 mod textcols;
 
