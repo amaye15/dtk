@@ -229,6 +229,7 @@ fn json_statistics_match_jaq() {
     check_json_file("positive/json_array_orders.json", false);
 }
 
+#[cfg(unix)]
 fn sh(script: &str) -> String {
     let o = Command::new("sh")
         .arg("-c")
@@ -339,6 +340,7 @@ fn keyed_json_matches_jaq() {
     assert_eq!(keys.lines().collect::<Vec<_>>(), ours);
 }
 
+#[cfg(unix)]
 #[test]
 fn logfmt_matches_grep_and_awk() {
     let file = "positive/logfmt_service.log";
@@ -382,6 +384,7 @@ fn logfmt_matches_grep_and_awk() {
         .any(|(v, _)| v == "user said \"hi there\""));
 }
 
+#[cfg(unix)]
 #[test]
 fn access_log_matches_awk() {
     for (file, cols) in [
@@ -435,6 +438,7 @@ fn access_log_matches_awk() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn prefixed_jsonl_matches_sed_and_jaq() {
     if !have("jaq") {

@@ -96,7 +96,30 @@ fn config_command(args: &[String]) -> i32 {
     0
 }
 
+/// dtk started under the name `rtk` is the placeholder that `dtk init` leaves for `rtk init` to
+/// find (see `init.rs`). As `rtk hook claude` it does nothing, silently.
+fn run_as_rtk_placeholder(args: &[String]) -> Option<ExitCode> {
+    let name = std::env::args_os().next().map(std::path::PathBuf::from)?;
+    let stem = name.file_stem()?.to_string_lossy().to_ascii_lowercase();
+    if stem != "rtk" {
+        return None;
+    }
+    if args.first().map(String::as_str) == Some("hook")
+        && args.get(1).map(String::as_str) == Some("claude")
+    {
+        return Some(ExitCode::SUCCESS);
+    }
+    eprintln!(
+        "this is dtk's placeholder for rtk, not rtk. It only answers `hook claude`, with nothing."
+    );
+    Some(ExitCode::from(2))
+}
+
 fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(code) = run_as_rtk_placeholder(&args) {
+        return code;
+    }
     quiet_on_broken_pipe();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {

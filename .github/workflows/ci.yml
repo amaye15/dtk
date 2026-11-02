@@ -1,7 +1,7 @@
 name: ci
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
 
 jobs:
@@ -9,8 +9,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -30,11 +33,21 @@ jobs:
           curl -fsSL -o "$HOME/.local/bin/jaq" https://github.com/01mf02/jaq/releases/latest/download/jaq-x86_64-unknown-linux-musl
           chmod +x "$HOME/.local/bin/jaq"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Install rtk (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $d = Join-Path $env:USERPROFILE ".local\bin"
+          New-Item -ItemType Directory -Force $d | Out-Null
+          Invoke-WebRequest https://github.com/rtk-ai/rtk/releases/download/v1.1.0/rtk-x86_64-pc-windows-msvc.zip -OutFile rtk.zip
+          Expand-Archive rtk.zip -DestinationPath $d -Force
+          Get-ChildItem $d
+          Add-Content -Path $env:GITHUB_PATH -Value $d
       - name: Show the tools
         run: |
           rtk --version
-          jaq --version
-          command -v qsv && qsv --version | cut -c1-40 || echo "qsv: not installed on this runner"
+          command -v jaq >/dev/null && jaq --version || echo "jaq: not installed on this runner"
+          command -v qsv >/dev/null && qsv --version | cut -c1-40 || echo "qsv: not installed on this runner"
 
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings

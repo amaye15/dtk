@@ -223,7 +223,7 @@ fn init_registers_and_removes_without_touching_other_hooks() {
     assert!(post[1]["hooks"][0]["command"]
         .as_str()
         .unwrap()
-        .ends_with("dtk hook claude"));
+        .ends_with(" hook claude"));
     assert!(home.join(".claude/settings.json.dtk-backup").exists());
     assert_eq!(run(&home, &["init", "--uninstall"], "", &[]).0, 0);
     let v: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
@@ -396,6 +396,7 @@ fn a_polars_table_from_a_python_command_is_summarized() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn a_long_saved_path_gets_a_short_link_in_the_store() {
     let home = temp_home("shortlink");
@@ -436,4 +437,70 @@ fn a_long_saved_path_gets_a_short_link_in_the_store() {
         jsonl(2000),
         "and reads through"
     );
+}
+
+/// `dtk init` leaves a copy of dtk named `rtk`. As `rtk hook claude` it must do nothing, silently.
+#[test]
+fn the_placeholder_does_nothing_for_hook_claude_and_says_so_otherwise() {
+    let home = temp_home("placeholder");
+    // A fake rtk on PATH makes init chain, which is when it creates the placeholder.
+    let bin = home.join("fakebin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let rtk_name = if cfg!(windows) { "rtk.cmd" } else { "rtk" };
+    std::fs::write(
+        bin.join(rtk_name),
+        if cfg!(windows) {
+            "@echo off\r\n"
+        } else {
+            "#!/bin/sh\nexit 0\n"
+        },
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(bin.join(rtk_name), std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+    }
+    let path = format!(
+        "{}{}{}",
+        bin.display(),
+        if cfg!(windows) { ";" } else { ":" },
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let (code, _, _) = run(&home, &["init", "--global"], "", &[("PATH", &path)]);
+    assert_eq!(code, 0);
+    let shim =
+        home.join(".local/share/dtk/shim")
+            .join(if cfg!(windows) { "rtk.exe" } else { "rtk" });
+    assert!(shim.exists(), "the placeholder was not created");
+    let go = |args: &[&str]| {
+        let mut child = Command::new(&shim)
+            .args(args)
+            .env("HOME", &home)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let _ = child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(b"{\"hook_event_name\":\"PostToolUse\"}");
+        let o = child.wait_with_output().unwrap();
+        (
+            o.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&o.stdout).to_string(),
+            String::from_utf8_lossy(&o.stderr).to_string(),
+        )
+    };
+    assert_eq!(
+        go(&["hook", "claude"]),
+        (0, String::new(), String::new()),
+        "silent success"
+    );
+    let (code, out, err) = go(&["gain"]);
+    assert_eq!((code, out.as_str()), (2, ""));
+    assert!(err.contains("placeholder for rtk"), "{err}");
 }

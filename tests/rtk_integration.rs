@@ -1,6 +1,8 @@
 //! How dtk works with rtk: the hook chain, folding rtk's hook in, restoring it, doctor and gain.
 //! A fake `rtk` shell script stands in for the real one, with a throwaway HOME.
 
+#![cfg(unix)]
+
 use serde_json::{json, Value};
 use std::fs;
 use std::io::Write;
