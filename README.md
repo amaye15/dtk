@@ -181,7 +181,7 @@ How dtk is checked (the plan and its results are in `docs/PLAN-0.3.0.md`):
 
 | Gate | What it proves |
 |---|---|
-| `tests/corpus.rs` | A matrix of real output (pandas, polars, sqlite3, tabulate, rich, jq, git, `gh api`, and more): each file is detected as expected, and 29 negatives are rejected. See `tests/corpus/README.md`. |
+| `tests/corpus.rs` | A matrix of real output (pandas, polars, sqlite3, tabulate, rich, jq, git, `gh api`, and more): each of 43 files is detected as expected, and 29 negatives are rejected. See `tests/corpus/README.md`. |
 | `tests/properties.rs` | Random text and bytes, and mutated real files, never panic and always give well-formed tables and smaller views. |
 | `tests/oracle.rs` | dtk's types, null counts, min, max, mean, medians and category counts equal `qsv`, `jaq`, `awk`, `grep` and `sed`. |
 | `tests/rtk_real.rs` | The real rtk binary, in a throwaway HOME: every init, re-init and uninstall order. |

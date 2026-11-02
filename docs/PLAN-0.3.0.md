@@ -79,7 +79,7 @@ Run G1 to G6, record the real-tokenizer results, publish 0.3.0.
 
 
 ### Harness (G2, G3, G4): DONE
-- `tests/corpus/`: 33 positive, 19 negative and 5 ambiguous real outputs from pandas, polars,
+- `tests/corpus/`: 43 positive, 29 negative and 5 ambiguous outputs (the first 33/19/5 were the harness; S3 added the rest) from pandas, polars,
   sqlite3 (6 modes), tabulate (10 formats), rich, jq, git, gh and others. The first run found
   5 real defects: a header rule row counted as data (sqlite `-column`, tabulate `simple`),
   ANSI colour codes in headers and failed JSON detection (rich, `jq -C`), and an overly crude
@@ -126,7 +126,7 @@ web access logs (common and combined), and JSONL with a per-line prefix.
   `dtk discover`. G1 test `explain_agrees_with_the_hook_on_every_corpus_fixture` runs all 77
   corpus fixtures through both and requires that the hook replaces the output exactly when
   `explain` says APPLY.
-- `dtk verify`: 24 built-in PASS/FAIL checks (each format detected and summarized to under a
+- `dtk verify`: 20 built-in PASS/FAIL checks (each format detected and summarized to under a
   third, prose and code left alone, row requests and exclusions honoured, small outputs left
   alone, saved-to-file output replaced), then the setup checks of `dtk doctor`. It first failed
   on a healthy install because three of its own samples were under the 1,200-token minimum.
