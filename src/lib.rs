@@ -8,6 +8,7 @@
 //! assert!(dtk::summarize("not a table", &ctx, 2500).is_none());
 //! ```
 
+mod foreign;
 pub mod lean;
 mod logs;
 pub mod outline;

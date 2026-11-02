@@ -1,0 +1,280 @@
+-[ RECORD 1 ]----+------------------------------
+id          | 1000
+name        | user_0
+email       | user_0@example.com
+amount      | 490.07
+created_at  | 2026-01-01 10:00:00+00
+active      | f
+-[ RECORD 2 ]----+------------------------------
+id          | 1001
+name        | user_1
+email       | user_1@example.com
+amount      | 47.10
+created_at  | 2026-01-02 10:01:00+00
+active      | t
+-[ RECORD 3 ]----+------------------------------
+id          | 1002
+name        | user_2
+email       | user_2@example.com
+amount      | 185.21
+created_at  | 2026-01-03 10:02:00+00
+active      | t
+-[ RECORD 4 ]----+------------------------------
+id          | 1003
+name        | user_3
+email       | user_3@example.com
+amount      | 377.85
+created_at  | 2026-01-04 10:03:00+00
+active      | t
+-[ RECORD 5 ]----+------------------------------
+id          | 1004
+name        | user_4
+email       | user_4@example.com
+amount      | 438.39
+created_at  | 2026-01-05 10:04:00+00
+active      | f
+-[ RECORD 6 ]----+------------------------------
+id          | 1005
+name        | user_5
+email       | user_5@example.com
+amount      | 129.77
+created_at  | 2026-01-06 10:05:00+00
+active      | t
+-[ RECORD 7 ]----+------------------------------
+id          | 1006
+name        | user_6
+email       | user_6@example.com
+amount      | 109.77
+created_at  | 2026-01-07 10:06:00+00
+active      | t
+-[ RECORD 8 ]----+------------------------------
+id          | 1007
+name        | user_7
+email       | user_7@example.com
+amount      | 19.74
+created_at  | 2026-01-08 10:07:00+00
+active      | t
+-[ RECORD 9 ]----+------------------------------
+id          | 1008
+name        | user_8
+email       | user_8@example.com
+amount      | 349.20
+created_at  | 2026-01-09 10:08:00+00
+active      | f
+-[ RECORD 10 ]----+------------------------------
+id          | 1009
+name        | user_0
+email       | user_0@example.com
+amount      | 221.81
+created_at  | 2026-01-10 10:09:00+00
+active      | t
+-[ RECORD 11 ]----+------------------------------
+id          | 1010
+name        | user_1
+email       | user_1@example.com
+amount      | 202.92
+created_at  | 2026-01-11 10:10:00+00
+active      | t
+-[ RECORD 12 ]----+------------------------------
+id          | 1011
+name        | user_2
+email       | user_2@example.com
+amount      | 441.65
+created_at  | 2026-01-12 10:11:00+00
+active      | t
+-[ RECORD 13 ]----+------------------------------
+id          | 1012
+name        | user_3
+email       | user_3@example.com
+amount      | 487.47
+created_at  | 2026-01-13 10:12:00+00
+active      | f
+-[ RECORD 14 ]----+------------------------------
+id          | 1013
+name        | user_4
+email       | user_4@example.com
+amount      | 279.56
+created_at  | 2026-01-14 10:13:00+00
+active      | t
+-[ RECORD 15 ]----+------------------------------
+id          | 1014
+name        | user_5
+email       | user_5@example.com
+amount      | 258.34
+created_at  | 2026-01-15 10:14:00+00
+active      | t
+-[ RECORD 16 ]----+------------------------------
+id          | 1015
+name        | user_6
+email       | user_6@example.com
+amount      | 462.04
+created_at  | 2026-01-16 10:15:00+00
+active      | t
+-[ RECORD 17 ]----+------------------------------
+id          | 1016
+name        | user_7
+email       | user_7@example.com
+amount      | 446.03
+created_at  | 2026-01-17 10:16:00+00
+active      | f
+-[ RECORD 18 ]----+------------------------------
+id          | 1017
+name        | user_8
+email       | user_8@example.com
+amount      | 187.59
+created_at  | 2026-01-18 10:17:00+00
+active      | t
+-[ RECORD 19 ]----+------------------------------
+id          | 1018
+name        | user_0
+email       | user_0@example.com
+amount      | 478.40
+created_at  | 2026-01-19 10:18:00+00
+active      | t
+-[ RECORD 20 ]----+------------------------------
+id          | 1019
+name        | user_1
+email       | user_1@example.com
+amount      | 465.48
+created_at  | 2026-01-20 10:19:00+00
+active      | t
+-[ RECORD 21 ]----+------------------------------
+id          | 1020
+name        | user_2
+email       | user_2@example.com
+amount      | 217.67
+created_at  | 2026-01-21 10:20:00+00
+active      | f
+-[ RECORD 22 ]----+------------------------------
+id          | 1021
+name        | user_3
+email       | user_3@example.com
+amount      | 85.71
+created_at  | 2026-01-22 10:21:00+00
+active      | t
+-[ RECORD 23 ]----+------------------------------
+id          | 1022
+name        | user_4
+email       | user_4@example.com
+amount      | 91.30
+created_at  | 2026-01-23 10:22:00+00
+active      | t
+-[ RECORD 24 ]----+------------------------------
+id          | 1023
+name        | user_5
+email       | user_5@example.com
+amount      | 119.03
+created_at  | 2026-01-24 10:23:00+00
+active      | t
+-[ RECORD 25 ]----+------------------------------
+id          | 1024
+name        | user_6
+email       | user_6@example.com
+amount      | 91.41
+created_at  | 2026-01-25 10:24:00+00
+active      | f
+-[ RECORD 26 ]----+------------------------------
+id          | 1025
+name        | user_7
+email       | user_7@example.com
+amount      | 89.17
+created_at  | 2026-01-26 10:25:00+00
+active      | t
+-[ RECORD 27 ]----+------------------------------
+id          | 1026
+name        | user_8
+email       | user_8@example.com
+amount      | 262.65
+created_at  | 2026-01-27 10:26:00+00
+active      | t
+-[ RECORD 28 ]----+------------------------------
+id          | 1027
+name        | user_0
+email       | user_0@example.com
+amount      | 185.65
+created_at  | 2026-01-28 10:27:00+00
+active      | t
+-[ RECORD 29 ]----+------------------------------
+id          | 1028
+name        | user_1
+email       | user_1@example.com
+amount      | 346.71
+created_at  | 2026-01-01 10:28:00+00
+active      | f
+-[ RECORD 30 ]----+------------------------------
+id          | 1029
+name        | user_2
+email       | user_2@example.com
+amount      | 94.57
+created_at  | 2026-01-02 10:29:00+00
+active      | t
+-[ RECORD 31 ]----+------------------------------
+id          | 1030
+name        | user_3
+email       | user_3@example.com
+amount      | 408.53
+created_at  | 2026-01-03 10:30:00+00
+active      | t
+-[ RECORD 32 ]----+------------------------------
+id          | 1031
+name        | user_4
+email       | user_4@example.com
+amount      | 377.67
+created_at  | 2026-01-04 10:31:00+00
+active      | t
+-[ RECORD 33 ]----+------------------------------
+id          | 1032
+name        | user_5
+email       | user_5@example.com
+amount      | 465.97
+created_at  | 2026-01-05 10:32:00+00
+active      | f
+-[ RECORD 34 ]----+------------------------------
+id          | 1033
+name        | user_6
+email       | user_6@example.com
+amount      | 187.75
+created_at  | 2026-01-06 10:33:00+00
+active      | t
+-[ RECORD 35 ]----+------------------------------
+id          | 1034
+name        | user_7
+email       | user_7@example.com
+amount      | 182.46
+created_at  | 2026-01-07 10:34:00+00
+active      | t
+-[ RECORD 36 ]----+------------------------------
+id          | 1035
+name        | user_8
+email       | user_8@example.com
+amount      | 440.57
+created_at  | 2026-01-08 10:35:00+00
+active      | t
+-[ RECORD 37 ]----+------------------------------
+id          | 1036
+name        | user_0
+email       | user_0@example.com
+amount      | 83.96
+created_at  | 2026-01-09 10:36:00+00
+active      | f
+-[ RECORD 38 ]----+------------------------------
+id          | 1037
+name        | user_1
+email       | user_1@example.com
+amount      | 205.91
+created_at  | 2026-01-10 10:37:00+00
+active      | t
+-[ RECORD 39 ]----+------------------------------
+id          | 1038
+name        | user_2
+email       | user_2@example.com
+amount      | 379.59
+created_at  | 2026-01-11 10:38:00+00
+active      | t
+-[ RECORD 40 ]----+------------------------------
+id          | 1039
+name        | user_3
+email       | user_3@example.com
+amount      | 336.67
+created_at  | 2026-01-12 10:39:00+00
+active      | t

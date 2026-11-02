@@ -27,10 +27,10 @@ The cause is in view: the package was removed, and `/usr/bin/dtk` was still ther
 
 ## Does it hurt the answers?
 
-`scripts/ab-test.sh` asks real Claude Code thirteen questions about data files, with and without dtk. They include a column with `N/A` in it, prices written as `$1,234`, a filter on two columns, and a table with 60 feature columns. The true answers come from `jaq`, `qsv`, `awk` and `grep`, not from dtk.
+`scripts/ab-test.sh` asks real Claude Code fifteen questions about data files, with and without dtk. They include a column with `N/A` in it, prices written as `$1,234`, a filter on two columns, a table with 60 feature columns, a Python list of records and a pandas JSON file. The true answers come from `jaq`, `qsv`, `awk` and `grep`, not from dtk.
 
-- **Answers: no loss.** Sonnet (2 runs per question): 26 of 26 right with dtk, 26 of 26 without. Haiku (3 runs): 39 of 39 right with dtk, 39 of 39 without.
-- **Tokens from tool results fell 69% to 89% on nine of the thirteen questions** (300-row CSV 4,549 → 498, `ps aux` 2,072 → 623, a column with `N/A` 5,456 → 556). Turns fell from 6 to 4 on six questions.
+- **Answers: no loss.** Sonnet: 32 of 32 right with dtk, 32 of 32 without. Haiku: 45 of 45 and 45 of 45. (2 to 3 runs per question and model.)
+- **Tokens from tool results fell 69% to 89% on eleven of the fifteen questions** (300-row CSV 4,549 → 498, `ps aux` 2,072 → 623, a column with `N/A` 5,456 → 556). Turns fell from 6 to 4 on six questions.
 - **Where the saving is small,** Claude Code had already cut the output to a preview of about 550 tokens (a big CI log, a wide table, a big JSON file). The count stays about the same, and the model gets a summary of every row in place of the preview.
 
 ## Quick start
@@ -76,14 +76,15 @@ drill: dtk count 5fa6aeae75bd region  |  dtk top 5fa6aeae75bd amount 10  |  dtk 
 
 dtk reads Bash output and whole-file `Read` of data files. Detection is strict: when dtk is not sure, the output passes through untouched.
 
-- **Rows and columns:** JSON Lines, JSON arrays, objects that wrap one big array, CSV/TSV (`;` and `|` too), bordered tables (polars, psql, MySQL, SQLite, Markdown, rich), aligned tables (pandas `to_string()`), `ps aux`, `ps -ef`, `df -h`, logfmt, access logs, `docker compose logs`, and plain text logs whose lines start with a timestamp (CI, application, syslog).
+- **Rows and columns:** JSON Lines, JSON arrays, objects that wrap one big array, CSV/TSV (`;` and `|` too, and pandas `to_csv()` with its index), bordered tables (polars, psql, MySQL, SQLite, Markdown, rich), aligned tables (pandas `to_string()`), `ps aux`, `ps -ef`, `df -h`, logfmt, access logs, `docker compose logs`, and plain text logs whose lines start with a timestamp (CI, application, syslog).
+- **Data as other tools print it:** a Python list of dicts (`print(df.to_dict("records"))`), pandas `to_json(orient="split")`, a printed number matrix, delimited text with no header (`psql -t -A`, `sqlite3 -list`), one-block-per-row output (`psql -x`, `sqlite3 -line`, MySQL `\G`), and a page that is one HTML table (`df.to_html()`).
 - **An outline:** a JSON document that is not a table (`cargo metadata`, `terraform show -json`). It lists each key with its size, the merged shape of the records in each array, and a `jaq` command to read any part.
 
 Up to 60 rows become CSV and nothing is dropped. A bigger table gets:
 
 - shape, and every column name with its type (a run such as `feat_0..feat_119:float` is one range)
 - per column: min, max, mean, median and p95; value counts; time range; nulls
-- numbers as people write them: `$1,234.56`, `45.3%` and `1,234` are numbers, and `N/A`, `-` or `?` in a column of numbers are counted and set aside, not mistaken for words
+- numbers and dates as people write them: `$1,234.56`, `45.3%` and `1,234` are numbers, `03/21/2025` is a date when the data settles the order, and `N/A`, `-` or `?` in a column of numbers are counted and set aside, not mistaken for words
 - data-quality notes: outliers beyond 3×IQR, and rows that repeat an earlier row
 - **the row that holds each numeric column's largest and smallest value** (`max at order_id=100243`)
 - the first and last rows, and message shapes with counts (`request # took #ms (2000)`)
@@ -147,7 +148,7 @@ min_outline_tokens = 4000  # smallest JSON document worth an outline
 
 ## How it is checked
 
-166 tests, plus the A/B script. Real output of pandas, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (52 files detected as expected, 27 rejected). A test that lists the facts a summary must keep and checks them (1018 of 1018 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
+180 tests, plus the A/B script. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (62 files detected as expected, 30 rejected). A test that lists the facts a summary must keep and checks them (1148 of 1148 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
 
 ## Limits
 

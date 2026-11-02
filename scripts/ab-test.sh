@@ -63,6 +63,9 @@ truth_meta=$(jaq '.packages | length' "$D/cargo_metadata.json")
 M="$C/messy_orders.csv"
 truth_age=$(qsv fmt --out-delimiter '\t' "$M" | awk -F'\t' 'NR>1 && $4 !~ /^(N\/A|NA|-|\?)$/ {s+=$4; n++} END {printf "%d", s/n + 0.5}')
 truth_filter=$(qsv fmt --out-delimiter '\t' "$M" | awk -F'\t' 'NR>1 && $2=="eu" {v=$5; gsub(/[$,]/, "", v); if (v+0 > 400) n++} END {print n+0}')
+# Shapes that pandas prints: a Python list of records, and to_json(orient="split").
+truth_repr=$(qsv slice -l 100 "$C/pandas_csv_index.csv" | qsv sort -s amount -N -R | qsv select order_id | sed -n 2p)
+truth_split=$(jaq '[.data[] | select(.[7] == false)] | length' "$C/pandas_split.json")
 truth_wide=$(awk -F, 'NR==1 {for (i=1;i<=NF;i++) h[i]=$i; next} {for (i=2;i<=61;i++) s[i]+=$i} END {for (i=2;i<=61;i++) if (s[i] > m) {m=s[i]; b=h[i]}; print b}' "$C/wide_features.csv")
 
 # name | file | question | expected words (all must appear in the answer)
@@ -80,6 +83,8 @@ CASES=(
 "messy mean|$M|What is the mean of the age column, ignoring the N/A, NA, - and ? values? Round to a whole number.|$truth_age"
 "filter+count|$M|How many orders have region eu and a price above 400 dollars? Give the number.|$truth_filter"
 "wide means|$C/wide_features.csv|Which of the columns feat_0 to feat_59 has the highest mean? Give its name.|$truth_wide"
+"python repr|$C/python_repr_records.txt|This is a Python list of records. Which order_id has the largest amount? Give the order_id.|$truth_repr"
+"split json|$C/pandas_split.json|This is a pandas DataFrame as JSON (columns, then data rows). How many rows have ok equal to false? Give the number.|$truth_split"
 )
 
 run_one() { # question file disabled -> prints "tokens|turns|first_tokens|answer"

@@ -691,6 +691,147 @@
         "feat_59",
         "label"
       ]
+    },
+    {
+      "file": "positive/numbers_only.txt",
+      "format": "number-grid",
+      "rows": 61,
+      "cols": 3,
+      "headers": [
+        "c0",
+        "c1",
+        "c2"
+      ]
+    },
+    {
+      "file": "positive/pandas_csv_index.csv",
+      "format": "csv",
+      "rows": 150,
+      "cols": 9,
+      "headers": [
+        "index",
+        "order_id",
+        "ts",
+        "customer",
+        "region",
+        "tier",
+        "amount",
+        "qty",
+        "ok"
+      ]
+    },
+    {
+      "file": "positive/python_repr_records.txt",
+      "format": "python-repr",
+      "rows": 100,
+      "cols": 8,
+      "headers": [
+        "order_id",
+        "ts",
+        "customer",
+        "region",
+        "tier",
+        "amount",
+        "qty",
+        "ok"
+      ]
+    },
+    {
+      "file": "positive/pandas_split.json",
+      "format": "json-object",
+      "rows": 150,
+      "cols": 8,
+      "headers": [
+        "order_id",
+        "ts",
+        "customer",
+        "region",
+        "tier",
+        "amount",
+        "qty",
+        "ok"
+      ]
+    },
+    {
+      "file": "positive/numpy_matrix.txt",
+      "format": "number-grid",
+      "rows": 60,
+      "cols": 8,
+      "headers": [
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6",
+        "c7"
+      ]
+    },
+    {
+      "file": "positive/sqlite_list.txt",
+      "format": "delimited",
+      "rows": 300,
+      "cols": 3,
+      "headers": [
+        "c0",
+        "c1",
+        "c2"
+      ]
+    },
+    {
+      "file": "positive/psql_expanded.txt",
+      "format": "records",
+      "rows": 40,
+      "cols": 6,
+      "headers": [
+        "id",
+        "name",
+        "email",
+        "amount",
+        "created_at",
+        "active"
+      ]
+    },
+    {
+      "file": "positive/mysql_vertical.txt",
+      "format": "records",
+      "rows": 40,
+      "cols": 4,
+      "headers": [
+        "id",
+        "name",
+        "total",
+        "status"
+      ]
+    },
+    {
+      "file": "positive/sqlite_line.txt",
+      "format": "records",
+      "rows": 300,
+      "cols": 3,
+      "headers": [
+        "id",
+        "name",
+        "amt"
+      ]
+    },
+    {
+      "file": "positive/pandas_table.html",
+      "format": "html-table",
+      "rows": 60,
+      "cols": 9,
+      "headers": [
+        "index",
+        "order_id",
+        "ts",
+        "customer",
+        "region",
+        "tier",
+        "amount",
+        "qty",
+        "ok"
+      ]
     }
   ],
   "negative": [
@@ -763,10 +904,6 @@
       "note": "yaml"
     },
     {
-      "file": "negative/numbers_only.txt",
-      "note": "numeric header"
-    },
-    {
       "file": "negative/shell_script.sh",
       "note": "comment lines then commands"
     },
@@ -801,6 +938,22 @@
     {
       "file": "negative/wrapper_two_big_arrays.json",
       "note": "two equal candidates: ambiguous"
+    },
+    {
+      "file": "negative/python_config_dict.txt",
+      "note": "a Python dict with scalars and nested dicts, plus comments"
+    },
+    {
+      "file": "negative/one_number_per_line.txt",
+      "note": "a single column of numbers is a list, not a table"
+    },
+    {
+      "file": "negative/ip_port_pairs.txt",
+      "note": "10.0.0.1 is not a number"
+    },
+    {
+      "file": "negative/prose_with_commas.txt",
+      "note": "prose"
     }
   ],
   "either": [

@@ -171,10 +171,40 @@ fn facts(t: &Table) -> Vec<Fact> {
             }
         }
         if kinds[c].kind == Kind::Time {
-            let (lo, hi) = (
-                nonempty.iter().min().unwrap().to_string(),
-                nonempty.iter().max().unwrap().to_string(),
-            );
+            // ISO times compare as text. Dates like 03/21/2025 are put in order here by hand: the
+            // data says which part is the month when a second part is above 12.
+            let iso = nonempty.iter().all(|v| v.as_bytes().get(4) == Some(&b'-'));
+            let (lo, hi) = if iso {
+                (
+                    nonempty.iter().min().unwrap().to_string(),
+                    nonempty.iter().max().unwrap().to_string(),
+                )
+            } else {
+                let parts: Vec<(u32, u32, u32)> = nonempty
+                    .iter()
+                    .filter(|v| !PLACEHOLDERS.contains(&v.to_lowercase().as_str()))
+                    .map(|v| {
+                        let p: Vec<u32> = v
+                            .split(['/', '-', '.'])
+                            .map(|x| x.parse().unwrap())
+                            .collect();
+                        (p[0], p[1], p[2])
+                    })
+                    .collect();
+                let month_first = parts.iter().any(|p| p.1 > 12);
+                let key = |p: &(u32, u32, u32)| {
+                    let (m, d) = if month_first { (p.0, p.1) } else { (p.1, p.0) };
+                    (p.2, m, d)
+                };
+                let (lo, hi) = (
+                    parts.iter().map(key).min().unwrap(),
+                    parts.iter().map(key).max().unwrap(),
+                );
+                (
+                    format!("{:04}-{:02}-{:02}", lo.0, lo.1, lo.2),
+                    format!("{:04}-{:02}-{:02}", hi.0, hi.1, hi.2),
+                )
+            };
             fact(format!("{h}: first time {lo}"), vec![lo], Some(h));
             fact(format!("{h}: last time {hi}"), vec![hi], Some(h));
         }
