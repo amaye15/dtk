@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0
+
+More of the shapes data takes, found by printing a DataFrame every way pandas allows and checking what dtk made of each.
+
+- `df.to_csv()` was not read. It writes the index as a column with an empty name, and the empty header made dtk refuse the file. That column is now called `index`.
+- **Python repr.** `print(df.to_dict("records"))` and a dict of lists (single quotes, `True`, `None`, `nan`, `Timestamp('...')`, `np.float64(1.5)`; any other call stays as its text). Valid JSON is never read this way.
+- **Columnar JSON.** `to_json(orient="split")` (`{"columns": [...], "data": [[...]]}`, also `headers`/`rows`) and an array of arrays whose first row names the columns.
+- **Number grids.** A printed numpy matrix, `np.savetxt`, any rows of numbers with no header (columns `c0`, `c1`, ...).
+- **Headerless delimited text.** `psql -t -A`, `sqlite3 -list`, `cut`. There are no names to check, so the cells must show it is data: the same field count on 98% of the lines, three or more fields, a third of the columns numbers. A drawn table (`| 1 | 2 |`) is never read this way.
+- **Record blocks.** `psql -x`, `sqlite3 -line` and MySQL `\G`, one block per row; every block must have the same keys.
+- **HTML tables.** A page that is one `<table>`, as `df.to_html()` writes it. A full page or two tables is left alone.
+- **Dates.** `03/21/2025` and `21.03.2025` are dates when the data settles the order (a part above 12 says which is the month), with a range in ISO form. A column where every part is 12 or less stays text, because a wrong guess would give a wrong range.
+- A test that said "numbers only is not a table" now expects a grid of numbers; the fixture moved to the positives on purpose.
+- Checked by: 12 new corpus fixtures and 4 new negatives (a Python config dict, one number per line, an IP/port list, prose with commas), retention 1148 of 1148, and two new real-model questions (a Python list of records, a pandas JSON file): Sonnet 3 of 3 and Haiku 3 of 3 right with and without dtk on each, with 82% and 88% fewer tokens.
+
 ## 0.6.0
 
 Made for data work: real-world columns, data-quality notes, wide tables, and a drill-down that needs no other program.
