@@ -21,7 +21,15 @@ New formats:
 - Fixed: a JSON object with a small array of objects beside a big object (40 outputs next to 120 resources one level deeper) was summarized as the small array, and the rest was dropped. The rows must now be 70% of the document.
 - Fixed: a panic on multi-byte text in the new log parser, found by the fuzz tests.
 
+- Repeated errors in a text log are grouped by the shape of their message, with counts and the first of each shape with its context (a 57,000-line macOS log: 148 errors in 13 shapes). Message shapes are now counted over every row when there are more than 5,000 distinct messages (they stopped there before).
+- The summary header is shorter and states no more than it must: `(statistics over all rows; the full data is on disk)`. A longer wording made Haiku describe the tool instead of answering in about 5 of 8 runs.
+
 Not detected on purpose: directory listings such as `ls -l` and `find` (the names are the content).
+
+Measured with real Claude Code (`scripts/ab-test.sh`: ten questions, each asked with and without dtk; the true answers come from jaq, qsv, awk and grep):
+
+- Sonnet, 2 runs per case and arm: tokens that tool results put in front of the model fell 70% to 90% on seven cases (6% and 11% where Claude Code's saved-file preview is already small), and turns fell from 6 to 4 on five. 19 of 20 answers right with dtk, 20 of 20 without; the one miss did not repeat in 5 more runs.
+- Haiku, 3 runs per case and arm: the same savings; two cases gave a wrong answer once or twice with dtk. One was a question with a tie in the data, graded case-sensitively; in the other run Haiku wrote about the tool instead of the answer. Sonnet did not do that in 6 of 6 runs.
 
 ## 0.4.0
 

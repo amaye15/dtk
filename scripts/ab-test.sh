@@ -94,8 +94,9 @@ run_one() { # question file disabled -> prints "tokens|turns|first_tokens|answer
 }
 
 correct() { # answer expected -> yes/no (every expected word appears)
-  local a="$1" w
-  for w in $2; do case "$a" in *"$w"*) ;; *) echo no; return;; esac; done
+  local a w
+  a="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
+  for w in $(echo "$2" | tr '[:upper:]' '[:lower:]'); do case "$a" in *"$w"*) ;; *) echo no; return;; esac; done
   echo yes
 }
 

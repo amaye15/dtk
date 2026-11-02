@@ -678,7 +678,7 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
     let cols = t.headers.len();
     let mut out = String::new();
     out.push_str(&format!(
-        "[dtk] {}: {} rows x {} cols, {}. This is a summary of all rows; the full data is on disk.\n",
+        "[dtk] {}: {} rows x {} cols, {} (statistics over all rows; the full data is on disk)\n",
         t.format.name(),
         n,
         cols,
