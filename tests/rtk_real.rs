@@ -4,6 +4,10 @@
 //! These tests exist because rtk re-writes `~/.claude/settings.json` on `rtk init -g`, and dtk
 //! must survive every order of install, re-install and uninstall.
 
+// rtk finds the Windows profile through the operating system, not through USERPROFILE, so a
+// throwaway home cannot redirect it. tests/rtk_windows.rs covers Windows instead.
+#![cfg(not(windows))]
+
 use serde_json::{json, Value};
 use std::fs;
 use std::io::Write;

@@ -52,5 +52,8 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked --no-fail-fast
+      - name: dtk and the real rtk on Windows (changes the runner's profile)
+        if: runner.os == 'Windows'
+        run: cargo test --locked --test rtk_windows -- --ignored --nocapture
       - name: dtk verify
         run: cargo run --locked --quiet -- verify || true
