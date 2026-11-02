@@ -1,7 +1,7 @@
 //! `dtk doctor`: checks that the hook, rtk and the helper tools are wired up.
 
 use crate::hook::{config_dir, data_dir, is_live};
-use crate::init::{is_dtk, is_only_rtk, rtk_on_path, settings_path};
+use crate::init::{has_placeholder, is_dtk, is_only_rtk, rtk_on_path, settings_path, shim_path};
 use serde_json::Value;
 use std::fs;
 use std::process::{Command, Stdio};
@@ -56,6 +56,7 @@ pub fn run() -> i32 {
         .unwrap_or_default();
     let dtk_entries: Vec<&Value> = post.iter().filter(|e| is_dtk(e)).collect();
     let mut chained = false;
+    let mut placeholder = false;
     match dtk_entries.len() {
         0 => line(
             "warn",
@@ -71,6 +72,7 @@ pub fn run() -> i32 {
                 .and_then(Value::as_str)
                 .unwrap_or("");
             chained = cmd.contains("--then");
+            placeholder = has_placeholder(e);
             let exe = cmd.split_whitespace().next().unwrap_or("");
             let matcher = e.get("matcher").and_then(Value::as_str).unwrap_or("");
             if matcher != "*" && !matcher.split('|').any(|m| m == "Read") {
@@ -125,6 +127,18 @@ pub fn run() -> i32 {
                 "ok",
                 "dtk is chained to rtk: one PostToolUse hook, dtk first, then rtk",
             );
+            let shim_ok = shim_path().map(|p| p.exists()).unwrap_or(false);
+            if placeholder && shim_ok {
+                line(
+                    "ok",
+                    "rtk init sees its PostToolUse hook as installed (dtk's placeholder), so it adds no second hook",
+                );
+            } else {
+                line(
+                    "warn",
+                    "dtk's placeholder for rtk is missing, so `rtk init -g` may add a second hook. Run: dtk init --global",
+                );
+            }
         } else if !dtk_entries.is_empty() {
             line("--", "dtk is not chained to rtk. Run: dtk init --global (needed only if you use rtk's PostToolUse pipeline)");
         }

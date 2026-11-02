@@ -241,7 +241,7 @@ fn init_folds_rtks_post_hook_into_the_chain_and_uninstall_restores_it() {
     .unwrap();
     let (code, out, _) = run(&home, Some(&bin), &["init", "--global"], "", &[]);
     assert_eq!(code, 0);
-    assert!(out.contains("folded the rtk PostToolUse hook"), "{out}");
+    assert!(out.contains("took over the rtk PostToolUse hook"), "{out}");
     run(&home, Some(&bin), &["init", "--global"], "", &[]); // idempotent
     let s = read_settings(&home);
     let post = s["hooks"]["PostToolUse"].as_array().unwrap();
