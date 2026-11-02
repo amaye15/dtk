@@ -33,6 +33,23 @@ fn corpus() -> (PathBuf, Value) {
     (dir, m)
 }
 
+const PLACEHOLDERS: [&str; 13] = [
+    "n/a", "na", "nan", "null", "none", "nil", "-", "--", "?", "#n/a", "<na>", "(null)", "missing",
+];
+
+/// A number as people write it: `$1,234.56`, `45.3%`, `1,234`. Simple on purpose, and not dtk's code.
+fn loose(s: &str) -> Option<f64> {
+    let t = s
+        .trim()
+        .trim_start_matches(['$', '€', '£', '¥'])
+        .trim_end_matches('%')
+        .replace(',', "");
+    if t.is_empty() || (t.len() > 1 && t.starts_with('0') && !t.starts_with("0.")) {
+        return None;
+    }
+    t.parse::<f64>().ok().filter(|f| f.is_finite())
+}
+
 fn num(s: &str) -> Option<f64> {
     if s.is_empty() || (s.len() > 1 && s.starts_with('0') && !s.starts_with("0.")) {
         return None;
@@ -80,6 +97,19 @@ fn facts(t: &Table) -> Vec<Fact> {
         fact(format!("column name {h}"), vec![h.clone()], None);
     }
     let id = id_column(t);
+    let mut outlier_facts = 0;
+    // dtk names the row of the extremes for the first five columns only (a token limit).
+    let mut which_row_cols = 0;
+    // Repeated rows are counted.
+    let mut seen = std::collections::HashSet::new();
+    let repeats = t.rows.iter().filter(|r| !seen.insert(*r)).count();
+    if repeats > 0 {
+        fact(
+            format!("{repeats} repeated rows are counted"),
+            vec![format!("duplicates: {repeats} row")],
+            None,
+        );
+    }
     for (c, h) in t.headers.iter().enumerate() {
         let col: Vec<&str> = t.rows.iter().map(|r| r[c].as_str()).collect();
         let nonempty: Vec<&str> = col.iter().copied().filter(|v| !v.is_empty()).collect();
@@ -117,7 +147,13 @@ fn facts(t: &Table) -> Vec<Fact> {
             // constant column, or of a column that is the row's position in disguise.
             let unique =
                 vals.windows(2).all(|w| w[0] < w[1]) || vals.windows(2).all(|w| w[0] > w[1]);
-            if Some(c) != id && hi > lo && !unique {
+            if Some(c) != id
+                && hi > lo
+                && !unique
+                && !(id_name(h) && kinds[c].kind == Kind::Int)
+                && which_row_cols < 5
+            {
+                which_row_cols += 1;
                 for (label, target) in [("largest", hi), ("smallest", lo)] {
                     let r = (0..n)
                         .find(|&r| num(&t.rows[r][c]) == Some(target))
@@ -141,6 +177,84 @@ fn facts(t: &Table) -> Vec<Fact> {
             );
             fact(format!("{h}: first time {lo}"), vec![lo], Some(h));
             fact(format!("{h}: last time {hi}"), vec![hi], Some(h));
+        }
+        // Real-world columns: numbers written as `$1,234.56` or `45%`, `N/A` and `-` for missing.
+        // The numbers keep their range, and the missing cells are counted, not mistaken for words.
+        let real: Vec<&str> = nonempty
+            .iter()
+            .copied()
+            .filter(|v| !PLACEHOLDERS.contains(&v.to_lowercase().as_str()))
+            .collect();
+        let placeholders = nonempty.len() - real.len();
+        let loose_vals: Vec<f64> = real.iter().filter_map(|v| loose(v)).collect();
+        let all_loose =
+            !real.is_empty() && loose_vals.len() == real.len() && placeholders < real.len();
+        let strict = nums.iter().all(Option::is_some);
+        if all_loose && matches!(kinds[c].kind, Kind::Int | Kind::Float) && !codes {
+            let (lo, hi) = (
+                loose_vals.iter().cloned().fold(f64::INFINITY, f64::min),
+                loose_vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+            );
+            if !strict {
+                fact(
+                    format!("{h}: smallest value {lo}"),
+                    vec![format!("{lo}")],
+                    Some(h),
+                );
+                fact(
+                    format!("{h}: largest value {hi}"),
+                    vec![format!("{hi}")],
+                    Some(h),
+                );
+            }
+            if placeholders > 0 {
+                fact(
+                    format!("{h}: {placeholders} placeholders are counted"),
+                    vec![format!("{placeholders} placeholders excluded")],
+                    Some(h),
+                );
+            }
+            // Outliers: a few values beyond three interquartile ranges from the quartiles.
+            let rises = loose_vals.windows(2).all(|w| w[0] < w[1])
+                || loose_vals.windows(2).all(|w| w[0] > w[1]);
+            let identifier = (id_name(h) && kinds[c].kind == Kind::Int) || rises;
+            if loose_vals.len() >= 20 && hi > lo && !identifier && outlier_facts < 5 {
+                let mut sorted = loose_vals.clone();
+                sorted.sort_by(|a, b| a.total_cmp(b));
+                let m = sorted.len();
+                let (q1, q3) = (sorted[(m - 1) / 4], sorted[3 * (m - 1) / 4]);
+                let iqr = q3 - q1;
+                let (above, below): (Vec<f64>, Vec<f64>) = (
+                    sorted
+                        .iter()
+                        .copied()
+                        .filter(|v| *v > q3 + 3.0 * iqr)
+                        .collect(),
+                    sorted
+                        .iter()
+                        .copied()
+                        .filter(|v| *v < q1 - 3.0 * iqr)
+                        .collect(),
+                );
+                let total = above.len() + below.len();
+                if iqr > 0.0 && total > 0 && total <= (m / 20).max(3) {
+                    outlier_facts += 1;
+                    if let Some(x) = above.last() {
+                        fact(
+                            format!("{h}: outlier {x}"),
+                            vec![format!("most extreme {x}")],
+                            Some(h),
+                        );
+                    }
+                    if let Some(x) = below.first() {
+                        fact(
+                            format!("{h}: outlier {x}"),
+                            vec![format!("most extreme {x}")],
+                            Some(h),
+                        );
+                    }
+                }
+            }
         }
         // Values that count: a column of at most 12 values that are words, not numbers.
         let words = nums.iter().any(Option::is_none) && kinds[c].kind != Kind::Time;
@@ -184,6 +298,46 @@ fn facts(t: &Table) -> Vec<Fact> {
     out
 }
 
+/// A column that numbers or names rows (`order_id`, `uuid`, `index`): the largest one is no news.
+fn id_name(name: &str) -> bool {
+    let n = name.to_lowercase();
+    [
+        "id", "uuid", "guid", "index", "idx", "key", "pk", "rowid", "#", "no", "num",
+    ]
+    .contains(&n.as_str())
+        || n.ends_with("_id")
+        || n.ends_with("-id")
+        || n.ends_with("id") && n.len() > 2 && !n.ends_with("paid") && !n.ends_with("valid")
+}
+
+/// A column is named when its name is printed, or when it falls inside a printed range such as
+/// `feat_0..feat_119:float`.
+fn named_in(text: &str, name: &str) -> bool {
+    if text.contains(name) {
+        return true;
+    }
+    let split = |s: &str| -> Option<(String, u64)> {
+        let digits = s.len() - s.trim_end_matches(|c: char| c.is_ascii_digit()).len();
+        let (p, n) = s.split_at(s.len() - digits);
+        Some((p.to_string(), n.parse().ok()?))
+    };
+    let Some((prefix, num)) = split(name) else {
+        return false;
+    };
+    text.split_whitespace().any(|tok| {
+        let Some((a, b)) = tok.split_once("..") else {
+            return false;
+        };
+        let b = b.rsplit_once(':').map_or(b, |x| x.0);
+        match (split(a), split(b)) {
+            (Some((pa, na)), Some((pb, nb))) => {
+                pa == prefix && pb == prefix && na <= num && num <= nb
+            }
+            _ => false,
+        }
+    })
+}
+
 fn line_of<'a>(text: &'a str, header: &str) -> &'a str {
     let key = format!("{header}: ");
     text.lines().find(|l| l.starts_with(&key)).unwrap_or("")
@@ -208,7 +362,7 @@ fn summaries_keep_the_facts_that_questions_need() {
             continue; // every row is shown, nothing to keep
         }
         let (mut f_total, mut f_kept) = (0, 0);
-        let wide = r.text.contains(" more columns");
+        let wide = r.text.contains("no statistics shown for the other");
         for f in facts(&t) {
             let hay = match &f.in_line_of {
                 Some(h) => line_of(&r.text, h),
@@ -223,11 +377,14 @@ fn summaries_keep_the_facts_that_questions_need() {
             {
                 continue;
             }
-            if wide && f.what.starts_with("column name ") && !r.text.contains(&f.any_of[0]) {
-                continue;
-            }
+
             f_total += 1;
-            if f.any_of.iter().any(|s| hay.contains(s.as_str())) {
+            let kept = if f.what.starts_with("column name ") {
+                named_in(hay, &f.any_of[0])
+            } else {
+                f.any_of.iter().any(|s| hay.contains(s.as_str()))
+            };
+            if kept {
                 f_kept += 1;
             } else {
                 missing.push(format!(

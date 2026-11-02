@@ -471,3 +471,72 @@ fn prefixed_jsonl_matches_sed_and_jaq() {
         assert_eq!(ours, n, "lines from {name}");
     }
 }
+
+/// Real-world columns against `qsv` (to split the CSV) and `awk` (to do the arithmetic).
+#[cfg(unix)]
+#[test]
+fn messy_columns_match_awk() {
+    if !have("qsv") {
+        eprintln!("SKIPPED: qsv is not installed");
+        return;
+    }
+    let file = corpus("positive/messy_orders.csv");
+    let f = file.display().to_string();
+    let (t, info) = load("positive/messy_orders.csv");
+    // awk column numbers: age 4, price 5, pct 6, qty 7. The count, min, max and mean skip the
+    // placeholders and read `$1,234.56`, `45.3%` and `1,234` as numbers.
+    for (name, col) in [("age", 4), ("price", 5), ("pct", 6), ("qty", 7)] {
+        let script = format!(
+            "qsv fmt --out-delimiter '\\t' '{f}' | awk -F'\\t' 'NR>1 {{ v=${col}; \
+             if (v ~ /^(N\\/A|NA|-|\\?)$/) {{ ph++; next }} gsub(/[$,%]/, \"\", v); v += 0; \
+             n++; s += v; if (n == 1 || v < mn) mn = v; if (n == 1 || v > mx) mx = v }} \
+             END {{ printf \"%d %.10g %.10g %.10f %d\", n, mn, mx, s / n, ph }}'"
+        );
+        let got = sh(&script);
+        let p: Vec<f64> = got.split_whitespace().map(|x| x.parse().unwrap()).collect();
+        let c = column(&t, &info, name);
+        assert!(
+            matches!(c.kind, Kind::Int | Kind::Float),
+            "{name}: {:?}",
+            c.kind
+        );
+        assert_eq!(c.stats.nonempty as f64, p[0], "{name}: values");
+        assert!(
+            close(c.stats.min.unwrap(), p[1], 1e-9),
+            "{name}: min {:?} vs {}",
+            c.stats.min,
+            p[1]
+        );
+        assert!(
+            close(c.stats.max.unwrap(), p[2], 1e-9),
+            "{name}: max {:?} vs {}",
+            c.stats.max,
+            p[2]
+        );
+        assert!(
+            close(c.stats.mean.unwrap(), p[3], 1e-9),
+            "{name}: mean {:?} vs {}",
+            c.stats.mean,
+            p[3]
+        );
+        assert_eq!(c.stats.placeholders as f64, p[4], "{name}: placeholders");
+    }
+    // Repeated rows: all rows minus the different ones.
+    let dups: usize = sh(&format!(
+        "t=$(tail -n +2 '{f}' | wc -l); u=$(tail -n +2 '{f}' | sort -u | wc -l); echo $((t - u))"
+    ))
+    .trim()
+    .parse()
+    .unwrap();
+    assert_eq!(dups, 3);
+    let ctx = dtk::lean::Ctx {
+        bytes: 0,
+        csv_path: None,
+        raw_path: None,
+    };
+    let text = dtk::lean::render(&t, &ctx, 2500).text;
+    assert!(
+        text.contains(&format!("duplicates: {dups} rows repeat")),
+        "{text}"
+    );
+}
