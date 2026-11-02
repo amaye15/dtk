@@ -135,7 +135,8 @@ jobs:
           dtk --version
           dtk verify | grep "built-in checks passed"
           sudo dpkg -r dtk
-          ! command -v dtk
+          # bash remembers where it ran dtk before, so ask the file system and not the hash table
+          test ! -e /usr/bin/dtk
       - name: Check the .rpm
         run: |
           rpm_file="$(ls dist/*.rpm)"
