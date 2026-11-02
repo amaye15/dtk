@@ -1,6 +1,6 @@
 //! Lean views: a small, typed summary of a table that keeps what an agent acts on.
 
-use crate::table::Table;
+use crate::table::{Format, Table};
 use std::collections::HashMap;
 
 /// Tables up to this many rows are re-encoded as CSV and nothing is dropped.
@@ -41,7 +41,7 @@ pub struct ColStats {
     pub mean: Option<f64>,
     pub p50: Option<f64>,
     pub p95: Option<f64>,
-    /// Most common values with their counts, most common first (at most 8).
+    /// Most common values with their counts, most common first (at most 12).
     pub top: Vec<(String, usize)>,
     /// For text with many distinct values: the shapes the values share (digits and ids replaced
     /// by `#` and `<hex>`), with how many rows have each shape. Most common first (at most 8).
@@ -50,6 +50,8 @@ pub struct ColStats {
 
 pub struct ColInfo {
     pub kind: Kind,
+    /// A column of codes or labels: its values are listed with counts, not as a range.
+    pub few_values: bool,
     pub summary: String,
     /// Distinct count when known and small enough to group by.
     pub distinct: Option<usize>,
@@ -207,6 +209,26 @@ pub fn template(s: &str) -> String {
     out
 }
 
+/// Template counts over every value, for a column too varied to keep its distinct values.
+/// Empty when the column has more than `MAX_SHAPES` shapes.
+fn shapes_of_all<'a>(vals: impl Iterator<Item = &'a str>) -> Vec<(String, usize)> {
+    const MAX_SHAPES: usize = 2000;
+    let mut by: HashMap<String, usize> = HashMap::new();
+    for v in vals.filter(|v| !v.is_empty()) {
+        let t = template(v);
+        if let Some(c) = by.get_mut(&t) {
+            *c += 1;
+        } else if by.len() < MAX_SHAPES {
+            by.insert(t, 1);
+        } else {
+            return Vec::new();
+        }
+    }
+    let mut v: Vec<(String, usize)> = by.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    v
+}
+
 /// Row counts per template, most common first.
 fn template_counts(distinct: &HashMap<&str, usize>) -> Vec<(String, usize)> {
     let mut by: HashMap<String, usize> = HashMap::new();
@@ -227,7 +249,8 @@ fn top_pairs(distinct: &HashMap<&str, usize>, limit: usize) -> Vec<(String, usiz
         .collect()
 }
 
-fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
+fn analyze_col<'a>(vals: impl Iterator<Item = &'a str> + Clone) -> ColInfo {
+    let second_pass = vals.clone();
     let mut nonempty = 0usize;
     let mut nulls = 0usize;
     let (mut all_int, mut all_float, mut all_bool, mut all_time) = (true, true, true, true);
@@ -315,6 +338,10 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
     // Text with many distinct values (messages with ids and numbers in them): group by shape.
     let templates = if kind == Kind::Str && !overflow && distinct.len() > 12 {
         template_counts(&distinct)
+    } else if kind == Kind::Str && overflow {
+        // More than 5,000 different values, which is when the shapes matter most: count the
+        // shapes over every row. A column with thousands of shapes has none worth showing.
+        shapes_of_all(second_pass)
     } else {
         Vec::new()
     };
@@ -326,7 +353,7 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
     let mut summary = match kind {
         Kind::Empty => "all empty".to_string(),
         Kind::Int | Kind::Float if few_values => {
-            format!("{} distinct: {}", distinct.len(), top_values(&distinct, 8))
+            format!("{} distinct: {}", distinct.len(), top_values(&distinct, 12))
         }
         Kind::Int => format!("{}..{} mean {}{}", imin, imax, fnum(mean), pct_text(pcts)),
         Kind::Float => format!(
@@ -340,9 +367,28 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
         Kind::Bool => top_values(&distinct, 2),
         Kind::Str => {
             if overflow {
-                ">5000 distinct".to_string()
+                if templates.len() >= 2 && templates.len() <= 200 {
+                    let shown: Vec<String> = templates
+                        .iter()
+                        .take(6)
+                        .map(|(t, n)| format!("{} ({})", t.chars().take(60).collect::<String>(), n))
+                        .collect();
+                    let more = if templates.len() > 6 {
+                        format!(", +{} more", templates.len() - 6)
+                    } else {
+                        String::new()
+                    };
+                    format!(
+                        ">5000 distinct, {} templates: {}{}",
+                        templates.len(),
+                        shown.join("; "),
+                        more
+                    )
+                } else {
+                    ">5000 distinct".to_string()
+                }
             } else if distinct.len() <= 12 {
-                format!("{} distinct: {}", distinct.len(), top_values(&distinct, 8))
+                format!("{} distinct: {}", distinct.len(), top_values(&distinct, 12))
             } else if templates.len() >= 2 && templates.len() * 3 <= distinct.len() {
                 let shown: Vec<String> = templates
                     .iter()
@@ -388,11 +434,12 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
         mean: numeric.then_some(mean),
         p50: pcts.map(|p| p.0),
         p95: pcts.map(|p| p.1),
-        top: top_pairs(&distinct, 8),
+        top: top_pairs(&distinct, 12),
         templates: templates.into_iter().take(8).collect(),
     };
     ColInfo {
         kind,
+        few_values,
         summary,
         distinct: if overflow { None } else { Some(distinct.len()) },
         stats,
@@ -400,9 +447,85 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
 }
 
 pub fn analyze(t: &Table) -> Vec<ColInfo> {
-    (0..t.headers.len())
+    let mut info: Vec<ColInfo> = (0..t.headers.len())
         .map(|c| analyze_col(t.rows.iter().map(|r| r[c].as_str())))
-        .collect()
+        .collect();
+    add_extremes(t, &mut info);
+    info
+}
+
+/// Most columns that get a "which row?" note. More would cost more than they are worth.
+const EXTREME_COLS: usize = 5;
+/// An id longer than this is a blob, not a name for a row.
+const ID_MAX_CHARS: usize = 40;
+
+/// The column that names a row: the first of the first three whose values are all different, not
+/// empty and short (an order id, a timestamp). `None` means rows are named by their position.
+pub fn id_column(t: &Table, info: &[ColInfo]) -> Option<usize> {
+    let n = t.rows.len();
+    (0..t.headers.len().min(3)).find(|&c| {
+        info[c].distinct == Some(n)
+            && info[c].stats.nulls == 0
+            && t.rows.iter().all(|r| r[c].chars().count() <= ID_MAX_CHARS)
+    })
+}
+
+/// "Which order was the slowest?" is the first question about a table of numbers, and the min
+/// and the max alone do not answer it. Add the row that holds each, named by its id.
+fn add_extremes(t: &Table, info: &mut [ColInfo]) {
+    let id = id_column(t, info);
+    let name = |r: usize| match id {
+        Some(c) => format!("{}={}", t.headers[c], trunc(&t.rows[r][c], ID_MAX_CHARS)),
+        None => format!("row {r}"),
+    };
+    let mut done = 0;
+    for c in 0..t.headers.len() {
+        if done == EXTREME_COLS {
+            break;
+        }
+        let numeric = matches!(info[c].kind, Kind::Int | Kind::Float);
+        // Codes (HTTP status, ratings) are listed with counts, and an id names rows itself.
+        if !numeric || info[c].few_values || Some(c) == id {
+            continue;
+        }
+        let (Some(lo), Some(hi)) = (info[c].stats.min, info[c].stats.max) else {
+            continue;
+        };
+        if hi <= lo {
+            continue;
+        }
+        let at = |target: f64| -> (Option<usize>, usize) {
+            let mut first = None;
+            let mut count = 0;
+            for (r, row) in t.rows.iter().enumerate() {
+                let v = &row[c];
+                if !has_leading_zero(v) && v.parse::<f64>().ok() == Some(target) {
+                    first.get_or_insert(r);
+                    count += 1;
+                }
+            }
+            (first, count)
+        };
+        let label = |target: f64| {
+            let (first, count) = at(target);
+            first.map(|r| {
+                if count > 1 {
+                    format!("{} (+{} tied)", name(r), count - 1)
+                } else {
+                    name(r)
+                }
+            })
+        };
+        if let (Some(max_at), Some(min_at)) = (label(hi), label(lo)) {
+            let note = format!(" | max at {max_at}, min at {min_at}");
+            // The note goes before the null count that analyze_col may have added.
+            match info[c].summary.find(" | nulls ") {
+                Some(i) => info[c].summary.insert_str(i, &note),
+                None => info[c].summary.push_str(&note),
+            }
+            done += 1;
+        }
+    }
 }
 
 fn trunc(s: &str, max: usize) -> String {
@@ -442,7 +565,7 @@ pub fn to_csv(t: &Table) -> String {
     s
 }
 
-fn shell_quote(p: &str) -> String {
+pub(crate) fn shell_quote(p: &str) -> String {
     // Windows accepts forward slashes everywhere, and a backslash path would need quoting.
     let p = if cfg!(windows) {
         p.replace('\\', "/")
@@ -458,7 +581,10 @@ fn shell_quote(p: &str) -> String {
     }
 }
 
-const LEVEL_NAMES: [&str; 5] = ["level", "severity", "lvl", "loglevel", "log_level"];
+const LEVEL_NAMES: [&str; 6] = ["level", "severity", "lvl", "loglevel", "log_level", "flag"];
+/// Lines shown above each error in a text log.
+const CONTEXT_LINES: usize = 4;
+
 const BAD_LEVELS: [&str; 8] = [
     "warn", "warning", "error", "err", "fatal", "critical", "crit", "panic",
 ];
@@ -552,7 +678,7 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
     let cols = t.headers.len();
     let mut out = String::new();
     out.push_str(&format!(
-        "[dtk] {}: {} rows x {} cols, {}. This is a summary of all rows; the full data is on disk.\n",
+        "[dtk] {}: {} rows x {} cols, {} (statistics over all rows; the full data is on disk)\n",
         t.format.name(),
         n,
         cols,
@@ -616,7 +742,73 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
             .iter()
             .filter(|r| BAD_LEVELS.contains(&r[li].to_lowercase().as_str()))
             .collect();
-        if !bad.is_empty() {
+        if !bad.is_empty() && t.format == Format::TextLog {
+            // In a text log the lines just before an error say what failed. Errors come first,
+            // each with the lines above it; a warning stands alone.
+            let is_warn =
+                |r: &Vec<String>| matches!(r[li].to_lowercase().as_str(), "warn" | "warning");
+            let (mut errors, mut warns) = (Vec::new(), Vec::new());
+            for (i, r) in t.rows.iter().enumerate() {
+                if BAD_LEVELS.contains(&r[li].to_lowercase().as_str()) {
+                    if is_warn(r) { &mut warns } else { &mut errors }.push(i);
+                }
+            }
+            let cap = p.important + 8;
+            let mut keep = std::collections::BTreeSet::new();
+            // Many errors are usually the same error again and again. Group them by the shape
+            // of their message, say how many of each, and show the first of each with its context.
+            let msg_col = t.headers.iter().position(|h| h == "msg");
+            let mut shape_lines = String::new();
+            let mut firsts: Vec<usize> = errors.clone();
+            if let (true, Some(mc)) = (errors.len() > 5, msg_col) {
+                let mut groups: Vec<(String, usize, usize)> = Vec::new(); // shape, count, first row
+                for &i in &errors {
+                    let first_line = t.rows[i][mc].lines().next().unwrap_or("");
+                    let shape: String = template(first_line).chars().take(110).collect();
+                    match groups.iter_mut().find(|g| g.0 == shape) {
+                        Some(g) => g.1 += 1,
+                        None => groups.push((shape, 1, i)),
+                    }
+                }
+                groups.sort_by(|a, b| b.1.cmp(&a.1).then(a.2.cmp(&b.2)));
+                shape_lines.push_str(&format!("error shapes ({}):\n", groups.len()));
+                for (shape, n, at) in groups.iter().take(5) {
+                    shape_lines
+                        .push_str(&format!("  {n}x {shape}   (first at {})\n", t.rows[*at][0]));
+                }
+                if groups.len() > 5 {
+                    shape_lines.push_str(&format!("  ... {} more shapes\n", groups.len() - 5));
+                }
+                firsts = groups.iter().take(5).map(|g| g.2).collect();
+                firsts.sort_unstable();
+            }
+            for &i in &firsts {
+                if keep.len() >= cap {
+                    break;
+                }
+                keep.extend(i.saturating_sub(CONTEXT_LINES)..=i);
+            }
+            for &i in &warns {
+                if keep.len() >= cap {
+                    break;
+                }
+                keep.insert(i);
+            }
+            let shown: Vec<&Vec<String>> = keep.iter().map(|&i| &t.rows[i]).collect();
+            out.push_str(&format!(
+                "{} error{}, {} warning{} ({}).\n{}showing {} lines, each {}error with the {} lines before it:\n{}\n",
+                errors.len(),
+                if errors.len() == 1 { "" } else { "s" },
+                warns.len(),
+                if warns.len() == 1 { "" } else { "s" },
+                t.headers[li],
+                shape_lines,
+                shown.len(),
+                if errors.len() > 5 && msg_col.is_some() { "first " } else { "" },
+                CONTEXT_LINES,
+                show(&shown)
+            ));
+        } else if !bad.is_empty() {
             let shown: Vec<&Vec<String>> = bad.iter().take(p.important).copied().collect();
             out.push_str(&format!(
                 "{} rows with {}=warn/error: showing {} of {}:\n{}\n",
@@ -800,6 +992,64 @@ mod tests {
             "{}",
             c.summary
         );
+    }
+
+    #[test]
+    fn templates_survive_more_than_5000_distinct_messages() {
+        let mut s = String::from("level,msg\n");
+        for i in 0..9000 {
+            s.push_str(&format!("info,request {i} took {}ms\n", i * 7 % 991));
+        }
+        for i in 0..3000 {
+            s.push_str(&format!("warn,cache miss for key a{:07x}9\n", i * 7919));
+        }
+        let t = detect(&s).unwrap();
+        let info = analyze(&t);
+        let c = &info[1];
+        assert!(
+            c.summary.starts_with(">5000 distinct, 2 templates: request # took #ms (9000); cache miss for key <hex> (3000)"),
+            "{}",
+            c.summary
+        );
+        assert_eq!(
+            c.stats.templates[0],
+            ("request # took #ms".to_string(), 9000)
+        );
+    }
+
+    #[test]
+    fn repeated_errors_are_grouped_by_shape_in_a_text_log() {
+        let mut s = String::new();
+        for i in 0..300 {
+            let msg = match i {
+                n if n % 10 == 5 => format!("error: connection {n} refused by 10.0.0.{}", n % 9),
+                n if n % 50 == 7 => format!("FAILED test_{n}"),
+                n => format!("step {n} ok"),
+            };
+            s.push_str(&format!(
+                "2026-11-02T10:{:02}:{:02}Z {msg}\n",
+                i / 60,
+                i % 60
+            ));
+        }
+        let t = detect(&s).unwrap();
+        let r = render(&t, &ctx(), 2500);
+        assert!(r.text.contains("error shapes (2):"), "{}", r.text);
+        assert!(
+            r.text
+                .contains("30x error: connection # refused by #.#.#.#"),
+            "{}",
+            r.text
+        );
+        assert!(r.text.contains("6x FAILED test_#"), "{}", r.text);
+        assert!(
+            r.text
+                .contains("each first error with the 4 lines before it"),
+            "{}",
+            r.text
+        );
+        // the 30 refused-connection errors are not all listed
+        assert!(r.text.matches("refused by").count() < 8, "{}", r.text);
     }
 
     #[test]

@@ -10,6 +10,7 @@
 //! min_tokens = 1200        # smallest output worth replacing (estimated tokens)
 //! budget = 2500            # largest summary
 //! min_persisted_rows = 30  # fewest rows for output that Claude Code saved to a file
+//! min_outline_tokens = 4000  # smallest JSON document (not a table) worth an outline
 //! ```
 //!
 //! A missing file means the defaults. A broken file also means the defaults, and `dtk doctor`
@@ -24,6 +25,7 @@ pub struct Config {
     pub min_tokens: usize,
     pub budget: usize,
     pub min_persisted_rows: usize,
+    pub min_outline_tokens: usize,
 }
 
 impl Default for Config {
@@ -33,6 +35,7 @@ impl Default for Config {
             min_tokens: 1200,
             budget: 2500,
             min_persisted_rows: 30,
+            min_outline_tokens: 4000,
         }
     }
 }
@@ -45,8 +48,8 @@ pub fn path() -> Option<PathBuf> {
 pub fn default_file() -> String {
     let d = Config::default();
     format!(
-        "# dtk configuration. Delete a line to get its default back.\n\n[hooks]\n# Leave these alone. \"^text\" matches the start of a command (or a file path for Read);\n# any other text matches anywhere in it.\nexclude_commands = []\n\n[thresholds]\nmin_tokens = {}        # smallest output worth replacing (estimated tokens)\nbudget = {}            # largest summary\nmin_persisted_rows = {}  # fewest rows for output that Claude Code saved to a file\n",
-        d.min_tokens, d.budget, d.min_persisted_rows
+        "# dtk configuration. Delete a line to get its default back.\n\n[hooks]\n# Leave these alone. \"^text\" matches the start of a command (or a file path for Read);\n# any other text matches anywhere in it.\nexclude_commands = []\n\n[thresholds]\nmin_tokens = {}        # smallest output worth replacing (estimated tokens)\nbudget = {}            # largest summary\nmin_persisted_rows = {}  # fewest rows for output that Claude Code saved to a file\nmin_outline_tokens = {}  # smallest JSON document (not a table) worth an outline\n",
+        d.min_tokens, d.budget, d.min_persisted_rows, d.min_outline_tokens
     )
 }
 
@@ -85,6 +88,7 @@ impl Config {
             num("min_tokens", &mut c.min_tokens)?;
             num("budget", &mut c.budget)?;
             num("min_persisted_rows", &mut c.min_persisted_rows)?;
+            num("min_outline_tokens", &mut c.min_outline_tokens)?;
         }
         Ok(c)
     }

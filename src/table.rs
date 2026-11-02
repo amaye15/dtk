@@ -30,6 +30,10 @@ pub enum Format {
     AccessLog,
     /// JSON lines with a prefix such as `web-1  | ` in front of each object.
     PrefixedJsonl,
+    /// Whitespace table with a free-text last column: `ps aux`, `df -h`.
+    TailText,
+    /// Plain text lines that start with a timestamp.
+    TextLog,
 }
 
 impl Format {
@@ -39,7 +43,8 @@ impl Format {
             Format::JsonArray => "json-array",
             Format::Csv => "csv",
             Format::Tsv => "tsv",
-            Format::Aligned | Format::Bordered => "table",
+            Format::Aligned | Format::Bordered | Format::TailText => "table",
+            Format::TextLog => "text-log",
             Format::JsonObject => "json-object",
             Format::Logfmt => "logfmt",
             Format::AccessLog => "access-log",
@@ -83,6 +88,8 @@ pub fn detect(text: &str) -> Option<Table> {
         .or_else(|| parse_bordered(text))
         .or_else(|| parse_delimited(text))
         .or_else(|| parse_aligned(text))
+        .or_else(|| crate::textcols::parse_tail_text(text))
+        .or_else(|| crate::logs::parse_text_log(text))
 }
 
 /// The objects of a JSON array, or the entries of a JSON object whose values are objects.
@@ -151,6 +158,23 @@ fn parse_json_container(text: &str) -> Option<Table> {
         return None;
     }
     let (path, rows) = cands.remove(0);
+    // The rows must be most of the document. If a small array sits beside a big object (a plan
+    // with 40 outputs and 120 resources somewhere else), summarizing the array would silently
+    // drop the rest of the document. That is a job for an outline, not for a table.
+    let rows_bytes: usize = match &rows {
+        Rows::Array(v) => v
+            .iter()
+            .map(|o| serde_json::to_string(o).map_or(0, |s| s.len()))
+            .sum(),
+        Rows::Keyed(v) => v
+            .iter()
+            .map(|(k, o)| k.len() + serde_json::to_string(o).map_or(0, |s| s.len()))
+            .sum(),
+    };
+    let total_bytes = serde_json::to_string(&root).ok()?.len();
+    if rows_bytes * 10 < total_bytes * 7 {
+        return None;
+    }
     // Scalars next to the table (total_count, status, page...) are kept as notes.
     let mut notes = Vec::new();
     let mut level = Some(&root);
@@ -263,7 +287,7 @@ fn is_border_char(c: char) -> bool {
 
 /// A line of only dashes or equals signs and spaces, such as the rule under a header
 /// (`--  -----`). It is not data.
-fn is_rule_line(line: &str) -> bool {
+pub(crate) fn is_rule_line(line: &str) -> bool {
     let t = line.trim();
     t.chars().filter(|c| *c == '-' || *c == '=').count() >= 2
         && t.chars().all(|c| c == '-' || c == '=' || c == ' ')
@@ -453,7 +477,7 @@ fn parse_json_array(text: &str) -> Option<Table> {
     from_objects(Format::JsonArray, objects.into_iter(), Vec::new())
 }
 
-fn valid_header(h: &[String]) -> bool {
+pub(crate) fn valid_header(h: &[String]) -> bool {
     if h.len() < 2 || h.len() > MAX_COLS {
         return false;
     }
@@ -475,7 +499,7 @@ fn valid_header(h: &[String]) -> bool {
 }
 
 /// Most common value of `counts` with how many times it occurs.
-fn mode(counts: &[usize]) -> Option<(usize, usize)> {
+pub(crate) fn mode(counts: &[usize]) -> Option<(usize, usize)> {
     let mut freq: HashMap<usize, usize> = HashMap::new();
     for c in counts {
         *freq.entry(*c).or_default() += 1;

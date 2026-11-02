@@ -8,6 +8,7 @@
 
 use crate::config::Config;
 use dtk::lean::{self, est_tokens, Ctx, Rendered};
+use dtk::outline;
 use dtk::table::{self, Format, Table};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -382,12 +383,14 @@ fn handle(input: &str) -> Option<String> {
 
 /// Commands that ask for specific rows must get them, not a summary of them.
 pub fn wants_raw(cmd: &str) -> bool {
-    const MARKERS: [&str; 6] = [
+    // `--head-lines` and `--tail-lines` are how rtk rewrites `head` and `tail`.
+    const MARKERS: [&str; 7] = [
         "DTK_RAW",
         "qsv slice",
         "qsv sample",
         "sed -n",
         "--max-lines",
+        "--head-lines",
         "--tail-lines",
     ];
     if MARKERS.iter().any(|m| cmd.contains(m)) {
@@ -412,8 +415,16 @@ pub struct Input<'a> {
 
 /// What dtk makes of an [`Input`]. The hook, `explain`, `verify` and `discover` all use this one
 /// function, so what they say about a decision is what the hook does.
+/// What dtk found in an output: a table, or a JSON document that gets an outline.
+pub struct Detected {
+    pub name: &'static str,
+    pub rows: usize,
+    pub cols: usize,
+}
+
 pub struct Verdict {
     pub table: Option<Table>,
+    pub detected: Option<Detected>,
     pub rendered: Option<Rendered>,
     pub tokens_full: usize,
     /// What the model would see without dtk.
@@ -428,6 +439,7 @@ pub fn evaluate(inp: &Input, cfg: &Config, write: bool) -> Verdict {
     let tokens_full = est_tokens(inp.text);
     let mut v = Verdict {
         table: None,
+        detected: None,
         rendered: None,
         tokens_full,
         baseline: if inp.persisted {
@@ -446,16 +458,34 @@ pub fn evaluate(inp: &Input, cfg: &Config, write: bool) -> Verdict {
         v.reason = "DTK_DISABLED=1 is set".into();
         return v;
     }
-    if inp.tool == "Bash" && wants_raw(inp.subject) {
+    // rtk's PreToolUse hook may have rewritten the command (`head -n 5 f` is now
+    // `rtk read f --head-lines 5`). The user's intent and config refer to what they typed.
+    let typed = crate::rtk::plain_command(inp.subject);
+    if inp.tool == "Bash" && (wants_raw(inp.subject) || wants_raw(&typed)) {
         v.reason =
             "the command asks for exact rows (DTK_RAW, head, tail, sed -n, qsv slice, ...)".into();
         return v;
     }
-    if cfg.is_excluded(inp.subject) {
+    if cfg.is_excluded(inp.subject) || cfg.is_excluded(&typed) {
         v.reason = "excluded by exclude_commands in config.toml".into();
         return v;
     }
+    // The model is drilling into a file that dtk saved: it asked for exactly these rows or values.
+    if inp.tool == "Bash" && inp.subject.replace('\\', "/").contains("/dtk/store/") {
+        v.reason = "the command reads a file that dtk saved (a drill-down): shown as is".into();
+        return v;
+    }
+    if let Some(marker) = crate::rtk::truncation_marker(inp.text) {
+        let marker: String = marker.chars().take(60).collect();
+        v.reason = format!(
+            "rtk already cut this output (\"{marker}\"); a summary would claim to cover rows that are missing, and would hide rtk's pointer to the rest"
+        );
+        return v;
+    }
     let Some(table) = table::detect(inp.text) else {
+        if let Some(doc) = outline::parse_document(inp.text) {
+            return evaluate_outline(inp, cfg, write, v, &doc);
+        }
         v.reason = format!(
             "not a table: no JSONL, JSON, CSV, logfmt, access log, or aligned or bordered table found (needs at least {} rows)",
             table::MIN_ROWS
@@ -504,8 +534,97 @@ pub fn evaluate(inp: &Input, cfg: &Config, write: bool) -> Verdict {
     };
     v.applies = applies;
     v.reason = reason;
+    v.detected = Some(Detected {
+        name: table.format.name(),
+        rows: table.rows.len(),
+        cols: table.headers.len(),
+    });
     v.table = Some(table);
     v.rendered = Some(rendered);
+    v
+}
+
+/// A JSON document that is not a table gets an outline, but only when that spares the model a
+/// lot: a document Claude Code saved to a file (the model would see a preview of its first
+/// lines), or a big one. A small document is read in full, because its values are the point.
+fn evaluate_outline(
+    inp: &Input,
+    cfg: &Config,
+    write: bool,
+    mut v: Verdict,
+    doc: &serde_json::Value,
+) -> Verdict {
+    // A jq query asks for particular values; an outline would hide them.
+    let typed = crate::rtk::plain_command(inp.subject);
+    if inp.tool == "Bash"
+        && typed
+            .split(|c: char| c.is_whitespace() || matches!(c, '|' | ';' | '&' | '(' | '<'))
+            .any(|w| matches!(w, "jq" | "jaq" | "gron" | "yq"))
+    {
+        v.reason =
+            "a jq-style query: the model asked for these values, so they are shown as is".into();
+        return v;
+    }
+    // Reading a file on purpose is a stronger request than a command that happens to print JSON.
+    let floor = if inp.tool == "Read" {
+        cfg.min_outline_tokens * 2
+    } else {
+        cfg.min_outline_tokens
+    };
+    let big_enough = inp.persisted || v.tokens_full >= floor;
+    // Where the full document is, for the drill commands.
+    let file = match inp.file {
+        Some(p) => Some(short_path(p, "json", write)),
+        None if write => store_write("json", inp.text.as_bytes()).map(|p| p.display().to_string()),
+        None => None,
+    };
+    let text = outline::outline(doc, inp.text.len(), file.as_deref(), cfg.budget);
+    v.after = est_tokens(&text);
+    v.detected = Some(Detected {
+        name: "json-document",
+        rows: match doc {
+            serde_json::Value::Array(a) => a.len(),
+            serde_json::Value::Object(m) => m.len(),
+            _ => 0,
+        },
+        cols: 0,
+    });
+    v.rendered = Some(Rendered {
+        text,
+        lossless: false,
+    });
+    (v.applies, v.reason) = if !big_enough {
+        (
+            false,
+            format!(
+                "a JSON document of {} est. tokens (outlines start at {}): shown as is, because its values are the point",
+                v.tokens_full, floor
+            ),
+        )
+    } else if !inp.persisted && v.after * 2 > v.tokens_full {
+        (
+            false,
+            format!(
+                "the outline ({} tokens) would not be at least half the size of the document ({})",
+                v.after, v.tokens_full
+            ),
+        )
+    } else if inp.persisted {
+        (
+            true,
+            format!(
+                "saved-to-file JSON document: the outline replaces a preview of about {STUB_TOKENS} tokens"
+            ),
+        )
+    } else {
+        (
+            true,
+            format!(
+                "the outline is {}% smaller",
+                100 - v.after * 100 / v.tokens_full.max(1)
+            ),
+        )
+    };
     v
 }
 
@@ -520,16 +639,16 @@ struct Decision<'a> {
 }
 
 fn log_table(d: &Decision) {
-    let (Some(table), Some(rendered)) = (&d.verdict.table, &d.verdict.rendered) else {
+    let (Some(found), Some(rendered)) = (&d.verdict.detected, &d.verdict.rendered) else {
         return;
     };
     log_decision(json!({
         "ts": now_secs(),
         "mode": if d.live { "live" } else { "shadow" },
         "tool": d.tool,
-        "format": table.format.name(),
-        "rows": table.rows.len(),
-        "cols": table.headers.len(),
+        "format": found.name,
+        "rows": found.rows,
+        "cols": found.cols,
         "persisted": d.persisted,
         "lossless": rendered.lossless,
         "tokens_full": d.verdict.tokens_full,
@@ -680,8 +799,22 @@ pub fn view(arg: Option<&str>) -> i32 {
         }
     };
     let Some(t) = table::detect(&text) else {
+        if let Some(doc) = outline::parse_document(&text) {
+            let file = match &path {
+                Some(p) => Some(short_path(p, "json", true)),
+                None => store_write("json", text.as_bytes()).map(|p| p.display().to_string()),
+            };
+            let out = outline::outline(&doc, text.len(), file.as_deref(), Config::load().0.budget);
+            println!("{out}");
+            eprintln!(
+                "dtk: {} est. tokens -> {}",
+                est_tokens(&text),
+                est_tokens(&out)
+            );
+            return 0;
+        }
         eprintln!(
-            "dtk: no table, CSV, JSON array or JSONL found (needs at least {} rows)",
+            "dtk: no table, CSV, JSON array, JSONL or JSON document found (a table needs at least {} rows)",
             table::MIN_ROWS
         );
         return 1;

@@ -190,11 +190,9 @@ fn scan_file(path: &Path, cfg: &Config, t: &mut Totals) {
                 cfg,
                 false,
             );
-            let Some(table) = &v.table else { continue };
+            let Some(found) = &v.detected else { continue };
             t.tables += 1;
-            *t.by_format
-                .entry(table.format.name().to_string())
-                .or_default() += 1;
+            *t.by_format.entry(found.name.to_string()).or_default() += 1;
             if !v.applies {
                 let what: String = subject
                     .split_whitespace()
@@ -205,11 +203,7 @@ fn scan_file(path: &Path, cfg: &Config, t: &mut Totals) {
                     .collect();
                 t.left_alone.push(format!(
                     "{} tok  {} {} rows  {}  ({})",
-                    v.tokens_full,
-                    table.format.name(),
-                    table.rows.len(),
-                    what,
-                    v.reason
+                    v.tokens_full, found.name, found.rows, what, v.reason
                 ));
                 continue;
             }
@@ -235,8 +229,8 @@ fn scan_file(path: &Path, cfg: &Config, t: &mut Totals) {
                     "{:>7} -> {:>5} tok  {} {} rows  {}{}",
                     original_tokens,
                     v.after,
-                    table.format.name(),
-                    table.rows.len(),
+                    found.name,
+                    found.rows,
                     what,
                     if persisted {
                         "  (saved to a file; the preview is replaced)"

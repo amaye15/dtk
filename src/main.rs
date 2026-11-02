@@ -4,13 +4,15 @@ mod doctor;
 mod explain;
 mod hook;
 mod init;
+mod rtk;
 
 use std::process::ExitCode;
 
 const HELP: &str = "dtk: data token killer
 
-A Claude Code PostToolUse hook. It finds big tables, CSV, JSON arrays and JSONL in Bash output
-and swaps them for a lean summary. The full data stays on disk. It works with rtk.
+A Claude Code PostToolUse hook. It finds big tables, CSV, JSON, JSONL and timestamped logs in
+Bash output and swaps them for a lean summary (a big JSON document gets an outline). The full
+data stays on disk. It works with rtk.
 
 usage:
   dtk hook claude [--then CMD ARGS...]
@@ -104,6 +106,7 @@ fn config_command(args: &[String]) -> i32 {
     println!("min_tokens:         {}", cfg.min_tokens);
     println!("budget:             {}", cfg.budget);
     println!("min_persisted_rows: {}", cfg.min_persisted_rows);
+    println!("min_outline_tokens: {}", cfg.min_outline_tokens);
     0
 }
 

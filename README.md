@@ -19,8 +19,11 @@ Claude Code sends the output of a Bash command to the model. For `cat data.csv`,
 | CSV, or TSV, `;` and `\|` separated text with a header row | `csv`, `tsv` |
 | Tables drawn with borders: polars, psql, MySQL, SQLite, Markdown | `table` |
 | Whitespace-aligned tables, such as `DataFrame.to_string()` | `table` |
+| Tables with a free-text last column: `ps aux`, `ps -ef`, `df -h` | `table` |
+| Plain text logs whose lines start with a timestamp: application logs, CI logs (GitHub Actions), syslog. A stack trace belongs to the line above it. | `text-log` |
+| A JSON document that is not a table: `cargo metadata`, `terraform show -json`, a few big API records | `json-document` (an outline) |
 
-Anything else passes through untouched.
+Anything else passes through untouched. Directory listings (`ls -l`, `find`) are left alone on purpose: in a listing the names are the content, and a summary would hide them.
 
 For a table of 60 rows or fewer, `dtk` re-encodes it as CSV and drops nothing. For a bigger table, it shows:
 
@@ -29,9 +32,11 @@ For a table of 60 rows or fewer, `dtk` re-encodes it as CSV and drops nothing. F
 - per-column statistics: min, max, mean, median (p50) and p95 for numbers; value counts for categories and codes; the time range for timestamps; null counts
 - the first rows and the last rows
 - for text with many different values (log messages with ids and numbers in them), the few message shapes with how many rows have each, such as `request # took #ms (2000)`
-- the rows where a `level` or `severity` column says warn or error
+- for each numeric column, the row that holds its largest and its smallest value (`max at order_id=100243`), so that "which order was the slowest?" needs no second command
+- the rows where a `level` or `severity` column says warn or error. In a text log, each error comes with the 4 lines before it, because those lines say what failed. A log without a level field gets a `flag` column that dtk derives from words that lead a message or act as a label (`error:`, `FAILED`, `##[error]`), and the summary says so.
 - the exact commands to query the full data, with `qsv` and `jaq`
 
+**JSON documents** get an outline instead: every top-level key with its size, the merged shape of the records in each array (a key that only some records have is marked `?`, a field that is sometimes null reads `str|null`), the size of each of a few big records, and a `jaq` command to read any part. It applies to a document that Claude Code saved to a file (the model would see only a preview), or to one of 4,000 tokens or more (8,000 for `Read`). A small document is shown as it is, because its values are the point, and so is the output of a `jq` or `jaq` query.
 Measured with OpenAI's `o200k_base` tokenizer, as a stand-in for Claude's:
 
 | Input | Raw tokens | With dtk |
