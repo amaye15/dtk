@@ -34,6 +34,12 @@ pub enum Format {
     TailText,
     /// Plain text lines that start with a timestamp.
     TextLog,
+    /// A Python list of dicts as `print` shows it.
+    PyRepr,
+    /// Rows of numbers with no header: a printed matrix.
+    Grid,
+    /// Delimited text with no header row.
+    Headerless,
 }
 
 impl Format {
@@ -45,6 +51,9 @@ impl Format {
             Format::Tsv => "tsv",
             Format::Aligned | Format::Bordered | Format::TailText => "table",
             Format::TextLog => "text-log",
+            Format::PyRepr => "python-repr",
+            Format::Grid => "number-grid",
+            Format::Headerless => "delimited",
             Format::JsonObject => "json-object",
             Format::Logfmt => "logfmt",
             Format::AccessLog => "access-log",
@@ -78,8 +87,26 @@ pub fn detect(text: &str) -> Option<Table> {
             if let Some(t) = parse_json_array(text) {
                 return Some(t);
             }
+            if let Some(t) = serde_json::from_str::<Value>(text)
+                .ok()
+                .and_then(|v| crate::foreign::parse_columnar(&v))
+            {
+                return Some(t);
+            }
+            if let Some(t) = crate::foreign::parse_python_repr(text) {
+                return Some(t);
+            }
         }
-        b'{' => return parse_jsonl(text).or_else(|| parse_json_container(text)),
+        b'{' => {
+            return parse_jsonl(text)
+                .or_else(|| parse_json_container(text))
+                .or_else(|| {
+                    serde_json::from_str::<Value>(text)
+                        .ok()
+                        .and_then(|v| crate::foreign::parse_columnar(&v))
+                })
+                .or_else(|| crate::foreign::parse_python_repr(text));
+        }
         _ => {}
     }
     crate::logs::parse_access_log(text)
@@ -89,7 +116,9 @@ pub fn detect(text: &str) -> Option<Table> {
         .or_else(|| parse_delimited(text))
         .or_else(|| parse_aligned(text))
         .or_else(|| crate::textcols::parse_tail_text(text))
+        .or_else(|| crate::foreign::parse_number_grid(text))
         .or_else(|| crate::logs::parse_text_log(text))
+        .or_else(|| crate::foreign::parse_headerless(text))
 }
 
 /// The objects of a JSON array, or the entries of a JSON object whose values are objects.
@@ -437,6 +466,11 @@ fn from_objects<'a>(
     })
 }
 
+/// A table from a list of JSON objects that were read from something other than JSON text.
+pub(crate) fn from_object_list(format: Format, objects: &[Map<String, Value>]) -> Option<Table> {
+    from_objects(format, objects.iter(), Vec::new())
+}
+
 fn parse_jsonl(text: &str) -> Option<Table> {
     let mut objects: Vec<Map<String, Value>> = Vec::new();
     let mut notes: Vec<String> = Vec::new();
@@ -530,7 +564,13 @@ fn try_delim(text: &str, d: u8) -> Option<Table> {
     if m < 2 || c * 20 < recs.len() * 19 {
         return None;
     }
-    let headers = recs[0].clone();
+    let mut headers = recs[0].clone();
+    // `df.to_csv()` writes the index as a column with an empty name.
+    if headers.first().is_some_and(|h| h.trim().is_empty())
+        && !headers.iter().any(|h| h.trim() == "index")
+    {
+        headers[0] = "index".to_string();
+    }
     // "word, word, word" is prose or a list, not a table: real column names do not start with a space.
     if headers.len() != m
         || headers
@@ -812,9 +852,12 @@ pub mod tests {
     }
 
     #[test]
-    fn rejects_numeric_header() {
+    fn numbers_with_no_header_are_a_grid_not_a_csv_with_a_numeric_header() {
         let s = "1,2,3\n".to_string() + &"4,5,6\n".repeat(40);
-        assert!(detect(&s).is_none());
+        let t = detect(&s).expect("a grid of numbers");
+        assert_eq!(t.format, Format::Grid);
+        assert_eq!(t.headers, ["c0", "c1", "c2"]);
+        assert_eq!(t.rows.len(), 41);
     }
 
     #[test]
