@@ -15,20 +15,21 @@ asset="dtk-$tag-$target.zip"
 sum="$(gh release download "$tag" -R "$repo" -p "$asset.sha256" -O - | awk '{print toupper($1)}')"
 date="$(gh release view "$tag" -R "$repo" --json publishedAt -q '.publishedAt[:10]')"
 out="$(dirname "$0")/../packaging/winget/manifests/a/amaye15/dtk/$ver"
+rm -rf "$(dirname "$out")"
 mkdir -p "$out"
 schema="https://aka.ms/winget-manifest"
 
 cat > "$out/amaye15.dtk.yaml" <<YAML
-# yaml-language-server: \$schema=$schema.version.1.6.0.schema.json
+# yaml-language-server: \$schema=$schema.version.1.12.0.schema.json
 PackageIdentifier: amaye15.dtk
 PackageVersion: $ver
 DefaultLocale: en-US
 ManifestType: version
-ManifestVersion: 1.6.0
+ManifestVersion: 1.12.0
 YAML
 
 cat > "$out/amaye15.dtk.installer.yaml" <<YAML
-# yaml-language-server: \$schema=$schema.installer.1.6.0.schema.json
+# yaml-language-server: \$schema=$schema.installer.1.12.0.schema.json
 PackageIdentifier: amaye15.dtk
 PackageVersion: $ver
 InstallerType: zip
@@ -44,11 +45,11 @@ Installers:
     InstallerUrl: https://github.com/$repo/releases/download/$tag/$asset
     InstallerSha256: $sum
 ManifestType: installer
-ManifestVersion: 1.6.0
+ManifestVersion: 1.12.0
 YAML
 
 cat > "$out/amaye15.dtk.locale.en-US.yaml" <<YAML
-# yaml-language-server: \$schema=$schema.defaultLocale.1.6.0.schema.json
+# yaml-language-server: \$schema=$schema.defaultLocale.1.12.0.schema.json
 PackageIdentifier: amaye15.dtk
 PackageVersion: $ver
 PackageLocale: en-US
@@ -71,6 +72,6 @@ Tags:
   - tokens
 ReleaseNotesUrl: https://github.com/$repo/releases/tag/$tag
 ManifestType: defaultLocale
-ManifestVersion: 1.6.0
+ManifestVersion: 1.12.0
 YAML
 echo "wrote $out"

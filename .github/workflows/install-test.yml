@@ -224,7 +224,8 @@ jobs:
             Repair-WinGetPackageManager -AllUsers
           }
           winget --version
-          $dir = (Get-ChildItem packaging/winget/manifests/a/amaye15/dtk | Select-Object -First 1).FullName
+          $dir = (Get-ChildItem packaging/winget/manifests/a/amaye15/dtk | Sort-Object Name | Select-Object -Last 1).FullName
+          Write-Host "manifest folder: $dir"
           winget validate --manifest $dir
           winget settings --enable LocalManifestFiles
           winget install --manifest $dir --accept-package-agreements --accept-source-agreements --disable-interactivity
