@@ -148,9 +148,10 @@ fn reads_the_saved_file_for_large_outputs() {
     let raw_line = text.lines().find(|l| l.starts_with("raw: ")).expect(text);
     let shown = raw_line
         .trim_start_matches("raw: ")
-        .split(' ')
+        .split(" (")
         .next()
-        .unwrap();
+        .unwrap()
+        .trim_matches('\'');
     assert_eq!(
         std::fs::canonicalize(shown).unwrap(),
         std::fs::canonicalize(&saved).unwrap(),

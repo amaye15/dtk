@@ -51,6 +51,6 @@ jobs:
 
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
-      - run: cargo test --locked
+      - run: cargo test --locked --no-fail-fast
       - name: dtk verify
         run: cargo run --locked --quiet -- verify || true
