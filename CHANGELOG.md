@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+The analytics a data person asks first, built in so that no other tool is needed.
+
+- **`dtk group FILE BY [MEASURE...]`.** The mean, sum, min and max of each measure per value of BY (`region,tier` for two columns), the biggest groups first. `--agg mean,sum` picks some, `--limit N` caps the groups. It reads `$1,200` and `45%` as numbers and skips `N/A`. Since 0.6.0 the README said `qsv` was not needed, but "mean of X per Y" was the one common question without a built-in answer. The `drill:` line now suggests it.
+- **Time columns.** A summary says whether the rows are in time order (`sorted oldest first`, `sorted newest first`, `not in time order`), the step between them (`every 5min`, or `typical step ...` when uneven), and the longest gap when it is more than three steps (`longest gap 3h5min after row 148`). Times are read with their offset (`Z`, `+02:00`) and fractions of a second. Dates alone give `every 1d`.
+- **Correlated columns.** Pairs of measure columns with |Pearson r| of 0.9 or more are named, strongest first (`temp_c~temp_f 1.00`). Identifier columns and codes are left out, because a column that rises with the row number correlates with anything that drifts. A table over 100,000 rows is sampled at an even stride.
+- Checked by: a time-series fixture with a known outage (`sensor_readings.csv`), harness facts computed from the raw cells (sortedness of every ISO time column in the corpus, and every correlated pair), a test of `dtk group` against a group-by made in the test, and two real-model questions (mean per group, interval and gap of a sensor log): Sonnet and Haiku 3 of 3 right with and without dtk, with 88% and 85% fewer tokens. Retention 1204 of 1204.
+
 ## 0.7.0
 
 More of the shapes data takes, found by printing a DataFrame every way pandas allows and checking what dtk made of each.

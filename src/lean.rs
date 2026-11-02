@@ -704,6 +704,7 @@ pub fn analyze(t: &Table) -> Vec<ColInfo> {
         .map(|c| analyze_col(t.rows.iter().map(|r| r[c].as_str())))
         .collect();
     add_extremes(t, &mut info);
+    add_cadence(t, &mut info);
     // A wide table has dozens of statistics lines. Keep each short: the quantiles can be had
     // for any column with `dtk stats`.
     if t.headers.len() > WIDE_COLS {
@@ -839,6 +840,164 @@ fn add_extremes(t: &Table, info: &mut [ColInfo]) {
         if !notes.is_empty() {
             put_note(&mut info[c].summary, &notes.join(" | "));
         }
+    }
+}
+
+/// Days from 1970-01-01 to a calendar date (Howard Hinnant's algorithm).
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// Seconds since 1970-01-01 for `2026-01-02`, `2026-01-02 03:04`, `2026-01-02T03:04:05.5Z` or
+/// with a `+02:00` offset.
+fn iso_seconds(s: &str) -> Option<f64> {
+    let s = s.trim();
+    if !s.is_ascii() || s.len() < 10 {
+        return None;
+    }
+    let b = s.as_bytes();
+    let num = |from: usize, n: usize| -> Option<i64> {
+        let t = s.get(from..from + n)?;
+        t.bytes()
+            .all(|c| c.is_ascii_digit())
+            .then(|| t.parse().ok())
+            .flatten()
+    };
+    if b[4] != b'-' || b[7] != b'-' {
+        return None;
+    }
+    let (y, mo, d) = (num(0, 4)?, num(5, 2)?, num(8, 2)?);
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) {
+        return None;
+    }
+    let mut secs = days_from_civil(y, mo, d) as f64 * 86_400.0;
+    if s.len() == 10 {
+        return Some(secs);
+    }
+    if !matches!(b[10], b'T' | b' ') || b.get(13) != Some(&b':') {
+        return None;
+    }
+    secs += (num(11, 2)? * 3600 + num(14, 2)? * 60) as f64;
+    let mut i = 16;
+    if b.get(i) == Some(&b':') {
+        secs += num(i + 1, 2)? as f64;
+        i += 3;
+        if b.get(i) == Some(&b'.') {
+            let digits = s[i + 1..].bytes().take_while(u8::is_ascii_digit).count();
+            let frac: f64 = format!("0.{}", &s[i + 1..i + 1 + digits]).parse().ok()?;
+            secs += frac;
+            i += 1 + digits;
+        }
+    }
+    match b.get(i) {
+        None | Some(b'Z') => Some(secs),
+        Some(&sign @ (b'+' | b'-')) => {
+            let h = num(i + 1, 2)?;
+            let m = if b.get(i + 3) == Some(&b':') {
+                num(i + 4, 2)?
+            } else {
+                num(i + 3, 2).unwrap_or(0)
+            };
+            let off = (h * 3600 + m * 60) as f64;
+            Some(if sign == b'+' { secs - off } else { secs + off })
+        }
+        _ => None,
+    }
+}
+
+/// A length of time for a person, in at most two units: `37min`, `1h30min`, `2d3h`, `0.5s`.
+fn duration(secs: f64) -> String {
+    let secs = secs.abs();
+    if secs < 1.0 {
+        return format!(
+            "{}s",
+            format!("{secs:.3}")
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+        );
+    }
+    let n = secs.round() as u64;
+    let parts: Vec<String> = [
+        (n / 86_400, "d"),
+        (n % 86_400 / 3600, "h"),
+        (n % 3600 / 60, "min"),
+        (n % 60, "s"),
+    ]
+    .into_iter()
+    .filter(|(v, _)| *v > 0)
+    .take(2)
+    .map(|(v, u)| format!("{v}{u}"))
+    .collect();
+    parts.concat()
+}
+
+/// For a time column with enough rows: are the rows in time order, are they evenly spaced, and
+/// where is the longest gap. A forecast or a monitor depends on all three.
+fn add_cadence(t: &Table, info: &mut [ColInfo]) {
+    for c in 0..t.headers.len() {
+        if info[c].kind != Kind::Time {
+            continue;
+        }
+        let times: Vec<(usize, f64)> = t
+            .rows
+            .iter()
+            .enumerate()
+            .filter_map(|(r, row)| iso_seconds(&row[c]).map(|s| (r, s)))
+            .collect();
+        if times.len() < 20 || times.len() * 10 < t.rows.len() * 9 {
+            continue;
+        }
+        let deltas: Vec<f64> = times.windows(2).map(|w| w[1].1 - w[0].1).collect();
+        let (up, down) = (
+            deltas.iter().all(|d| *d >= 0.0),
+            deltas.iter().all(|d| *d <= 0.0),
+        );
+        let order = match (up, down) {
+            (true, false) => "sorted oldest first",
+            (false, true) => "sorted newest first",
+            (true, true) => continue, // all the same time
+            _ => {
+                put_note(&mut info[c].summary, "not in time order");
+                continue;
+            }
+        };
+        let mut steps: Vec<f64> = deltas
+            .iter()
+            .map(|d| d.abs())
+            .filter(|d| *d > 0.0)
+            .collect();
+        if steps.is_empty() {
+            continue;
+        }
+        steps.sort_by(|a, b| a.total_cmp(b));
+        let median = steps[steps.len() / 2];
+        let even = steps
+            .iter()
+            .filter(|d| (**d - median).abs() <= 1e-6 * median.max(1.0))
+            .count();
+        let mut note = if even * 10 >= steps.len() * 9 {
+            format!("{order}, every {}", duration(median))
+        } else {
+            format!("{order}, typical step {}", duration(median))
+        };
+        let (gap_at, gap) = deltas
+            .iter()
+            .enumerate()
+            .map(|(i, d)| (i, d.abs()))
+            .fold((0, 0.0), |a, b| if b.1 > a.1 { b } else { a });
+        if gap > 3.0 * median && gap >= 2.0 {
+            note.push_str(&format!(
+                ", longest gap {} after row {}",
+                duration(gap),
+                times[gap_at].0
+            ));
+        }
+        put_note(&mut info[c].summary, &note);
     }
 }
 
@@ -1076,6 +1235,78 @@ fn data_ref(ctx: &Ctx) -> String {
         .map_or_else(|| "<data file>".to_string(), file_ref)
 }
 
+/// Pairs of numeric columns that move together (|Pearson r| of 0.9 or more), strongest first.
+/// Redundant columns are worth knowing about before anyone fits a model to them. Identifier
+/// columns are left out, because a column that rises with the row number correlates with
+/// anything that drifts. A big table is sampled at an even stride.
+fn correlation_note(t: &Table, info: &[ColInfo]) -> Option<String> {
+    const MAX_COLS: usize = 12;
+    const MAX_ROWS: usize = 100_000;
+    let id = id_column(t, info);
+    let stride = t.rows.len().div_ceil(MAX_ROWS).max(1);
+    let mut cols: Vec<(usize, Vec<Option<f64>>)> = Vec::new();
+    for c in 0..t.headers.len() {
+        if cols.len() == MAX_COLS {
+            break;
+        }
+        if !matches!(info[c].kind, Kind::Int | Kind::Float) || info[c].few_values || Some(c) == id {
+            continue;
+        }
+        let all = numbers_of(t, c);
+        if identifier_like(t, info, c, &all) {
+            continue;
+        }
+        let sampled: Vec<Option<f64>> = (0..t.rows.len())
+            .step_by(stride)
+            .map(|r| parse_number(&t.rows[r][c]).map(|(f, _)| f))
+            .collect();
+        cols.push((c, sampled));
+    }
+    let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
+    for (i, (ca, a)) in cols.iter().enumerate() {
+        for (cb, b) in &cols[i + 1..] {
+            let (mut n, mut sa, mut sb, mut saa, mut sbb, mut sab) =
+                (0f64, 0f64, 0f64, 0f64, 0f64, 0f64);
+            for (x, y) in a.iter().zip(b) {
+                if let (Some(x), Some(y)) = (x, y) {
+                    n += 1.0;
+                    sa += x;
+                    sb += y;
+                    saa += x * x;
+                    sbb += y * y;
+                    sab += x * y;
+                }
+            }
+            let (va, vb) = (saa - sa * sa / n, sbb - sb * sb / n);
+            if n < 20.0 || va <= 0.0 || vb <= 0.0 {
+                continue;
+            }
+            let r = (sab - sa * sb / n) / (va * vb).sqrt();
+            if r.abs() >= 0.9 {
+                pairs.push((r, *ca, *cb));
+            }
+        }
+    }
+    if pairs.is_empty() {
+        return None;
+    }
+    pairs.sort_by(|a, b| b.0.abs().total_cmp(&a.0.abs()));
+    let shown: Vec<String> = pairs
+        .iter()
+        .take(3)
+        .map(|(r, a, b)| format!("{}~{} {:.2}", t.headers[*a], t.headers[*b], r))
+        .collect();
+    let more = if pairs.len() > 3 {
+        format!(", +{} more pairs", pairs.len() - 3)
+    } else {
+        String::new()
+    };
+    Some(format!(
+        "correlated (Pearson r, |r| >= 0.9): {}{more}",
+        shown.join(", ")
+    ))
+}
+
 /// Rows that repeat an earlier row, which most data sets do not mean to have.
 fn duplicate_note(t: &Table) -> Option<String> {
     let mut first: HashMap<&Vec<String>, usize> = HashMap::with_capacity(t.rows.len());
@@ -1141,6 +1372,10 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
         ));
     }
     if let Some(note) = duplicate_note(t) {
+        out.push_str(&note);
+        out.push('\n');
+    }
+    if let Some(note) = correlation_note(t, info) {
         out.push_str(&note);
         out.push('\n');
     }
@@ -1319,6 +1554,13 @@ fn drill(t: &Table, info: &[ColInfo], ctx: &Ctx) -> String {
     if let Some(m) = measure {
         cmds.push(format!("{dtk} top {f} {} 10", word(&t.headers[m])));
     }
+    if let (Some(l), Some(m)) = (label, measure) {
+        cmds.push(format!(
+            "{dtk} group {f} {} {}",
+            word(&t.headers[l]),
+            word(&t.headers[m])
+        ));
+    }
     if let Some((l, top)) = label.and_then(|l| Some((l, info[l].stats.top.first()?))) {
         cmds.push(format!(
             "{dtk} where {f} {} = {}",
@@ -1366,7 +1608,7 @@ mod tests {
         assert!(r.text.contains("id: 1000..1499"));
         assert!(r.text.contains("region: 3 distinct: "));
         assert!(
-            r.text.contains("drill: dtk count /tmp/x.csv name  |  dtk top /tmp/x.csv amount 10  |  dtk where /tmp/x.csv name = user_0"),
+            r.text.contains("drill: dtk count /tmp/x.csv name  |  dtk top /tmp/x.csv amount 10  |  dtk group /tmp/x.csv name amount  |  dtk where /tmp/x.csv name = user_0"),
             "{}",
             r.text
         );
@@ -1715,6 +1957,169 @@ mod tests {
         let c = &analyze(&t)[1];
         assert_eq!(c.kind, Kind::Time, "{}", c.summary);
         assert_eq!(c.stats.placeholders, 5);
+    }
+
+    #[test]
+    fn reads_iso_times_to_seconds() {
+        assert_eq!(iso_seconds("1970-01-01"), Some(0.0));
+        assert_eq!(iso_seconds("1970-01-02 00:00"), Some(86_400.0));
+        assert_eq!(iso_seconds("2000-03-01T00:00:00Z"), Some(951_868_800.0));
+        assert_eq!(
+            iso_seconds("2026-01-01T00:00:00.250Z"),
+            Some(1_767_225_600.25)
+        );
+        assert_eq!(
+            iso_seconds("2026-01-01T02:00:00+02:00"),
+            Some(1_767_225_600.0)
+        );
+        assert_eq!(
+            iso_seconds("2026-01-01T00:00:00-0130"),
+            Some(1_767_225_600.0 + 5400.0)
+        );
+        for bad in [
+            "",
+            "2026-13-01",
+            "2026/01/01",
+            "2026-01-01X10:00",
+            "20260101T0000",
+            "2026-01-01 10",
+            "héllo wörld",
+            "2026-01-01T10:00:00+",
+        ] {
+            assert_eq!(iso_seconds(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn writes_durations_for_people() {
+        for (secs, want) in [
+            (0.5, "0.5s"),
+            (45.0, "45s"),
+            (90.0, "1min30s"),
+            (37.0 * 60.0, "37min"),
+            (5400.0, "1h30min"),
+            (86_400.0, "1d"),
+            (2.0 * 86_400.0 + 3.0 * 3600.0 + 240.0, "2d3h"),
+            (7.0 * 86_400.0, "7d"),
+        ] {
+            assert_eq!(duration(secs), want, "{secs}");
+        }
+    }
+
+    fn timed(f: &dyn Fn(usize) -> String) -> Table {
+        let mut s = String::from("id,ts,v\n");
+        for i in 0..60 {
+            s.push_str(&format!("{i},{},{}\n", f(i), i * 3 % 17));
+        }
+        detect(&s).unwrap()
+    }
+
+    #[test]
+    fn a_time_column_says_whether_it_is_sorted_and_evenly_spaced() {
+        let at = |i: usize| 1_767_225_600 + i as i64 * 37 * 60;
+        let iso = |secs: i64| {
+            let (d, r) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+            // civil date from days (inverse of days_from_civil, enough for 2026)
+            let z = d + 719_468;
+            let era = z.div_euclid(146_097);
+            let doe = z - era * 146_097;
+            let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+            let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+            let mp = (5 * doy + 2) / 153;
+            let day = doy - (153 * mp + 2) / 5 + 1;
+            let m = if mp < 10 { mp + 3 } else { mp - 9 };
+            let y = yoe + era * 400 + i64::from(m <= 2);
+            format!(
+                "{y:04}-{m:02}-{day:02} {:02}:{:02}:{:02}",
+                r / 3600,
+                r % 3600 / 60,
+                r % 60
+            )
+        };
+        let t = timed(&|i| iso(at(i)));
+        let c = &analyze(&t)[1];
+        assert!(
+            c.summary.contains("sorted oldest first, every 37min"),
+            "{}",
+            c.summary
+        );
+        assert!(!c.summary.contains("longest gap"), "{}", c.summary);
+        // newest first
+        let t = timed(&|i| iso(at(59 - i)));
+        assert!(analyze(&t)[1]
+            .summary
+            .contains("sorted newest first, every 37min"));
+        // a two-day hole after row 29
+        let t = timed(&|i| iso(at(i) + if i >= 30 { 2 * 86_400 } else { 0 }));
+        let c = &analyze(&t)[1];
+        assert!(
+            c.summary.contains("longest gap 2d37min after row 29")
+                || c.summary.contains("longest gap 2d1h after row 29"),
+            "{}",
+            c.summary
+        );
+        // uneven but in order
+        let t = timed(&|i| iso(at(0) + (i * i) as i64 * 60));
+        assert!(
+            analyze(&t)[1]
+                .summary
+                .contains("sorted oldest first, typical step"),
+            "{}",
+            analyze(&t)[1].summary
+        );
+        // out of order
+        let t = timed(&|i| iso(at((i * 7) % 60)));
+        assert!(analyze(&t)[1].summary.contains("not in time order"));
+        // dates only
+        let t = timed(&|i| format!("2026-{:02}-{:02}", i / 28 + 1, i % 28 + 1));
+        assert!(
+            analyze(&t)[1].summary.contains("every 1d"),
+            "{}",
+            analyze(&t)[1].summary
+        );
+    }
+
+    #[test]
+    fn strongly_correlated_columns_are_named() {
+        let mut s = String::from("row,x,y,z,w,v\n");
+        for i in 0..200usize {
+            // x rises and falls; y = 2x + a little noise; w = -x; z and v are unrelated
+            let x = ((i * 37) % 101) as f64;
+            let y = 2.0 * x + (i % 3) as f64;
+            let z = ((i * 53) % 97) as f64;
+            let v = ((i * 29 + 7) % 89) as f64;
+            s.push_str(&format!("{},{x},{y},{z},{},{v}\n", i % 7, -x));
+        }
+        let t = detect(&s).unwrap();
+        let info = analyze(&t);
+        let note = correlation_note(&t, &info).expect("note");
+        assert!(note.contains("x~y 1.00"), "{note}");
+        assert!(note.contains("x~w -1.00"), "{note}");
+        assert!(!note.contains('z') && !note.contains('v'), "{note}");
+        // nothing correlated: no note
+        let mut s = String::from("a,b,c\n");
+        for i in 0..200usize {
+            s.push_str(&format!(
+                "{},{},{}\n",
+                (i * 37) % 101,
+                (i * 53) % 97,
+                (i * 29 + 7) % 89
+            ));
+        }
+        let t = detect(&s).unwrap();
+        assert!(correlation_note(&t, &analyze(&t)).is_none());
+        // an identifier that rises with the row is not "correlated" with a drifting column
+        let mut s = String::from("order_id,drift,other\n");
+        for i in 0..200usize {
+            s.push_str(&format!(
+                "{},{},{}\n",
+                1000 + i,
+                i * 3 + (i * 7) % 5,
+                (i * 53) % 97
+            ));
+        }
+        let t = detect(&s).unwrap();
+        assert!(correlation_note(&t, &analyze(&t)).is_none());
     }
 
     #[test]

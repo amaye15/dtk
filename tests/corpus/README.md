@@ -22,6 +22,7 @@ How the files were made (tool and version on 2026-11-02):
   (`gh api repos/amaye15/dtk/actions/jobs/<id>/logs`), one with a failed step
 - `pandas_csv_index.csv`, `python_repr_records.txt`, `pandas_split.json`, `numpy_matrix.txt`: pandas 3.0 `to_csv()` (with the index column), `str(df.to_dict("records"))`, `to_json(orient="split")`, and numpy `array2string`; `sqlite_list.txt` is `sqlite3 -list`
 - `psql_expanded.txt`, `mysql_vertical.txt`: synthetic, in the layout of `psql -x` and MySQL `\G`; `sqlite_line.txt` is `sqlite3 -line`; `pandas_table.html` is `df.to_html()`
+- `sensor_readings.csv`: synthetic time series, one row every 5 minutes with a three-hour outage after row 149; `temp_c` and `temp_f` are the same measurement
 - `messy_orders.csv`: synthetic orders with what real data has: `N/A`, `-` and `?` in a number column, `$1,234.56`, `45.3%` and `1,234` formatted numbers, `MM/DD/YYYY` dates, two outliers and three repeated rows
 - `wide_features.csv`: 60 numeric feature columns, as in a machine-learning data set
 - `ps_aux.txt`, `ps_ef.txt`, `df_h.txt`: synthetic, in the layout of macOS `ps aux`, `ps -ef` and `df -h` (a free-text

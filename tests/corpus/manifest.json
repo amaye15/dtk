@@ -832,6 +832,21 @@
         "qty",
         "ok"
       ]
+    },
+    {
+      "file": "positive/sensor_readings.csv",
+      "format": "csv",
+      "rows": 300,
+      "cols": 7,
+      "headers": [
+        "ts",
+        "sensor",
+        "temp_c",
+        "temp_f",
+        "humidity",
+        "pressure",
+        "status"
+      ]
     }
   ],
   "negative": [

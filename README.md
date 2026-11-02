@@ -27,10 +27,10 @@ The cause is in view: the package was removed, and `/usr/bin/dtk` was still ther
 
 ## Does it hurt the answers?
 
-`scripts/ab-test.sh` asks real Claude Code fifteen questions about data files, with and without dtk. They include a column with `N/A` in it, prices written as `$1,234`, a filter on two columns, a table with 60 feature columns, a Python list of records and a pandas JSON file. The true answers come from `jaq`, `qsv`, `awk` and `grep`, not from dtk.
+`scripts/ab-test.sh` asks real Claude Code seventeen questions about data files, with and without dtk. They include a column with `N/A` in it, prices written as `$1,234`, a filter on two columns, a table with 60 feature columns, a Python list of records, a pandas JSON file, the mean per group, and the sampling interval of a sensor log. The true answers come from `jaq`, `qsv`, `awk` and `grep`, not from dtk.
 
-- **Answers: no loss.** Sonnet: 32 of 32 right with dtk, 32 of 32 without. Haiku: 45 of 45 and 45 of 45. (2 to 3 runs per question and model.)
-- **Tokens from tool results fell 69% to 89% on eleven of the fifteen questions** (300-row CSV 4,549 → 498, `ps aux` 2,072 → 623, a column with `N/A` 5,456 → 556). Turns fell from 6 to 4 on six questions.
+- **Answers: no loss.** Sonnet: 38 of 38 right with dtk, 38 of 38 without. Haiku: 51 of 51 and 51 of 51. (2 to 3 runs per question and model.)
+- **Tokens from tool results fell 69% to 89% on thirteen of the seventeen questions** (300-row CSV 4,549 → 498, `ps aux` 2,072 → 623, a column with `N/A` 5,456 → 556). Turns fell from 6 to 4 on six questions.
 - **Where the saving is small,** Claude Code had already cut the output to a preview of about 550 tokens (a big CI log, a wide table, a big JSON file). The count stays about the same, and the model gets a summary of every row in place of the preview.
 
 ## Quick start
@@ -85,7 +85,8 @@ Up to 60 rows become CSV and nothing is dropped. A bigger table gets:
 - shape, and every column name with its type (a run such as `feat_0..feat_119:float` is one range)
 - per column: min, max, mean, median and p95; value counts; time range; nulls
 - numbers and dates as people write them: `$1,234.56`, `45.3%` and `1,234` are numbers, `03/21/2025` is a date when the data settles the order, and `N/A`, `-` or `?` in a column of numbers are counted and set aside, not mistaken for words
-- data-quality notes: outliers beyond 3×IQR, and rows that repeat an earlier row
+- data-quality notes: outliers beyond 3×IQR, rows that repeat an earlier row, and columns that move together (|r| of 0.9 or more)
+- for a time column: whether the rows are in time order, the step between them (`every 5min`), and the longest gap (`3h5min after row 148`)
 - **the row that holds each numeric column's largest and smallest value** (`max at order_id=100243`)
 - the first and last rows, and message shapes with counts (`request # took #ms (2000)`)
 - the rows where `level` says warn or error. In a text log, each error comes with the 4 lines before it, and repeated errors are grouped. A log with no level field gets a `flag` column that dtk derives from words such as `error:` and `FAILED`, and the summary says so.
@@ -119,7 +120,7 @@ All of this is tested against the real rtk binary (`tests/rtk_real.rs`, `tests/r
 | `dtk doctor`, `dtk verify` | Check the setup. `verify` also runs built-in checks of every format. They exit 1 on a warning. |
 | `dtk explain FILE --command CMD` | Say whether dtk would summarize this output, and why. |
 | `dtk discover [--since DAYS]` | Scan your Claude Code history for output dtk would have replaced. Changes nothing. |
-| `dtk rows`, `top`, `count`, `where`, `stats`, `get` | Read more of the data behind a summary: rows, the largest values, value counts, a filter, column statistics, a part of a JSON document. `dtk rows --help` has the syntax. |
+| `dtk rows`, `top`, `count`, `group`, `where`, `stats`, `get` | Read more of the data behind a summary: rows, the largest values, value counts, mean/sum/min/max per group, a filter, column statistics, a part of a JSON document. `dtk rows --help` has the syntax. |
 | `dtk view FILE`, `dtk gain [--json]`, `dtk config [--create]` | Show a summary, the decision log totals (with rtk's), or the settings. |
 
 `DTK_DISABLED=1` passes every output through. `DTK_RAW=1 cat data.csv` passes one command through.
@@ -148,7 +149,7 @@ min_outline_tokens = 4000  # smallest JSON document worth an outline
 
 ## How it is checked
 
-180 tests, plus the A/B script. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (62 files detected as expected, 30 rejected). A test that lists the facts a summary must keep and checks them (1148 of 1148 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
+185 tests, plus the A/B script. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (63 files detected as expected, 30 rejected). A test that lists the facts a summary must keep and checks them (1204 of 1204 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
 
 ## Limits
 
