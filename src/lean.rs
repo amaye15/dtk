@@ -443,10 +443,16 @@ pub fn to_csv(t: &Table) -> String {
 }
 
 fn shell_quote(p: &str) -> String {
-    if p.chars()
-        .all(|c| c.is_ascii_alphanumeric() || "/._-~".contains(c))
-    {
+    // Windows accepts forward slashes everywhere, and a backslash path would need quoting.
+    let p = if cfg!(windows) {
+        p.replace('\\', "/")
+    } else {
         p.to_string()
+    };
+    if p.chars()
+        .all(|c| c.is_ascii_alphanumeric() || "/._-~:".contains(c))
+    {
+        p
     } else {
         format!("'{}'", p.replace('\'', "'\\''"))
     }

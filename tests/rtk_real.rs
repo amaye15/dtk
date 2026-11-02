@@ -4,6 +4,10 @@
 //! These tests exist because rtk re-writes `~/.claude/settings.json` on `rtk init -g`, and dtk
 //! must survive every order of install, re-install and uninstall.
 
+// rtk finds the Windows profile through the operating system, not through USERPROFILE, so a
+// throwaway home cannot redirect it. tests/rtk_windows.rs covers Windows instead.
+#![cfg(not(windows))]
+
 use serde_json::{json, Value};
 use std::fs;
 use std::io::Write;
@@ -45,6 +49,9 @@ fn dtk(home: &Path, args: &[&str]) -> String {
         .env("XDG_DATA_HOME", home.join(".local/share"))
         .env("XDG_CACHE_HOME", home.join(".cache"))
         .env("XDG_STATE_HOME", home.join(".local/state"))
+        .env("USERPROFILE", home)
+        .env("APPDATA", home.join("AppData/Roaming"))
+        .env("LOCALAPPDATA", home.join("AppData/Local"))
         .stdin(Stdio::null())
         .output()
         .unwrap();
@@ -63,6 +70,9 @@ fn rtk(home: &Path, args: &[&str]) -> String {
         .env("XDG_DATA_HOME", home.join(".local/share"))
         .env("XDG_CACHE_HOME", home.join(".cache"))
         .env("XDG_STATE_HOME", home.join(".local/state"))
+        .env("USERPROFILE", home)
+        .env("APPDATA", home.join("AppData/Roaming"))
+        .env("LOCALAPPDATA", home.join("AppData/Local"))
         .stdin(Stdio::null())
         .output()
         .unwrap();
@@ -99,6 +109,7 @@ fn enable_posthook(home: &Path) {
     for dir in [
         home.join("Library/Application Support/rtk"),
         home.join(".config/rtk"),
+        home.join("AppData/Roaming/rtk"),
     ] {
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("pipeline.toml"), text).unwrap();
@@ -106,11 +117,11 @@ fn enable_posthook(home: &Path) {
 }
 
 fn is_chain(c: &str) -> bool {
-    c.ends_with("dtk hook claude --then rtk hook claude")
+    c.contains("dtk") && c.ends_with(" hook claude --then rtk hook claude")
 }
 
 fn is_placeholder(c: &str) -> bool {
-    c.contains("/dtk/shim/rtk") && c.ends_with("hook claude")
+    c.replace('\\', "/").contains("/dtk/shim/rtk") && c.ends_with("hook claude")
 }
 
 #[test]
@@ -266,6 +277,9 @@ fn run_chain(home: &Path, ev: &str) -> String {
         .env("XDG_DATA_HOME", home.join(".local/share"))
         .env("XDG_CACHE_HOME", home.join(".cache"))
         .env("XDG_STATE_HOME", home.join(".local/state"))
+        .env("USERPROFILE", home)
+        .env("APPDATA", home.join("AppData/Roaming"))
+        .env("LOCALAPPDATA", home.join("AppData/Local"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

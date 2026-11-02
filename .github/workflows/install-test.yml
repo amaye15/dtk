@@ -1,0 +1,217 @@
+name: install test
+
+# Installs the newest published release of dtk by every route the README lists, on the systems
+# that route is for, and runs `dtk verify` on the result. It tests what users get, not what is in
+# this checkout, except for the two installer scripts (those run from the checkout).
+#
+# Homebrew and Scoop follow a release within 6 hours, so a run right after a release can fail
+# for those two routes only. The daily run catches up.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag to install (default: the newest release), for example v0.4.0"
+        required: false
+  schedule:
+    - cron: "23 5 * * *"
+  push:
+    branches: [main]
+    paths: [install.sh, install.ps1, .github/workflows/install-test.yml]
+
+env:
+  DTK_VERSION: ${{ inputs.version }}
+
+jobs:
+  install-sh:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run install.sh
+        run: DTK_INSTALL_DIR="$RUNNER_TEMP/bin" sh ./install.sh
+      - name: Check the result
+        run: |
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          dtk --version
+          dtk verify | grep "built-in checks passed"
+      - name: A release that does not exist must stop the install
+        run: |
+          # Point the installer at a tag that does not exist: it must fail, not install something.
+          if DTK_VERSION=v0.0.0 DTK_INSTALL_DIR="$RUNNER_TEMP/bad" sh ./install.sh; then
+            echo "install.sh installed a release that does not exist"; exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/bad/dtk"
+
+  install-ps1:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run install.ps1
+        shell: pwsh
+        run: |
+          $env:DTK_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'bin'
+          ./install.ps1
+      - name: Check the result
+        shell: pwsh
+        run: |
+          $dtk = Join-Path $env:RUNNER_TEMP 'bin\dtk.exe'
+          & $dtk --version
+          $out = & $dtk verify | Out-String
+          Write-Host $out
+          if ($out -notmatch 'built-in checks passed') { exit 1 }
+
+  cargo:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo install dtk
+        shell: bash
+        run: |
+          if [ -n "$DTK_VERSION" ]; then cargo install dtk --locked --version "${DTK_VERSION#v}"; else cargo install dtk --locked; fi
+      - name: Check the result
+        shell: bash
+        run: |
+          dtk --version
+          dtk verify | grep "built-in checks passed"
+
+  homebrew:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Set up brew on the path (Linux)
+        if: runner.os == 'Linux'
+        run: echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
+      - name: brew install
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+        run: |
+          brew tap amaye15/tap
+          brew trust amaye15/tap || true
+          brew install amaye15/tap/dtk
+          brew test amaye15/tap/dtk
+      - name: Check the result
+        run: |
+          dtk --version
+          dtk verify | grep "built-in checks passed"
+      - name: brew uninstall
+        run: |
+          brew uninstall dtk
+          ! command -v dtk || test ! -e "$(command -v dtk)"
+
+  scoop:
+    runs-on: windows-latest
+    steps:
+      - name: Install Scoop, add the bucket, install dtk
+        shell: pwsh
+        run: |
+          iex "& {$(irm get.scoop.sh)} -RunAsAdmin"
+          $shims = Join-Path $env:USERPROFILE 'scoop\shims'
+          "$shims" | Out-File -Append -Encoding ascii $env:GITHUB_PATH
+          & "$shims\scoop.ps1" bucket add amaye15 https://github.com/amaye15/scoop-bucket
+          & "$shims\scoop.ps1" install dtk
+      - name: Check the result
+        shell: pwsh
+        run: |
+          dtk --version
+          $out = dtk verify | Out-String
+          Write-Host $out
+          if ($out -notmatch 'built-in checks passed') { exit 1 }
+      - name: scoop uninstall
+        shell: pwsh
+        run: |
+          scoop uninstall dtk
+          if (Get-Command dtk -ErrorAction SilentlyContinue) { exit 1 }
+
+  # The .deb and the .rpm come from the release, not from the build job.
+  deb:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, file: dtk_amd64.deb }
+          - { os: ubuntu-24.04-arm, file: dtk_arm64.deb }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download and install
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${DTK_VERSION:-$(gh release view -R amaye15/dtk --json tagName -q .tagName)}"
+          gh release download "$tag" -R amaye15/dtk -p "${{ matrix.file }}"
+          sudo dpkg -i "${{ matrix.file }}"
+      - name: Check the result
+        run: |
+          dtk --version
+          dtk verify | grep "built-in checks passed"
+      - name: Remove
+        run: |
+          sudo dpkg -r dtk
+          test ! -e /usr/bin/dtk
+
+  rpm:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, file: dtk.x86_64.rpm }
+          - { os: ubuntu-24.04-arm, file: dtk.aarch64.rpm }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download the .rpm
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${DTK_VERSION:-$(gh release view -R amaye15/dtk --json tagName -q .tagName)}"
+          gh release download "$tag" -R amaye15/dtk -p "${{ matrix.file }}"
+      - name: Install and check it in Fedora
+        run: |
+          docker run --rm -v "$PWD:/pkg" fedora:latest bash -ec '
+            dnf install -y /pkg/${{ matrix.file }}
+            dtk --version
+            dtk verify | grep "built-in checks passed"
+            dnf remove -y dtk
+            test ! -e /usr/bin/dtk
+          '
+
+  # The manifests are checked by winget itself, then installed from the local files.
+  winget:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate the manifests for the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/gen-winget.sh ${DTK_VERSION}
+      - name: Validate and install from the local manifest
+        shell: pwsh
+        run: |
+          if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Install-PackageProvider -Name NuGet -Force | Out-Null
+            Install-Module Microsoft.WinGet.Client -Force -Repository PSGallery | Out-Null
+            Repair-WinGetPackageManager -AllUsers
+          }
+          winget --version
+          $dir = (Get-ChildItem packaging/winget/manifests/a/amaye15/dtk | Select-Object -First 1).FullName
+          winget validate --manifest $dir
+          winget settings --enable LocalManifestFiles
+          winget install --manifest $dir --accept-package-agreements --accept-source-agreements --disable-interactivity
+      - name: Check the result
+        shell: pwsh
+        run: |
+          $env:PATH = [Environment]::GetEnvironmentVariable('PATH','User') + ';' + [Environment]::GetEnvironmentVariable('PATH','Machine')
+          dtk --version
+          $out = dtk verify | Out-String
+          Write-Host $out
+          if ($out -notmatch 'built-in checks passed') { exit 1 }

@@ -25,8 +25,12 @@ const KEEP_SECS: u64 = 14 * 24 * 3600;
 /// Longest the chained command may run.
 const CHAIN_TIMEOUT_MS: u64 = 10_000;
 
+/// The home folder: `HOME`, or `USERPROFILE` on Windows.
 pub fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+    std::env::var_os("HOME")
+        .filter(|v| !v.is_empty())
+        .or_else(|| std::env::var_os("USERPROFILE").filter(|v| !v.is_empty()))
+        .map(PathBuf::from)
 }
 
 pub fn data_dir() -> Option<PathBuf> {
@@ -195,7 +199,10 @@ fn short_path(target: &Path, ext: &str, write: bool) -> String {
         link.display().to_string()
     }
     #[cfg(not(unix))]
-    long
+    {
+        let _ = ext; // no symlinks here: the long path is used
+        long
+    }
 }
 
 /// Renders the lean view and, when `write` is set, saves the full data next to it.

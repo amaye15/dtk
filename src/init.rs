@@ -24,7 +24,6 @@ use std::process::{Command, Stdio};
 const DEFAULT_THEN: &str = "rtk hook claude";
 /// Tools dtk handles itself: Bash output and whole-file reads of data files.
 const OWN_MATCHER: &str = "Bash|Read";
-const SHIM_BODY: &str = "#!/bin/sh\n# dtk placeholder. It lets `rtk init` see its PostToolUse hook as installed.\n# The real rtk runs inside dtk's hook chain. This script does nothing.\nexit 0\n";
 
 pub fn settings_path() -> Option<PathBuf> {
     Some(home()?.join(".claude/settings.json"))
@@ -35,7 +34,24 @@ fn state_path() -> Option<PathBuf> {
 }
 
 pub fn shim_path() -> Option<PathBuf> {
-    Some(data_dir()?.join("shim").join("rtk"))
+    let name = if cfg!(windows) { "rtk.exe" } else { "rtk" };
+    Some(data_dir()?.join("shim").join(name))
+}
+
+/// A path as it goes into a hook command: forward slashes (a bash-run hook would eat
+/// backslashes, and Windows accepts forward slashes), and quoted when it has a space.
+pub fn command_path(p: &std::path::Path) -> String {
+    let s = p.display().to_string();
+    let s = if cfg!(windows) {
+        s.replace('\\', "/")
+    } else {
+        s
+    };
+    if s.contains(char::is_whitespace) || s.contains('"') {
+        format!("\"{}\"", s.replace('"', "\\\""))
+    } else {
+        s
+    }
 }
 
 fn commands(entry: &Value) -> Vec<String> {
@@ -52,7 +68,7 @@ fn commands(entry: &Value) -> Vec<String> {
 
 /// The silent placeholder command.
 pub fn is_placeholder(cmd: &str) -> bool {
-    let c = cmd.replace('"', "");
+    let c = cmd.replace('"', "").replace('\\', "/");
     c.contains("/dtk/shim/rtk") && c.trim_end().ends_with("hook claude")
 }
 
@@ -84,24 +100,29 @@ pub fn rtk_on_path() -> bool {
         .unwrap_or(false)
 }
 
-/// Creates the placeholder script and returns its hook command.
+/// Creates the placeholder and returns its hook command.
+///
+/// The placeholder is a copy of dtk itself under the name `rtk`. When dtk is started under that
+/// name with `hook claude`, it does nothing and exits (see `main`). That works the same on every
+/// system, with no shell script, and rtk's own check only looks at the shape of the command.
 fn ensure_shim() -> Option<String> {
     let p = shim_path()?;
     create_private_dir(p.parent()?).ok()?;
-    if fs::read_to_string(&p).ok().as_deref() != Some(SHIM_BODY) {
-        fs::write(&p, SHIM_BODY).ok()?;
+    let exe = std::env::current_exe().ok()?;
+    let fresh = fs::metadata(&p)
+        .ok()
+        .zip(fs::metadata(&exe).ok())
+        .is_some_and(|(a, b)| a.len() == b.len() && a.modified().ok() >= b.modified().ok());
+    if !fresh {
+        let _ = fs::remove_file(&p);
+        fs::copy(&exe, &p).ok()?;
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).ok()?;
     }
-    let s = p.display().to_string();
-    Some(if s.contains(char::is_whitespace) || s.contains('"') {
-        format!("\"{}\" hook claude", s.replace('"', "\\\""))
-    } else {
-        format!("{s} hook claude")
-    })
+    Some(format!("{} hook claude", command_path(&p)))
 }
 
 /// Distinct tokens of the given matchers, in order. `*` or an empty matcher means every tool.
@@ -164,18 +185,37 @@ fn entry(matcher: &str, commands: &[String]) -> Value {
     })
 }
 
+/// How to remove the program, for the way it was installed (read from where the binary is).
+pub fn removal_hint(exe: &std::path::Path) -> String {
+    let p = exe.display().to_string().replace('\\', "/");
+    let lower = p.to_ascii_lowercase();
+    if lower.contains("/cellar/") || lower.contains("/homebrew/") || lower.contains("/linuxbrew/") {
+        "brew uninstall dtk".to_string()
+    } else if lower.contains("/.cargo/bin/") {
+        "cargo uninstall dtk".to_string()
+    } else if lower.contains("/scoop/") {
+        "scoop uninstall dtk".to_string()
+    } else if lower.contains("/winget/") || lower.contains("/windowsapps/") {
+        "winget uninstall amaye15.dtk".to_string()
+    } else if lower.starts_with("/usr/bin/") {
+        "sudo apt remove dtk   (Debian, Ubuntu)  or  sudo rpm -e dtk   (Fedora, RHEL)".to_string()
+    } else {
+        format!("delete the file {p}")
+    }
+}
+
 pub fn run(args: &[String]) -> i32 {
     let uninstall = args.iter().any(|a| a == "--uninstall");
     let no_rtk = args.iter().any(|a| a == "--no-rtk");
     if !args.iter().any(|a| a == "--global") && !uninstall {
-        eprintln!("usage: dtk init --global [--no-rtk] | dtk init --uninstall");
+        eprintln!("usage: dtk init --global [--no-rtk] | dtk init --uninstall [--purge]");
         return 2;
     }
     let Some(path) = settings_path() else {
         return 1;
     };
     let exe = match std::env::current_exe() {
-        Ok(p) => p.display().to_string(),
+        Ok(p) => command_path(&p),
         Err(e) => {
             eprintln!("dtk: cannot find my own path: {e}");
             return 1;
@@ -333,6 +373,18 @@ pub fn run(args: &[String]) -> i32 {
     }
     if uninstall {
         println!("dtk: hook removed from {}", path.display());
+        if args.iter().any(|a| a == "--purge") {
+            for dir in [data_dir(), config_dir()].into_iter().flatten() {
+                if dir.exists() && fs::remove_dir_all(&dir).is_ok() {
+                    println!("dtk: removed {}", dir.display());
+                }
+            }
+        } else {
+            println!("dtk: dtk's data and config are kept; add --purge to remove them too");
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            println!("dtk: to remove the program itself: {}", removal_hint(&exe));
+        }
     } else {
         println!(
             "dtk: hook registered in {} (backup: {})",
@@ -345,4 +397,70 @@ pub fn run(args: &[String]) -> i32 {
         println!("dtk: {n}");
     }
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn command_paths_are_quoted_only_when_needed() {
+        assert_eq!(
+            command_path(Path::new("/usr/local/bin/dtk")),
+            "/usr/local/bin/dtk"
+        );
+        assert_eq!(
+            command_path(Path::new("/Users/some one/bin/dtk")),
+            "\"/Users/some one/bin/dtk\""
+        );
+    }
+
+    #[test]
+    fn the_removal_hint_matches_how_dtk_was_installed() {
+        let h = |p: &str| removal_hint(Path::new(p));
+        assert_eq!(
+            h("/opt/homebrew/Cellar/dtk/0.4.0/bin/dtk"),
+            "brew uninstall dtk"
+        );
+        assert_eq!(h("/opt/homebrew/bin/dtk"), "brew uninstall dtk");
+        assert_eq!(
+            h("/home/linuxbrew/.linuxbrew/bin/dtk"),
+            "brew uninstall dtk"
+        );
+        assert_eq!(h("/Users/me/.cargo/bin/dtk"), "cargo uninstall dtk");
+        assert_eq!(
+            h("C:\\Users\\me\\scoop\\apps\\dtk\\current\\dtk.exe"),
+            "scoop uninstall dtk"
+        );
+        assert_eq!(
+            h("C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Links\\dtk.exe"),
+            "winget uninstall amaye15.dtk"
+        );
+        assert!(h("/usr/bin/dtk").contains("apt remove dtk"));
+        assert_eq!(
+            h("/Users/me/.local/bin/dtk"),
+            "delete the file /Users/me/.local/bin/dtk"
+        );
+    }
+
+    #[test]
+    fn the_placeholder_is_recognised_however_it_is_written() {
+        assert!(is_placeholder(
+            "/home/u/.local/share/dtk/shim/rtk hook claude"
+        ));
+        assert!(is_placeholder(
+            "\"/home/some one/.local/share/dtk/shim/rtk\" hook claude"
+        ));
+        assert!(is_placeholder(
+            "C:/Users/u/.local/share/dtk/shim/rtk.exe hook claude"
+        ));
+        assert!(is_placeholder(
+            "C:\\Users\\u\\.local\\share\\dtk\\shim\\rtk.exe hook claude"
+        ));
+        assert!(!is_placeholder("rtk hook claude"));
+        assert!(!is_placeholder(
+            "/home/u/.cargo/bin/dtk hook claude --then rtk hook claude"
+        ));
+    }
 }
