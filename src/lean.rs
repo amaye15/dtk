@@ -209,6 +209,26 @@ pub fn template(s: &str) -> String {
     out
 }
 
+/// Template counts over every value, for a column too varied to keep its distinct values.
+/// Empty when the column has more than `MAX_SHAPES` shapes.
+fn shapes_of_all<'a>(vals: impl Iterator<Item = &'a str>) -> Vec<(String, usize)> {
+    const MAX_SHAPES: usize = 2000;
+    let mut by: HashMap<String, usize> = HashMap::new();
+    for v in vals.filter(|v| !v.is_empty()) {
+        let t = template(v);
+        if let Some(c) = by.get_mut(&t) {
+            *c += 1;
+        } else if by.len() < MAX_SHAPES {
+            by.insert(t, 1);
+        } else {
+            return Vec::new();
+        }
+    }
+    let mut v: Vec<(String, usize)> = by.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    v
+}
+
 /// Row counts per template, most common first.
 fn template_counts(distinct: &HashMap<&str, usize>) -> Vec<(String, usize)> {
     let mut by: HashMap<String, usize> = HashMap::new();
@@ -229,7 +249,8 @@ fn top_pairs(distinct: &HashMap<&str, usize>, limit: usize) -> Vec<(String, usiz
         .collect()
 }
 
-fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
+fn analyze_col<'a>(vals: impl Iterator<Item = &'a str> + Clone) -> ColInfo {
+    let second_pass = vals.clone();
     let mut nonempty = 0usize;
     let mut nulls = 0usize;
     let (mut all_int, mut all_float, mut all_bool, mut all_time) = (true, true, true, true);
@@ -317,6 +338,10 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
     // Text with many distinct values (messages with ids and numbers in them): group by shape.
     let templates = if kind == Kind::Str && !overflow && distinct.len() > 12 {
         template_counts(&distinct)
+    } else if kind == Kind::Str && overflow {
+        // More than 5,000 different values, which is when the shapes matter most: count the
+        // shapes over every row. A column with thousands of shapes has none worth showing.
+        shapes_of_all(second_pass)
     } else {
         Vec::new()
     };
@@ -342,7 +367,26 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
         Kind::Bool => top_values(&distinct, 2),
         Kind::Str => {
             if overflow {
-                ">5000 distinct".to_string()
+                if templates.len() >= 2 && templates.len() <= 200 {
+                    let shown: Vec<String> = templates
+                        .iter()
+                        .take(6)
+                        .map(|(t, n)| format!("{} ({})", t.chars().take(60).collect::<String>(), n))
+                        .collect();
+                    let more = if templates.len() > 6 {
+                        format!(", +{} more", templates.len() - 6)
+                    } else {
+                        String::new()
+                    };
+                    format!(
+                        ">5000 distinct, {} templates: {}{}",
+                        templates.len(),
+                        shown.join("; "),
+                        more
+                    )
+                } else {
+                    ">5000 distinct".to_string()
+                }
             } else if distinct.len() <= 12 {
                 format!("{} distinct: {}", distinct.len(), top_values(&distinct, 12))
             } else if templates.len() >= 2 && templates.len() * 3 <= distinct.len() {
@@ -711,7 +755,34 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
             }
             let cap = p.important + 8;
             let mut keep = std::collections::BTreeSet::new();
-            for &i in &errors {
+            // Many errors are usually the same error again and again. Group them by the shape
+            // of their message, say how many of each, and show the first of each with its context.
+            let msg_col = t.headers.iter().position(|h| h == "msg");
+            let mut shape_lines = String::new();
+            let mut firsts: Vec<usize> = errors.clone();
+            if let (true, Some(mc)) = (errors.len() > 5, msg_col) {
+                let mut groups: Vec<(String, usize, usize)> = Vec::new(); // shape, count, first row
+                for &i in &errors {
+                    let first_line = t.rows[i][mc].lines().next().unwrap_or("");
+                    let shape: String = template(first_line).chars().take(110).collect();
+                    match groups.iter_mut().find(|g| g.0 == shape) {
+                        Some(g) => g.1 += 1,
+                        None => groups.push((shape, 1, i)),
+                    }
+                }
+                groups.sort_by(|a, b| b.1.cmp(&a.1).then(a.2.cmp(&b.2)));
+                shape_lines.push_str(&format!("error shapes ({}):\n", groups.len()));
+                for (shape, n, at) in groups.iter().take(5) {
+                    shape_lines
+                        .push_str(&format!("  {n}x {shape}   (first at {})\n", t.rows[*at][0]));
+                }
+                if groups.len() > 5 {
+                    shape_lines.push_str(&format!("  ... {} more shapes\n", groups.len() - 5));
+                }
+                firsts = groups.iter().take(5).map(|g| g.2).collect();
+                firsts.sort_unstable();
+            }
+            for &i in &firsts {
                 if keep.len() >= cap {
                     break;
                 }
@@ -725,13 +796,15 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
             }
             let shown: Vec<&Vec<String>> = keep.iter().map(|&i| &t.rows[i]).collect();
             out.push_str(&format!(
-                "{} error{}, {} warning{} ({}); showing {} lines, each error with the {} lines before it:\n{}\n",
+                "{} error{}, {} warning{} ({}).\n{}showing {} lines, each {}error with the {} lines before it:\n{}\n",
                 errors.len(),
                 if errors.len() == 1 { "" } else { "s" },
                 warns.len(),
                 if warns.len() == 1 { "" } else { "s" },
                 t.headers[li],
+                shape_lines,
                 shown.len(),
+                if errors.len() > 5 && msg_col.is_some() { "first " } else { "" },
                 CONTEXT_LINES,
                 show(&shown)
             ));
@@ -919,6 +992,64 @@ mod tests {
             "{}",
             c.summary
         );
+    }
+
+    #[test]
+    fn templates_survive_more_than_5000_distinct_messages() {
+        let mut s = String::from("level,msg\n");
+        for i in 0..9000 {
+            s.push_str(&format!("info,request {i} took {}ms\n", i * 7 % 991));
+        }
+        for i in 0..3000 {
+            s.push_str(&format!("warn,cache miss for key a{:07x}9\n", i * 7919));
+        }
+        let t = detect(&s).unwrap();
+        let info = analyze(&t);
+        let c = &info[1];
+        assert!(
+            c.summary.starts_with(">5000 distinct, 2 templates: request # took #ms (9000); cache miss for key <hex> (3000)"),
+            "{}",
+            c.summary
+        );
+        assert_eq!(
+            c.stats.templates[0],
+            ("request # took #ms".to_string(), 9000)
+        );
+    }
+
+    #[test]
+    fn repeated_errors_are_grouped_by_shape_in_a_text_log() {
+        let mut s = String::new();
+        for i in 0..300 {
+            let msg = match i {
+                n if n % 10 == 5 => format!("error: connection {n} refused by 10.0.0.{}", n % 9),
+                n if n % 50 == 7 => format!("FAILED test_{n}"),
+                n => format!("step {n} ok"),
+            };
+            s.push_str(&format!(
+                "2026-11-02T10:{:02}:{:02}Z {msg}\n",
+                i / 60,
+                i % 60
+            ));
+        }
+        let t = detect(&s).unwrap();
+        let r = render(&t, &ctx(), 2500);
+        assert!(r.text.contains("error shapes (2):"), "{}", r.text);
+        assert!(
+            r.text
+                .contains("30x error: connection # refused by #.#.#.#"),
+            "{}",
+            r.text
+        );
+        assert!(r.text.contains("6x FAILED test_#"), "{}", r.text);
+        assert!(
+            r.text
+                .contains("each first error with the 4 lines before it"),
+            "{}",
+            r.text
+        );
+        // the 30 refused-connection errors are not all listed
+        assert!(r.text.matches("refused by").count() < 8, "{}", r.text);
     }
 
     #[test]
