@@ -207,6 +207,20 @@ fn facts(t: &Table) -> Vec<Fact> {
             };
             fact(format!("{h}: first time {lo}"), vec![lo], Some(h));
             fact(format!("{h}: last time {hi}"), vec![hi], Some(h));
+            // Are the rows in time order? ISO times compare as text.
+            if iso && nonempty.len() >= 20 && nonempty.len() * 10 >= n * 9 {
+                let up = nonempty.windows(2).all(|w| w[0] <= w[1]);
+                let down = nonempty.windows(2).all(|w| w[0] >= w[1]);
+                let want = match (up, down) {
+                    (true, true) => None,
+                    (true, false) => Some("sorted oldest first"),
+                    (false, true) => Some("sorted newest first"),
+                    _ => Some("not in time order"),
+                };
+                if let Some(w) = want {
+                    fact(format!("{h}: {w}"), vec![w.to_string()], Some(h));
+                }
+            }
         }
         // Real-world columns: numbers written as `$1,234.56` or `45%`, `N/A` and `-` for missing.
         // The numbers keep their range, and the missing cells are counted, not mistaken for words.
@@ -299,6 +313,65 @@ fn facts(t: &Table) -> Vec<Fact> {
                 );
             }
         }
+    }
+    // Columns that move together: |Pearson r| of 0.9 or more among the first twelve measures.
+    let mut measures: Vec<(usize, Vec<Option<f64>>)> = Vec::new();
+    for (c, h) in t.headers.iter().enumerate() {
+        if measures.len() == 12 {
+            break;
+        }
+        let vals: Vec<Option<f64>> = t.rows.iter().map(|r| loose(&r[c])).collect();
+        let present: Vec<f64> = vals.iter().flatten().copied().collect();
+        let distinct: std::collections::HashSet<String> =
+            t.rows.iter().map(|r| r[c].clone()).collect();
+        let codes = distinct.len() <= 12 && present.len() >= 2 * distinct.len();
+        let rises = present.len() >= 20
+            && distinct.len() == present.len()
+            && (present.windows(2).all(|w| w[0] < w[1]) || present.windows(2).all(|w| w[0] > w[1]));
+        let numeric = matches!(kinds[c].kind, Kind::Int | Kind::Float);
+        if !numeric || codes || Some(c) == id || rises || (id_name(h) && kinds[c].kind == Kind::Int)
+        {
+            continue;
+        }
+        measures.push((c, vals));
+    }
+    let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
+    for (i, (ca, a)) in measures.iter().enumerate() {
+        for (cb, b) in &measures[i + 1..] {
+            let both: Vec<(f64, f64)> = a
+                .iter()
+                .zip(b)
+                .filter_map(|(x, y)| Some(((*x)?, (*y)?)))
+                .collect();
+            let m = both.len() as f64;
+            if m < 20.0 {
+                continue;
+            }
+            let (ma, mb) = (
+                both.iter().map(|p| p.0).sum::<f64>() / m,
+                both.iter().map(|p| p.1).sum::<f64>() / m,
+            );
+            let (cov, va, vb) = both.iter().fold((0.0, 0.0, 0.0), |s, p| {
+                (
+                    s.0 + (p.0 - ma) * (p.1 - mb),
+                    s.1 + (p.0 - ma).powi(2),
+                    s.2 + (p.1 - mb).powi(2),
+                )
+            });
+            if va > 0.0 && vb > 0.0 && (cov / (va * vb).sqrt()).abs() >= 0.9 {
+                pairs.push((cov / (va * vb).sqrt(), *ca, *cb));
+            }
+        }
+    }
+    pairs.sort_by(|a, b| b.0.abs().total_cmp(&a.0.abs()));
+    let cutoff = pairs.get(3).map_or(0.0, |p| p.0.abs());
+    for (r, a, b) in pairs.iter().take(3).filter(|p| p.0.abs() > cutoff + 1e-9) {
+        let (ha, hb) = (&t.headers[*a], &t.headers[*b]);
+        fact(
+            format!("{ha} and {hb} move together (r = {r:.2})"),
+            vec![format!("{ha}~{hb}")],
+            None,
+        );
     }
     // Trouble: the first few rows with an error-like level are named in the summary (by their
     // first value, which for a log is the time).

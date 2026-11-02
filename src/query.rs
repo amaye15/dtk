@@ -22,12 +22,14 @@ const MAX_CELL: usize = 400;
 /// The most characters `dtk get` prints.
 const MAX_GET: usize = 30_000;
 
-pub const COMMANDS: [&str; 6] = ["rows", "top", "count", "where", "stats", "get"];
+pub const COMMANDS: [&str; 7] = ["rows", "top", "count", "group", "where", "stats", "get"];
 
 pub const USAGE: &str = "\
 dtk rows  FILE START [COUNT]          rows from START (counting from 0), COUNT default 20
 dtk top   FILE COLUMN [N] [--asc]     the N rows with the largest (or smallest) COLUMN, default 10
 dtk count FILE COLUMN [N]             how often each value of COLUMN occurs, default 20
+dtk group FILE BY [MEASURE...]        per value of BY (a,b for two columns): the rows, and for each
+                                      MEASURE its mean, sum, min and max; --agg mean,sum picks some
 dtk where FILE COLUMN OP VALUE [N]    rows where COLUMN OP VALUE; OP is = != > >= < <= ~ !~
                                       (~ means contains, ignoring case); default N is 20
 dtk stats FILE COLUMN...              the statistics of those columns
@@ -359,6 +361,136 @@ fn where_cmd(args: &[String]) -> i32 {
     0
 }
 
+/// A number as `dtk group` prints it: whole numbers whole, others to four places without trailing
+/// zeros.
+fn plain(x: f64) -> String {
+    if x.fract() == 0.0 && x.abs() < 1e15 {
+        return format!("{}", x as i64);
+    }
+    let s = format!("{x:.4}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+fn group_cmd(args: &[String]) -> i32 {
+    let (Some(file), Some(by)) = (args.first(), args.get(1)) else {
+        return usage("dtk group needs FILE and BY");
+    };
+    // `--agg mean,sum` and `--limit N` can come anywhere after BY.
+    let mut aggs: Vec<&str> = vec!["mean", "sum", "min", "max"];
+    let mut limit = 50usize;
+    let mut measures: Vec<&String> = Vec::new();
+    let mut it = args[2..].iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--agg" => match it.next() {
+                Some(list) => {
+                    aggs = list.split(',').map(str::trim).collect();
+                    if let Some(bad) = aggs
+                        .iter()
+                        .find(|x| !["mean", "sum", "min", "max"].contains(x))
+                    {
+                        return usage(&format!("{bad:?} is not mean, sum, min or max"));
+                    }
+                }
+                None => return usage("--agg needs a list such as mean,sum"),
+            },
+            "--limit" => match it.next().and_then(|n| n.parse().ok()) {
+                Some(n) => limit = n,
+                None => return usage("--limit needs a whole number"),
+            },
+            _ => measures.push(a),
+        }
+    }
+    let t = match load_table(file) {
+        Ok(t) => t,
+        Err(e) => return fail(&e),
+    };
+    let by_cols: Result<Vec<usize>, String> = by.split(',').map(|b| column(&t, b.trim())).collect();
+    let by_cols = match by_cols {
+        Ok(c) => c,
+        Err(e) => return fail(&e),
+    };
+    let mut mcols = Vec::new();
+    for m in &measures {
+        match column(&t, m) {
+            Ok(c) => mcols.push(c),
+            Err(e) => return fail(&e),
+        }
+    }
+    // One entry per group: the rows in it, and for each measure the numbers seen.
+    struct Acc {
+        rows: usize,
+        n: Vec<usize>,
+        sum: Vec<f64>,
+        min: Vec<f64>,
+        max: Vec<f64>,
+    }
+    let mut groups: std::collections::HashMap<Vec<&str>, Acc> = std::collections::HashMap::new();
+    let mut order: Vec<Vec<&str>> = Vec::new();
+    for r in &t.rows {
+        let key: Vec<&str> = by_cols.iter().map(|&c| r[c].as_str()).collect();
+        let acc = groups.entry(key.clone()).or_insert_with(|| {
+            order.push(key.clone());
+            Acc {
+                rows: 0,
+                n: vec![0; mcols.len()],
+                sum: vec![0.0; mcols.len()],
+                min: vec![f64::INFINITY; mcols.len()],
+                max: vec![f64::NEG_INFINITY; mcols.len()],
+            }
+        });
+        acc.rows += 1;
+        for (i, &c) in mcols.iter().enumerate() {
+            if let Some((v, _)) = parse_number(&r[c]) {
+                acc.n[i] += 1;
+                acc.sum[i] += v;
+                acc.min[i] = acc.min[i].min(v);
+                acc.max[i] = acc.max[i].max(v);
+            }
+        }
+    }
+    order.sort_by(|a, b| groups[b].rows.cmp(&groups[a].rows).then(a.cmp(b)));
+    let mut w = csv::WriterBuilder::new()
+        .terminator(csv::Terminator::Any(b'\n'))
+        .from_writer(Vec::new());
+    let mut head: Vec<String> = by_cols.iter().map(|&c| t.headers[c].clone()).collect();
+    head.push("rows".into());
+    for &c in &mcols {
+        for a in &aggs {
+            head.push(format!("{}_{a}", t.headers[c]));
+        }
+    }
+    let _ = w.write_record(&head);
+    for key in order.iter().take(limit.min(MAX_ROWS)) {
+        let acc = &groups[key];
+        let mut rec: Vec<String> = key.iter().map(|k| clip(k)).collect();
+        rec.push(acc.rows.to_string());
+        for i in 0..mcols.len() {
+            for a in &aggs {
+                rec.push(if acc.n[i] == 0 {
+                    String::new()
+                } else {
+                    plain(match *a {
+                        "mean" => acc.sum[i] / acc.n[i] as f64,
+                        "sum" => acc.sum[i],
+                        "min" => acc.min[i],
+                        _ => acc.max[i],
+                    })
+                });
+            }
+        }
+        let _ = w.write_record(&rec);
+    }
+    print!(
+        "{}",
+        String::from_utf8_lossy(&w.into_inner().unwrap_or_default())
+    );
+    if order.len() > limit.min(MAX_ROWS) {
+        println!("... {} more groups", order.len() - limit.min(MAX_ROWS));
+    }
+    0
+}
+
 fn stats_cmd(args: &[String]) -> i32 {
     let Some(file) = args.first() else {
         return usage("dtk stats needs FILE and at least one COLUMN");
@@ -562,6 +694,7 @@ pub fn run(cmd: &str, args: &[String]) -> i32 {
         "rows" => rows_cmd(args),
         "top" => top_cmd(args),
         "count" => count_cmd(args),
+        "group" => group_cmd(args),
         "where" => where_cmd(args),
         "stats" => stats_cmd(args),
         "get" => get_cmd(args),

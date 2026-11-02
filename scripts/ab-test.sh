@@ -66,6 +66,7 @@ truth_filter=$(qsv fmt --out-delimiter '\t' "$M" | awk -F'\t' 'NR>1 && $2=="eu" 
 # Shapes that pandas prints: a Python list of records, and to_json(orient="split").
 truth_repr=$(qsv slice -l 100 "$C/pandas_csv_index.csv" | qsv sort -s amount -N -R | qsv select order_id | sed -n 2p)
 truth_split=$(jaq '[.data[] | select(.[7] == false)] | length' "$C/pandas_split.json")
+truth_group=$(qsv fmt --out-delimiter '\t' "$M" | awk -F'\t' 'NR>1 && $2=="eu" {s+=$3; n++} END {printf "%.1f", s/n}')
 truth_wide=$(awk -F, 'NR==1 {for (i=1;i<=NF;i++) h[i]=$i; next} {for (i=2;i<=61;i++) s[i]+=$i} END {for (i=2;i<=61;i++) if (s[i] > m) {m=s[i]; b=h[i]}; print b}' "$C/wide_features.csv")
 
 # name | file | question | expected words (all must appear in the answer)
@@ -84,6 +85,8 @@ CASES=(
 "filter+count|$M|How many orders have region eu and a price above 400 dollars? Give the number.|$truth_filter"
 "wide means|$C/wide_features.csv|Which of the columns feat_0 to feat_59 has the highest mean? Give its name.|$truth_wide"
 "python repr|$C/python_repr_records.txt|This is a Python list of records. Which order_id has the largest amount? Give the order_id.|$truth_repr"
+"group mean|$M|What is the mean amount for region eu? Round to one decimal place.|$truth_group"
+"cadence|$C/sensor_readings.csv|How many minutes pass between readings, and how many hours long is the longest gap in the data? Give both numbers.|5 3"
 "split json|$C/pandas_split.json|This is a pandas DataFrame as JSON (columns, then data rows). How many rows have ok equal to false? Give the number.|$truth_split"
 )
 

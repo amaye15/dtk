@@ -357,3 +357,92 @@ fn the_hook_leaves_the_output_of_a_drill_down_alone() {
     );
     assert!(why.contains("decision:"), "{why}");
 }
+
+#[test]
+fn group_matches_a_group_by_made_here() {
+    let (home, f, rows) = fixture("group");
+    let file = f.to_str().unwrap();
+    // by region: rows, and amount (plain), age (with N/A), price ($2,013.00) measures
+    let (code, out, err) = dtk(
+        &home,
+        &[
+            "group",
+            file,
+            "region",
+            "amount",
+            "age",
+            "price",
+            "--agg",
+            "mean,sum,max",
+        ],
+    );
+    assert_eq!(code, 0, "{err}");
+    let got = parse(&out);
+    assert_eq!(
+        got[0],
+        [
+            "region",
+            "rows",
+            "amount_mean",
+            "amount_sum",
+            "amount_max",
+            "age_mean",
+            "age_sum",
+            "age_max",
+            "price_mean",
+            "price_sum",
+            "price_max"
+        ]
+    );
+    let num = |s: &str| s.replace(['$', ','], "").parse::<f64>().ok();
+    for g in &got[1..] {
+        let mine: Vec<&Vec<String>> = rows.iter().filter(|r| r[1] == g[0]).collect();
+        assert_eq!(
+            g[1].parse::<usize>().unwrap(),
+            mine.len(),
+            "rows of {}",
+            g[0]
+        );
+        for (k, col) in [(2usize, 2usize), (5, 3), (8, 4)] {
+            let v: Vec<f64> = mine.iter().filter_map(|r| num(&r[col])).collect();
+            let (sum, max) = (
+                v.iter().sum::<f64>(),
+                v.iter().cloned().fold(f64::MIN, f64::max),
+            );
+            let mean = sum / v.len() as f64;
+            let close = |s: &str, want: f64| {
+                (s.parse::<f64>().unwrap() - want).abs() < 1e-3 * want.abs().max(1.0)
+            };
+            assert!(
+                close(&g[k], mean),
+                "{} mean of column {col}: {} vs {mean}",
+                g[0],
+                g[k]
+            );
+            assert!(close(&g[k + 1], sum), "{} sum of column {col}", g[0]);
+            assert!(close(&g[k + 2], max), "{} max of column {col}", g[0]);
+        }
+    }
+    // largest group first
+    let counts: Vec<usize> = got[1..].iter().map(|g| g[1].parse().unwrap()).collect();
+    assert!(counts.windows(2).all(|w| w[0] >= w[1]), "{counts:?}");
+    // two columns make one key
+    let (_, out, _) = dtk(&home, &["group", file, "region,status"]);
+    let got = parse(&out);
+    assert_eq!(got[0], ["region", "status", "rows"]);
+    assert_eq!(got.len(), 1 + 9);
+    assert_eq!(
+        got[1..]
+            .iter()
+            .map(|g| g[2].parse::<usize>().unwrap())
+            .sum::<usize>(),
+        300
+    );
+    // mistakes
+    let (code, _, err) = dtk(&home, &["group", file, "region", "--agg", "median"]);
+    assert_eq!(code, 2);
+    assert!(err.contains("is not mean, sum, min or max"), "{err}");
+    let (code, _, err) = dtk(&home, &["group", file, "nope"]);
+    assert_eq!(code, 1);
+    assert!(err.contains("no column \"nope\""), "{err}");
+}
