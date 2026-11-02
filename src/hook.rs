@@ -298,6 +298,11 @@ pub fn run(args: &[String]) -> i32 {
     let mut buf = Vec::new();
     let _ = std::io::stdin().take(8 * 1024 * 1024).read_to_end(&mut buf);
     let text = String::from_utf8_lossy(&buf).to_string();
+    // The model asked for exactly these rows with a dtk command. Neither dtk nor rtk's pipeline
+    // may change them, so the event is not passed on.
+    if std::panic::catch_unwind(|| is_dtk_query_event(&text)).unwrap_or(false) {
+        return 0;
+    }
     let handled = std::panic::catch_unwind(|| handle(&text)).ok().flatten();
     if let Some(out) = handled {
         println!("{out}");
@@ -397,6 +402,19 @@ fn handle(input: &str) -> Option<String> {
 }
 
 /// Commands that ask for specific rows must get them, not a summary of them.
+/// Is this PostToolUse event the result of one of dtk's own commands?
+fn is_dtk_query_event(event: &str) -> bool {
+    let Ok(ev) = serde_json::from_str::<Value>(event) else {
+        return false;
+    };
+    ev.get("tool_name").and_then(Value::as_str) == Some("Bash")
+        && ev
+            .get("tool_input")
+            .and_then(|i| i.get("command"))
+            .and_then(Value::as_str)
+            .is_some_and(|c| runs_dtk_query(&crate::rtk::plain_command(c)))
+}
+
 /// `dtk top FILE amount`, `/path/to/dtk where ...`: the model reading more of the data.
 fn runs_dtk_query(cmd: &str) -> bool {
     let words: Vec<&str> = cmd

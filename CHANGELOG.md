@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0
+
+Back to the point of dtk: minimum tokens, maximum information, automatically, with rtk. 0.8.0 added `dtk group` as a command, but a command is a second step that the model must decide to take. The useful part belongs in the summary.
+
+- **Group means in the summary.** For the leftmost label column (a region, a status, a flag, an HTTP code; 2 to 8 values, groups of 5 rows or more) against the leftmost measure, the summary shows the mean per group: `amount by region (mean): ap 166.8, us 161.8, eu 101.5`. The splits that explain the most variance are added (the strongest of the rest at a tenth, others at a quarter), at most three lines. A model asked for the mean amount for one region now answers from the summary alone: 3 turns per question became 2 (Sonnet, 3 of 3 right; Haiku 3 of 3 right). Checked against group means computed independently by the retention harness (1298 of 1298 facts).
+- **Same token cost.** The `drill:` line is shorter now (three examples with real column names, and a pointer to the rest). Net change against 0.8.0: 1 to 10 tokens per summary.
+- **rtk.** Verified with the real rtk that its pre-command hook does not rewrite `dtk ...` commands, and that its post-command pipeline, which cuts a long output to about 250 lines, would cut a long result of a dtk command. dtk now keeps its own command results out of that pipeline. A real-rtk test runs the pipeline on an ordinary long output (it is cut, so the test proves something) and on dtk's commands (they are not).
+
 ## 0.8.0
 
 The analytics a data person asks first, built in so that no other tool is needed.

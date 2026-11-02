@@ -373,6 +373,107 @@ fn facts(t: &Table) -> Vec<Fact> {
             None,
         );
     }
+    // Group means for the pair people ask about first: the leftmost column with a few values
+    // against the leftmost measure. Every group of five or more rows has its mean in the summary.
+    if t.headers.len() <= 40 {
+        let sig4 = |x: f64| -> String {
+            if x == 0.0 {
+                return "0".into();
+            }
+            let d = (3 - x.abs().log10().floor() as i32).clamp(0, 8) as usize;
+            let s = format!("{x:.d$}");
+            if s.contains('.') {
+                s.trim_end_matches('0').trim_end_matches('.').to_string()
+            } else {
+                s
+            }
+        };
+        let measure_cols: Vec<usize> = (0..t.headers.len())
+            .filter(|&c| {
+                let vals: Vec<f64> = t.rows.iter().filter_map(|r| loose(&r[c])).collect();
+                let distinct: std::collections::HashSet<&str> =
+                    t.rows.iter().map(|r| r[c].as_str()).collect();
+                let codes = distinct.len() <= 12 && vals.len() >= 2 * distinct.len();
+                let rises = vals.len() >= 20
+                    && distinct.len() == vals.len()
+                    && (vals.windows(2).all(|w| w[0] < w[1])
+                        || vals.windows(2).all(|w| w[0] > w[1]));
+                matches!(kinds[c].kind, Kind::Int | Kind::Float)
+                    && !codes
+                    && Some(c) != id
+                    && !rises
+                    && !(id_name(&t.headers[c]) && kinds[c].kind == Kind::Int)
+            })
+            .take(6)
+            .collect();
+        type Primary = (usize, usize, Vec<(String, f64)>);
+        let mut primary: Option<Primary> = None;
+        'search: for c in 0..t.headers.len() {
+            let values: Vec<&str> = t
+                .rows
+                .iter()
+                .map(|r| r[c].as_str())
+                .filter(|v| !v.is_empty() && !PLACEHOLDERS.contains(&v.to_lowercase().as_str()))
+                .collect();
+            let distinct: std::collections::HashSet<&str> = values.iter().copied().collect();
+            let codes = distinct.len() <= 12 && values.len() >= 2 * distinct.len();
+            let labelled = matches!(kinds[c].kind, Kind::Str | Kind::Bool)
+                || (codes && kinds[c].kind == Kind::Int);
+            let is_measure = measure_cols.contains(&c) && !(codes && kinds[c].kind == Kind::Int);
+            if !(2..=8).contains(&distinct.len()) || !labelled || Some(c) == id || is_measure {
+                continue;
+            }
+            for &m in &measure_cols {
+                if m == c {
+                    continue;
+                }
+                let mut groups: std::collections::BTreeMap<&str, Vec<f64>> =
+                    std::collections::BTreeMap::new();
+                let mut all = Vec::new();
+                for r in &t.rows {
+                    let g = r[c].as_str();
+                    if g.is_empty() || PLACEHOLDERS.contains(&g.to_lowercase().as_str()) {
+                        continue;
+                    }
+                    if let Some(x) = loose(&r[m]) {
+                        groups.entry(g).or_default().push(x);
+                        all.push(x);
+                    }
+                }
+                let mean = all.iter().sum::<f64>() / all.len().max(1) as f64;
+                let ss_total: f64 = all.iter().map(|x| (x - mean).powi(2)).sum();
+                let kept: Vec<(String, f64)> = groups
+                    .iter()
+                    .filter(|(_, v)| v.len() >= 5)
+                    .map(|(g, v)| (g.to_string(), v.iter().sum::<f64>() / v.len() as f64))
+                    .collect();
+                if all.len() >= 20 && kept.len() >= 2 && ss_total > 0.0 {
+                    primary = Some((c, m, kept));
+                    break 'search;
+                }
+            }
+        }
+        if let Some((c, m, kept)) = primary {
+            let (hc, hm) = (&t.headers[c], &t.headers[m]);
+            fact(
+                format!("{hm} by {hc}: the line is there"),
+                vec![format!("{hm} by {hc} (mean):")],
+                None,
+            );
+            for (g, mean) in kept {
+                let label: String = if g.chars().count() > 24 {
+                    format!("{}…", g.chars().take(24).collect::<String>())
+                } else {
+                    g.clone()
+                };
+                fact(
+                    format!("{hm} by {hc}: mean for {g} is {}", sig4(mean)),
+                    vec![format!("{label} {}", sig4(mean))],
+                    None,
+                );
+            }
+        }
+    }
     // Trouble: the first few rows with an error-like level are named in the summary (by their
     // first value, which for a log is the time).
     if let Some(lc) = t.headers.iter().position(|h| {

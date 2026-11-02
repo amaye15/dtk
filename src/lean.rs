@@ -1307,6 +1307,174 @@ fn correlation_note(t: &Table, info: &[ColInfo]) -> Option<String> {
     ))
 }
 
+/// A number to four significant digits, which is all a group mean needs: `161.8`, `0.01235`.
+fn sig4(x: f64) -> String {
+    if x == 0.0 || !x.is_finite() {
+        return "0".into();
+    }
+    let decimals = (3 - x.abs().log10().floor() as i32).clamp(0, 8) as usize;
+    let s = format!("{x:.decimals$}");
+    if s.contains('.') {
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
+    } else {
+        s
+    }
+}
+
+/// How much of a measure's variance a label column explains (eta squared), the label column, the
+/// measure column, and the mean of the measure in each group.
+type Breakdown = (f64, usize, usize, Vec<(String, f64)>);
+
+/// Group means for the splits that matter most: a column with a few values (a region, a status, a
+/// flag, an HTTP code) against each measure. "What is the mean amount for region eu?" is the
+/// commonest question about a table, and these lines answer it without a second command.
+///
+/// The pair that varies most between groups is always shown; others only when the groups explain
+/// at least a tenth of the variance (eta squared). At most three lines.
+fn breakdown_notes(t: &Table, info: &[ColInfo]) -> Vec<String> {
+    const MAX_MEASURES: usize = 6;
+    const MAX_ROWS: usize = 200_000;
+    const MIN_GROUP: usize = 5;
+    const MAX_LINES: usize = 3;
+    let n = t.rows.len();
+    let id = id_column(t, info);
+    let stride = n.div_ceil(MAX_ROWS).max(1);
+    let sample: Vec<usize> = (0..n).step_by(stride).collect();
+    // measures
+    let mut measures: Vec<(usize, Vec<Option<f64>>)> = Vec::new();
+    for c in 0..t.headers.len() {
+        if measures.len() == MAX_MEASURES {
+            break;
+        }
+        if !matches!(info[c].kind, Kind::Int | Kind::Float) || info[c].few_values || Some(c) == id {
+            continue;
+        }
+        if identifier_like(t, info, c, &numbers_of(t, c)) {
+            continue;
+        }
+        measures.push((
+            c,
+            sample
+                .iter()
+                .map(|&r| parse_number(&t.rows[r][c]).map(|(f, _)| f))
+                .collect(),
+        ));
+    }
+    // categories: a few values, in a column of labels, flags or codes
+    let mut found: Vec<Breakdown> = Vec::new();
+    #[allow(clippy::needless_range_loop)] // `c` indexes the table's columns and `info` alike
+    for c in 0..t.headers.len() {
+        let few = info[c].distinct.is_some_and(|d| (2..=8).contains(&d));
+        let label = matches!(info[c].kind, Kind::Str | Kind::Bool)
+            || (info[c].few_values && matches!(info[c].kind, Kind::Int));
+        if !few
+            || !label
+            || Some(c) == id
+            || measures.iter().any(|(m, _)| *m == c) && !info[c].few_values
+        {
+            continue;
+        }
+        let mut index: HashMap<&str, usize> = HashMap::new();
+        let groups: Vec<Option<usize>> = sample
+            .iter()
+            .map(|&r| {
+                let v = t.rows[r][c].as_str();
+                if v.is_empty() || is_placeholder(v) {
+                    return None;
+                }
+                let next = index.len();
+                Some(*index.entry(v).or_insert(next))
+            })
+            .collect();
+        let names: Vec<&str> = {
+            let mut v = vec![""; index.len()];
+            for (k, i) in &index {
+                v[*i] = k;
+            }
+            v
+        };
+        for (m, vals) in &measures {
+            if *m == c {
+                continue;
+            }
+            let k = names.len();
+            let (mut cnt, mut sum, mut sq) = (vec![0f64; k], vec![0f64; k], 0f64);
+            let (mut total_n, mut total_sum) = (0f64, 0f64);
+            for (g, v) in groups.iter().zip(vals) {
+                if let (Some(g), Some(v)) = (g, v) {
+                    cnt[*g] += 1.0;
+                    sum[*g] += v;
+                    sq += v * v;
+                    total_n += 1.0;
+                    total_sum += v;
+                }
+            }
+            if total_n < 20.0 {
+                continue;
+            }
+            let mean = total_sum / total_n;
+            let ss_total = sq - total_n * mean * mean;
+            let kept: Vec<usize> = (0..k).filter(|&g| cnt[g] >= MIN_GROUP as f64).collect();
+            if kept.len() < 2 || ss_total <= 0.0 {
+                continue;
+            }
+            let ss_between: f64 = kept
+                .iter()
+                .map(|&g| cnt[g] * (sum[g] / cnt[g] - mean).powi(2))
+                .sum();
+            let eta = ss_between / ss_total;
+            let mut means: Vec<(String, f64)> = kept
+                .iter()
+                .map(|&g| (clip_label(names[g]), sum[g] / cnt[g]))
+                .collect();
+            means.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+            found.push((eta, c, *m, means));
+        }
+    }
+    // The pair people ask about first: the leftmost label column against the leftmost measure.
+    // Then the splits that explain the most variance: the strongest of the rest, and any that
+    // explain a quarter of it.
+    let primary = found.iter().map(|f| (f.1, f.2)).min();
+    found.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let mut chosen: Vec<&Breakdown> = Vec::new();
+    if let Some(p) = primary {
+        chosen.extend(found.iter().filter(|f| (f.1, f.2) == p));
+    }
+    for (i, f) in found.iter().enumerate() {
+        let strongest_rest = chosen.len() == 1 && f.0 >= 0.1;
+        if chosen.len() < MAX_LINES
+            && !chosen.iter().any(|c| (c.1, c.2) == (f.1, f.2))
+            && (strongest_rest || f.0 >= 0.25 || i == 0 && f.0 >= 0.1)
+        {
+            chosen.push(f);
+        }
+    }
+    chosen
+        .iter()
+        .map(|(_, c, m, means)| {
+            let parts: Vec<String> = means
+                .iter()
+                .map(|(g, v)| format!("{g} {}", sig4(*v)))
+                .collect();
+            format!(
+                "{} by {} (mean): {}",
+                t.headers[*m],
+                t.headers[*c],
+                parts.join(", ")
+            )
+        })
+        .collect()
+}
+
+fn clip_label(s: &str) -> String {
+    let t: String = s.chars().take(24).collect();
+    if s.chars().count() > 24 {
+        format!("{t}…")
+    } else {
+        t
+    }
+}
+
 /// Rows that repeat an earlier row, which most data sets do not mean to have.
 fn duplicate_note(t: &Table) -> Option<String> {
     let mut first: HashMap<&Vec<String>, usize> = HashMap::with_capacity(t.rows.len());
@@ -1378,6 +1546,12 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
     if let Some(note) = correlation_note(t, info) {
         out.push_str(&note);
         out.push('\n');
+    }
+    if cols <= VERY_WIDE_COLS {
+        for line in breakdown_notes(t, info) {
+            out.push_str(&line);
+            out.push('\n');
+        }
     }
     let clip = |rows: &[&Vec<String>]| -> Vec<Vec<String>> {
         rows.iter().map(|r| r[..k].to_vec()).collect()
@@ -1547,9 +1721,14 @@ fn drill(t: &Table, info: &[ColInfo], ctx: &Ctx) -> String {
             && Some(c) != id
             && !id_like_name(&t.headers[c])
     });
+    // Three examples with real names are enough to copy; the rest is one `--help` away.
     let mut cmds: Vec<String> = Vec::new();
-    if let Some(l) = label {
-        cmds.push(format!("{dtk} count {f} {}", word(&t.headers[l])));
+    if let Some((l, top)) = label.and_then(|l| Some((l, info[l].stats.top.first()?))) {
+        cmds.push(format!(
+            "{dtk} where {f} {} = {}",
+            word(&t.headers[l]),
+            word(&top.0)
+        ));
     }
     if let Some(m) = measure {
         cmds.push(format!("{dtk} top {f} {} 10", word(&t.headers[m])));
@@ -1561,15 +1740,10 @@ fn drill(t: &Table, info: &[ColInfo], ctx: &Ctx) -> String {
             word(&t.headers[m])
         ));
     }
-    if let Some((l, top)) = label.and_then(|l| Some((l, info[l].stats.top.first()?))) {
-        cmds.push(format!(
-            "{dtk} where {f} {} = {}",
-            word(&t.headers[l]),
-            word(&top.0)
-        ));
+    if cmds.is_empty() {
+        cmds.push(format!("{dtk} rows {f} 100 20"));
     }
-    cmds.push(format!("{dtk} rows {f} 100 20"));
-    cmds.push(format!("{dtk} stats {f} NAME..."));
+    cmds.push(format!("(also rows, count, stats, get: {dtk} rows --help)"));
     format!("drill: {}\n", cmds.join("  |  "))
 }
 
@@ -1608,13 +1782,13 @@ mod tests {
         assert!(r.text.contains("id: 1000..1499"));
         assert!(r.text.contains("region: 3 distinct: "));
         assert!(
-            r.text.contains("drill: dtk count /tmp/x.csv name  |  dtk top /tmp/x.csv amount 10  |  dtk group /tmp/x.csv name amount  |  dtk where /tmp/x.csv name = user_0"),
+            r.text.contains("drill: dtk where /tmp/x.csv name = user_0  |  dtk top /tmp/x.csv amount 10  |  dtk group /tmp/x.csv name amount"),
             "{}",
             r.text
         );
         assert!(
             r.text
-                .contains("dtk rows /tmp/x.csv 100 20  |  dtk stats /tmp/x.csv NAME..."),
+                .contains("(also rows, count, stats, get: dtk rows --help)"),
             "{}",
             r.text
         );
@@ -2120,6 +2294,70 @@ mod tests {
         }
         let t = detect(&s).unwrap();
         assert!(correlation_note(&t, &analyze(&t)).is_none());
+    }
+
+    #[test]
+    fn writes_four_significant_digits() {
+        for (x, want) in [
+            (161.7586, "161.8"),
+            (101.5044, "101.5"),
+            (5.7234, "5.723"),
+            (0.0123456, "0.01235"),
+            (12345.678, "12346"),
+            (1234.5, "1234"),
+            (100.0, "100"),
+            (0.0, "0"),
+            (-3.3333, "-3.333"),
+        ] {
+            assert_eq!(sig4(x), want, "{x}");
+        }
+    }
+
+    #[test]
+    fn group_means_are_in_the_summary_for_the_split_that_matters() {
+        let mut s = String::from("order,region,tier,amount,wait\n");
+        for i in 0..240usize {
+            let region = ["us", "eu", "ap"][i % 3];
+            let tier = ["free", "pro"][(i / 3) % 2];
+            // amount depends on the region; wait depends on nothing
+            let amount = match region {
+                "us" => 100.0,
+                "eu" => 200.0,
+                _ => 300.0,
+            } + (i % 7) as f64;
+            let wait = ((i * 37) % 11) as f64;
+            s.push_str(&format!("{},{region},{tier},{amount},{wait}\n", 5000 + i));
+        }
+        let t = detect(&s).unwrap();
+        let lines = breakdown_notes(&t, &analyze(&t));
+        assert!(
+            lines[0].starts_with("amount by region (mean): ap 30"),
+            "the strongest split comes first: {lines:?}"
+        );
+        assert!(
+            lines[0].contains("eu 20") && lines[0].contains("us 10"),
+            "{lines:?}"
+        );
+        // the weak splits are not shown, except the strongest one always is
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let r = render(&t, &ctx(), 2500);
+        assert!(
+            r.text.contains("amount by region (mean): ap "),
+            "{}",
+            r.text
+        );
+    }
+
+    #[test]
+    fn a_split_with_tiny_groups_or_one_group_is_not_a_breakdown() {
+        let mut s = String::from("order,kind,amount\n");
+        for i in 0..100usize {
+            // 'rare' has 2 rows: too few for a mean
+            let kind = if i < 2 { "rare" } else { "common" };
+            s.push_str(&format!("{},{kind},{}\n", 1000 + i, (i * 13) % 50));
+        }
+        let t = detect(&s).unwrap();
+        assert!(breakdown_notes(&t, &analyze(&t)).is_empty());
     }
 
     #[test]

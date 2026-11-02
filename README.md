@@ -54,20 +54,22 @@ Start a new Claude Code session (hooks load at start). To see what dtk would do 
 
 [docs/INSTALL.md](docs/INSTALL.md) has update and uninstall steps. Another program named `dtk` exists; `dtk verify` printing `built-in checks passed` shows you have this one.
 
-## Optional tools
+## Automatic, and nothing to call
 
-dtk needs nothing else. A summary ends with a `drill:` line of dtk's own commands, so the model can read more of the data with no other program:
+dtk has no commands to learn for its main job. After `dtk init --global`, every big table, log or JSON document in a command's output is replaced by its summary, by the hook, on its own, chained to rtk. The summary is made to hold the answers to the usual questions, so that the model does not need a second step: the ranges, the counts, the row of each extreme, the mean of a measure per group (`amount by region (mean): ap 166.8, us 161.8, eu 101.5`), the outliers, the time gaps, the correlated columns.
+
+When a question is not answered there, the summary ends with a `drill:` line. These commands are a fallback, not the interface. The model runs them through the Bash tool, and rtk does not rewrite them or cut their output:
 
 ```text
-drill: dtk count 5fa6aeae75bd region  |  dtk top 5fa6aeae75bd amount 10  |  dtk where 5fa6aeae75bd region = eu  |  dtk rows 5fa6aeae75bd 100 20
+drill: dtk where 5fa6aeae75bd region = eu  |  dtk top 5fa6aeae75bd amount 10  |  dtk group 5fa6aeae75bd region amount  |  (also rows, count, stats, get: dtk rows --help)
 ```
 
-`5fa6aeae75bd` is the short id of the data file. These extras are optional:
+`5fa6aeae75bd` is the short id of the data file. dtk needs no other program. These extras are optional:
 
 | Tool | Gives you | Without it |
 |---|---|---|
-| `qsv` | SQL on the data files (`qsv sqlp`) | nothing is lost; `dtk top`, `count`, `where`, `rows` and `stats` cover the common questions |
-| `jaq` | jq programs on JSON | the same; `dtk get` reads a path |
+| `qsv` | SQL on the data files (`qsv sqlp`) | nothing is lost for the common questions |
+| `jaq` | jq programs on JSON | `dtk get` reads a path |
 | `rtk` | the chain, and rtk's totals in `dtk gain` | dtk works alone |
 
 `brew install qsv jaq` if you want them.
@@ -84,6 +86,7 @@ Up to 60 rows become CSV and nothing is dropped. A bigger table gets:
 
 - shape, and every column name with its type (a run such as `feat_0..feat_119:float` is one range)
 - per column: min, max, mean, median and p95; value counts; time range; nulls
+- the mean of each measure per group, for the splits that matter most (the leftmost label column against the leftmost measure always; others when the groups explain a quarter of the variance): `amount by region (mean): ap 166.8, us 161.8, eu 101.5`
 - numbers and dates as people write them: `$1,234.56`, `45.3%` and `1,234` are numbers, `03/21/2025` is a date when the data settles the order, and `N/A`, `-` or `?` in a column of numbers are counted and set aside, not mistaken for words
 - data-quality notes: outliers beyond 3×IQR, rows that repeat an earlier row, and columns that move together (|r| of 0.9 or more)
 - for a time column: whether the rows are in time order, the step between them (`every 5min`), and the longest gap (`3h5min after row 148`)
@@ -107,6 +110,7 @@ Up to 60 rows become CSV and nothing is dropped. A bigger table gets:
 - **`rtk init` keeps working.** dtk's entry holds a silent placeholder named `rtk`, so `rtk init -g` adds no second hook that could replace dtk's summary.
 - **dtk sees through rtk's rewrites.** rtk turns `head -n 400 f` into `rtk read f --head-lines 400`. dtk still treats it as a request for 400 rows, and `exclude_commands = ["^cat "]` still matches `rtk read f`.
 - **rtk's own `PostToolUse` entry is taken over and put back** by `dtk init --uninstall`. rtk's `PreToolUse` hook is never touched.
+- **dtk's own commands are never touched by rtk.** rtk's pre-command hook does not rewrite `dtk top ...`, and dtk keeps these results out of rtk's post-command pipeline, which would cut a long one.
 - The chain adds a few milliseconds (dtk 2 to 7 ms, rtk 4 to 13 ms, both 17 to 21 ms). `dtk init --global --no-rtk` skips it.
 
 All of this is tested against the real rtk binary (`tests/rtk_real.rs`, `tests/rtk_compat.rs`, and `tests/rtk_windows.rs`).
@@ -149,7 +153,7 @@ min_outline_tokens = 4000  # smallest JSON document worth an outline
 
 ## How it is checked
 
-185 tests, plus the A/B script. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (63 files detected as expected, 30 rejected). A test that lists the facts a summary must keep and checks them (1204 of 1204 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
+189 tests, plus the A/B script. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (63 files detected as expected, 30 rejected). A test that lists the facts a summary must keep and checks them (1298 of 1298 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
 
 ## Limits
 
