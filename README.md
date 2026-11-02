@@ -12,6 +12,10 @@ Claude Code sends the output of a Bash command to the model. For `cat data.csv`,
 |---|---|
 | JSON Lines (one object per line) | `jsonl` |
 | JSON array of objects | `json-array` |
+| A JSON object that wraps one big array (`{"items": [...]}`, as `kubectl` and many APIs return), or is keyed by id | `json-object` |
+| logfmt (`level=info msg="x" ms=12`) | `logfmt` |
+| Web server access logs, Apache or nginx, common or combined | `access-log` |
+| JSON lines behind a prefix, such as `docker compose logs` (`web-1  \| {...}`) | `jsonl-prefixed` |
 | CSV, or TSV, `;` and `\|` separated text with a header row | `csv`, `tsv` |
 | Tables drawn with borders: polars, psql, MySQL, SQLite, Markdown | `table` |
 | Whitespace-aligned tables, such as `DataFrame.to_string()` | `table` |
@@ -24,6 +28,7 @@ For a table of 60 rows or fewer, `dtk` re-encodes it as CSV and drops nothing. F
 - the column names with types
 - per-column statistics: min, max, mean, median (p50) and p95 for numbers; value counts for categories and codes; the time range for timestamps; null counts
 - the first rows and the last rows
+- for text with many different values (log messages with ids and numbers in them), the few message shapes with how many rows have each, such as `request # took #ms (2000)`
 - the rows where a `level` or `severity` column says warn or error
 - the exact commands to query the full data, with `qsv` and `jaq`
 
@@ -46,6 +51,7 @@ Claude Code already saves outputs of 30,000 characters or more to a file and sho
 Download the archive for your system from the [releases page](https://github.com/amaye15/dtk/releases), check the `.sha256` file, and put `dtk` on your `PATH`. Or install from crates.io, or build it:
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/amaye15/dtk/main/install.sh | sh   # checks the SHA-256
 cargo install dtk
 cargo install --path . --locked     # from a clone
 ```
@@ -79,7 +85,11 @@ rtk and dtk do different jobs and fit together:
 
 dtk must go first. A table that rtk had already cut to its first and last lines would be summarized wrongly.
 
-**rtk's own hook is folded in.** If rtk already has a `PostToolUse` entry in `settings.json` (for example after you enabled `rtk:posthook` and ran `rtk init -g`), `dtk init --global` takes over that registration, keeps its matcher, and runs rtk's hook through the chain. Two hooks would otherwise run in parallel and fight over one output. `dtk init --uninstall` puts rtk's entry back exactly. If you run `rtk init -g` again later, run `dtk init --global` again too. `dtk doctor` warns when the two run side by side.
+**`rtk init` keeps working.** rtk recognizes its own hook in `settings.json` by its shape, `<path>/rtk hook claude`. If it did not find that, `rtk init -g` (which people re-run after upgrades) would add a second `PostToolUse` hook beside dtk's, and Claude Code applies the last matching one, so rtk's output could replace dtk's summary. So dtk's single entry holds two hooks: the chain, and a silent placeholder named `rtk` in dtk's data folder. rtk sees its hook as installed and adds nothing; `rtk init --show` and `rtk pipeline validate` stay satisfied; `rtk init -g --uninstall` removes only the placeholder. When you turn on rtk's `rtk:posthook` pipeline later, rtk widens the entry's matcher itself.
+
+**rtk's own hook is taken over.** If rtk already has a `PostToolUse` entry (you enabled `rtk:posthook` and ran `rtk init -g` before installing dtk), `dtk init --global` takes it over, keeps its matcher, and runs rtk's hook through the chain. `dtk init --uninstall` puts rtk's entry back exactly, unless rtk itself removed it in the meantime.
+
+All of this is tested against the real rtk binary (`tests/rtk_real.rs`, run in CI on macOS and Linux): init twice, init in both orders, uninstall in both orders, and enabling the pipeline later.
 
 **rtk's `PreToolUse` hook is never touched.** The commands rtk rewrites (`rtk read data.csv`) still produce tables that dtk summarizes.
 
@@ -101,9 +111,31 @@ Tested end to end with real rtk 1.1.0 and Claude Code: with `rtk:posthook` enabl
 | `DTK_RAW=1 cat data.csv` | Pass this one command's output through. |
 
 Commands that ask for specific rows are never summarized: `qsv slice`, `qsv sample`, `head`, `tail`, `sed -n`, and rtk's `--max-lines` and `--tail-lines`. That includes the `rows:` command in a summary.
-| `dtk gain` | Totals from the decision log, with rtk's totals beside them. |
+| `dtk gain [--json]` | Totals from the decision log, with rtk's totals beside them. |
 | `dtk view FILE` | Show the lean view of a file or standard input. |
-| `dtk doctor` | Check the setup. |
+| `dtk doctor` | Check the hook, rtk, `qsv`, `jaq` and the config. Exits 1 on a warning. |
+| `dtk verify` | Built-in PASS/FAIL checks of detection and decisions, then `doctor`. |
+| `dtk explain FILE --command CMD` | Say whether dtk would summarize this output, and why. Uses the hook's own decision function. |
+| `dtk discover` | Scan your Claude Code history for tables dtk would have summarized, and what that would save. Changes nothing. |
+| `dtk config [--create]` | Show the settings in use, or write a default `config.toml`. |
+
+## Config
+
+`~/.config/dtk/config.toml` (create it with `dtk config --create`):
+
+```toml
+[hooks]
+# Leave these alone. "^text" matches the start of a command (or a file path for Read);
+# any other text matches anywhere in it.
+exclude_commands = ["^kubectl", "psql"]
+
+[thresholds]
+min_tokens = 1200        # smallest output worth replacing (estimated tokens)
+budget = 2500            # largest summary
+min_persisted_rows = 30  # fewest rows for output that Claude Code saved to a file
+```
+
+A broken file means the defaults, never a failing hook; `dtk doctor` reports it.
 
 ## Safety
 
@@ -117,7 +149,7 @@ Commands that ask for specific rows are never summarized: `qsv slice`, `qsv samp
 
 - `~/.local/share/dtk/store/` holds full copies of replaced data (CSV, and raw JSON or JSONL). Files are mode 0600 in a 0700 folder. The store keeps the newest 60 files and nothing older than 14 days.
 - `~/.local/share/dtk/decisions.jsonl` holds one JSON line per table found: format, rows, token counts, the decision, and the first 100 characters of the command. It stays under about 4 MB.
-- `~/.config/dtk/` holds the mode and the record of what `dtk init` folded in.
+- `~/.config/dtk/` holds the mode, `config.toml` and the record of what `dtk init` took over.
 
 Command output can contain secrets. Treat the store like the files that Claude Code itself saves in `~/.claude/`.
 
@@ -145,7 +177,18 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 ```
 
-The unit tests cover detection and rendering. `tests/hook.rs` runs the real binary against simulated Claude Code events (including real pandas output in `tests/fixtures/`), and `tests/rtk_integration.rs` tests the rtk chain, the folding and the restore with a fake `rtk`. All of them use a temporary home folder.
+How dtk is checked (the plan and its results are in `docs/PLAN-0.3.0.md`):
+
+| Gate | What it proves |
+|---|---|
+| `tests/corpus.rs` | A matrix of real output (pandas, polars, sqlite3, tabulate, rich, jq, git, `gh api`, and more): each file is detected as expected, and 29 negatives are rejected. See `tests/corpus/README.md`. |
+| `tests/properties.rs` | Random text and bytes, and mutated real files, never panic and always give well-formed tables and smaller views. |
+| `tests/oracle.rs` | dtk's types, null counts, min, max, mean, medians and category counts equal `qsv`, `jaq`, `awk`, `grep` and `sed`. |
+| `tests/rtk_real.rs` | The real rtk binary, in a throwaway HOME: every init, re-init and uninstall order. |
+| `tests/hook.rs`, `tests/rtk_integration.rs`, `tests/tools.rs` | The hook against simulated Claude Code events, the chain with a fake rtk, and the commands. |
+| `scripts/ab-test.sh` | Real Claude Code sessions with and without dtk on six formats: correct answers, fewer tokens. |
+
+All of the tests use a temporary home folder.
 
 ## License
 

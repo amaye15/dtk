@@ -143,3 +143,26 @@ web access logs (common and combined), and JSONL with a per-line prefix.
 - `dtk gain --json`, and `install.sh`: tested against the real v0.2.0 release (checksum ok,
   installed, runs); a deliberately corrupted download is refused and nothing is installed.
 - CI installs the real rtk, qsv (macOS) and jaq, so G4 and G5 run there instead of being skipped.
+
+### S6. Prove it, then release: DONE
+- G1: `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`, `cargo test`:
+  94 tests across 10 suites, all passing, on this Mac and in CI (macOS and Linux).
+- G2 corpus, G3 properties, G4 oracle, G5 real rtk: pass locally. In CI the real rtk is
+  installed, so G5 runs there too. Running it on Linux found that rtk locates its config through
+  `XDG_CONFIG_HOME` before `HOME`, so the tests now isolate both.
+- G6 (`scripts/ab-test.sh`, real Claude Code 2.1.314 on Haiku, one run per cell):
+
+| Format | Tokens without dtk | With dtk | Saved | Answer correct (without / with) |
+|---|---:|---:|---:|---|
+| csv | 4,536 | 422 | 90% | yes / yes |
+| jsonl | 567 (Claude Code's preview of a saved file) | 482 | 14% | yes / yes |
+| logfmt | 3,167 | 735 | 76% | yes / yes |
+| access log | 3,822 | 715 | 81% | yes / yes |
+| wrapped json | 1,735 | 250 | 85% | yes / yes |
+| prefixed jsonl | 4,497 | 438 | 90% | yes / yes |
+
+  In an earlier run of the same script the model answered the access-log question wrongly
+  without dtk and correctly with it; that is model variance, not a result.
+- Honest limit from `dtk discover`: on this machine's own 30-day history only 11 outputs would
+  have been replaced (about 17K estimated tokens), because ordinary coding work rarely prints big
+  tables. dtk is worth most for data-heavy work.
