@@ -136,6 +136,10 @@ fn a_big_document_becomes_an_outline_that_names_everything() {
         .lines()
         .find_map(|l| l.strip_prefix("file: "))
         .expect(&text);
+    // dtk quotes a path that has unusual characters. On Windows the throwaway home is a verbatim
+    // path (`\\?\C:\...`), which dtk writes as `'//?/C:/...'`.
+    let file = file.trim_matches('\'');
+    let file = file.strip_prefix("//?/").unwrap_or(file);
     let saved: Value = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
     assert_eq!(saved, big_document());
 }
