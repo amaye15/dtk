@@ -1,59 +1,82 @@
 # dtk: data token killer
 
-`dtk` is a Claude Code hook that works together with [rtk](https://github.com/rtk-ai/rtk). It finds big tables in Bash output and swaps them for a short summary that covers every row. The full data stays on disk, so the agent can query it.
+[![CI](https://github.com/amaye15/dtk/actions/workflows/ci.yml/badge.svg)](https://github.com/amaye15/dtk/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/dtk.svg)](https://crates.io/crates/dtk)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE-MIT)
 
-It is one small Rust binary (about 600 KB) with no runtime dependencies.
+**Big tables, logs and JSON in command output cost tokens and bury the answer. `dtk` swaps them for a short summary that covers every row, and keeps the full data on disk.**
 
-## What it does
+It is a [Claude Code](https://claude.com/claude-code) hook. It is one Rust binary (about 1.1 MB, no runtime dependencies) and it works together with [rtk](https://github.com/rtk-ai/rtk).
 
-Claude Code sends the output of a Bash command to the model. For `cat data.csv`, `python report.py` or `tail -n 500 app.log`, that output can be tens of thousands of tokens of rows. `dtk` runs after the command (a `PostToolUse` hook) and checks whether the output is a table. It also checks data files that Claude reads with the `Read` tool.
+## See it work
 
-| Input found in the output | Treated as |
-|---|---|
-| JSON Lines (one object per line) | `jsonl` |
-| JSON array of objects | `json-array` |
-| A JSON object that wraps one big array (`{"items": [...]}`, as `kubectl` and many APIs return), or is keyed by id | `json-object` |
-| logfmt (`level=info msg="x" ms=12`) | `logfmt` |
-| Web server access logs, Apache or nginx, common or combined | `access-log` |
-| JSON lines behind a prefix, such as `docker compose logs` (`web-1  \| {...}`) | `jsonl-prefixed` |
-| CSV, or TSV, `;` and `\|` separated text with a header row | `csv`, `tsv` |
-| Tables drawn with borders: polars, psql, MySQL, SQLite, Markdown | `table` |
-| Whitespace-aligned tables, such as `DataFrame.to_string()` | `table` |
-| Tables with a free-text last column: `ps aux`, `ps -ef`, `df -h` | `table` |
-| Plain text logs whose lines start with a timestamp: application logs, CI logs (GitHub Actions), syslog. A stack trace belongs to the line above it. | `text-log` |
-| A JSON document that is not a table: `cargo metadata`, `terraform show -json`, a few big API records | `json-document` (an outline) |
+A CI job failed. The log has 1,169 lines, about 21,700 tokens. Claude Code would show the model a preview of the first 550 tokens, and all of those are runner set-up text. With `dtk`, the model sees this (567 tokens):
 
-Anything else passes through untouched. Directory listings (`ls -l`, `find`) are left alone on purpose: in a listing the names are the content, and a summary would hide them.
+```text
+[dtk] text-log: 1169 rows x 3 cols, 84.8KB (statistics over all rows; the full data is on disk)
+data: ~/.local/share/dtk/store/c49b697429e5.csv (csv, header row)
+cols: ts:time msg:str flag:str
+ts: 2026-11-02T02:21:55.2959628Z..2026-11-02T02:25:03.9167443Z
+...
+1 error, 2 warnings (flag).
+showing 7 lines, each error with the 4 lines before it:
+2026-11-02T02:22:48.4966802Z,warning: package `spin v0.9.8` in Cargo.lock is yanked in r…,warn
+2026-11-02T02:25:03.5035021Z,20 of 20 built-in checks passed,
+2026-11-02T02:25:03.5979589Z,(Reading database ... 212983 files and directories currentl…,
+2026-11-02T02:25:03.6020420Z,Removing dtk (0.3.0-1) ...,
+2026-11-02T02:25:03.6214925Z,/usr/bin/dtk,
+2026-11-02T02:25:03.6229783Z,##[error]Process completed with exit code 1.,error
+```
 
-For a table of 60 rows or fewer, `dtk` re-encodes it as CSV and drops nothing. For a bigger table, it shows:
+The cause is in view: the package was removed, and `/usr/bin/dtk` was still there. (Paths are shortened with `~`, and some lines are left out.) The same hook handles a 300-row CSV, and the summary says which row holds each extreme:
 
-- the shape and the size
-- the column names with types
-- per-column statistics: min, max, mean, median (p50) and p95 for numbers; value counts for categories and codes; the time range for timestamps; null counts
-- the first rows and the last rows
-- for text with many different values (log messages with ids and numbers in them), the few message shapes with how many rows have each, such as `request # took #ms (2000)`
-- for each numeric column, the row that holds its largest and its smallest value (`max at order_id=100243`), so that "which order was the slowest?" needs no second command
-- the rows where a `level` or `severity` column says warn or error. In a text log, each error comes with the 4 lines before it, because those lines say what failed. A log without a level field gets a `flag` column that dtk derives from words that lead a message or act as a label (`error:`, `FAILED`, `##[error]`), and the summary says so.
-- the exact commands to query the full data, with `qsv` and `jaq`
+```text
+[dtk] csv: 300 rows x 7 cols, 17.7KB (statistics over all rows; the full data is on disk)
+data: ~/.local/share/dtk/store/5fa6aeae75bd.csv (csv, header row)
+cols: order_id:int ts:time customer:str region:str amount:float status:str latency_ms:int
+region: 4 distinct: ap-south 80, us-west 80, us-east 77, eu-central 63
+amount: 1.78..369.19 mean 83.4017 p50 67.91 p95 199.62 | max at order_id=100243, min at order_id=100136
+status: 3 distinct: ok 179, retry 71, failed 50
+latency_ms: 9..896 mean 448.2 p50 419 p95 858 | max at order_id=100104, min at order_id=100184
+head 8 (columns in order above):  ...
+tail 4:  ...
+drill: qsv sqlp ~/.local/share/dtk/store/5fa6aeae75bd.csv 'select "region", count(*) n from _t_1 group by "region" order by n desc'
+```
 
-**JSON documents** get an outline instead: every top-level key with its size, the merged shape of the records in each array (a key that only some records have is marked `?`, a field that is sometimes null reads `str|null`), the size of each of a few big records, and a `jaq` command to read any part. It applies to a document that Claude Code saved to a file (the model would see only a preview), or to one of 4,000 tokens or more (8,000 for `Read`). A small document is shown as it is, because its values are the point, and so is the output of a `jq` or `jaq` query.
-Measured with OpenAI's `o200k_base` tokenizer, as a stand-in for Claude's:
+## Does it hurt the answers?
 
-| Input | Raw tokens | With dtk |
+I ran this test to find out. `scripts/ab-test.sh` asks real Claude Code ten questions about data files, once with `dtk` and once without. The true answers come from `jaq`, `qsv`, `awk` and `grep`, not from dtk. Sonnet, average of 2 runs per cell:
+
+| Question about | Tokens from tool results, without → with | Turns |
 |---|---:|---:|
-| 5,000-row CSV, 8 columns | 171,244 | 855 |
-| 400 JSONL log lines | 20,481 | 1,549 |
-| JSON array, 200 records | 11,055 | 896 |
-| Aligned table, 200 rows | 7,872 | 805 |
-| CSV, 200 rows | 6,871 | 842 |
+| 300-row CSV: which region has the most orders | 4,550 → 445 | 6 → 4 |
+| 300-row CSV: which order had the highest latency | 4,536 → 445 | 4 → 4 |
+| 300 JSON lines | 568 → 505 | 6 → 4 |
+| logfmt service log | 3,167 → 750 | 4 → 4 |
+| web access log | 3,822 → 721 | 4 → 4 |
+| Kubernetes pod list (JSON) | 1,735 → 251 | 4 → 4 |
+| `docker compose logs` | 4,498 → 449 | 6 → 4 |
+| `ps aux` | 2,072 → 609 | 4 → 4 |
+| CI log (failed job) | 603 → 563 | 6 → 4 |
+| `cargo metadata` (JSON document) | 573 → 304 | 3 → 2 |
 
-Claude Code already saves outputs of 30,000 characters or more to a file and shows the model a preview of the first lines. `dtk` reads that saved file, so its summary covers all rows, not only the first lines.
+The last row is the average of 5 re-runs.
 
-**The `Read` tool.** When Claude reads a whole data file (`.csv`, `.tsv`, `.jsonl`, `.json`, `.log`, `.txt` and a few more), the model gets the summary instead of every row. A read with `offset` or `limit` is a request for exact lines, so it is left alone. Source code is never checked. `dtk` works on the result after `Read` ran, so it cannot show anything that your permission rules blocked. Claude Code refuses `Read` on files over 256 KB; use `cat` or `dtk view` for those.
+- **Answers:** 19 of 20 right with dtk, and 20 of 20 without. The one miss did not repeat in 5 more runs.
+- **Where the saving is small:** Claude Code already cuts any output over 30,000 characters to a preview of about 550 tokens. `dtk` swaps that preview for a summary of about the same size that covers every row, so the model knows more and the cost is the same.
+- **Haiku is noisier.** It sometimes writes about the tool and does not state the answer. Sonnet did not do that in 6 of 6 runs.
 
-## Install
+Run it yourself: `scripts/ab-test.sh` (it registers the hooks in a throwaway project and does not touch your settings).
 
-Pick one. Each way ends with the same check, `dtk verify`. The full guide, with update and uninstall steps for each way, is [docs/INSTALL.md](docs/INSTALL.md).
+## Quick start
+
+```sh
+brew install amaye15/tap/dtk      # or any way in the table below
+dtk init --global                 # registers the hook (writes a backup of settings.json first)
+dtk verify                        # checks detection, the hook, rtk, qsv and jaq
+```
+
+Start a new Claude Code session. A running session does not change, because hooks load at start. To see what dtk would do before it changes anything, run `dtk discover` (it reads your history and changes nothing) or `dtk mode shadow`.
 
 | System | Command |
 |---|---|
@@ -61,76 +84,91 @@ Pick one. Each way ends with the same check, `dtk verify`. The full guide, with 
 | Homebrew | `brew install amaye15/tap/dtk` |
 | Windows (PowerShell) | `irm https://raw.githubusercontent.com/amaye15/dtk/main/install.ps1 \| iex` |
 | Scoop | `scoop bucket add amaye15 https://github.com/amaye15/scoop-bucket` then `scoop install dtk` |
-| winget | manifests in [`packaging/winget`](packaging/winget); see the install guide |
-| Cargo | `cargo install dtk --locked` (or `--git https://github.com/amaye15/dtk`) |
-| Debian, Ubuntu | `.deb` from the [releases page](https://github.com/amaye15/dtk/releases) (`dtk_amd64.deb`, `dtk_arm64.deb`) |
-| Fedora, RHEL | `.rpm` from the releases page (`dtk.x86_64.rpm`, `dtk.aarch64.rpm`) |
-| Any | pre-built archives for macOS, Linux (static) and Windows, each with a `.sha256` file |
+| winget | submitted to the community repository ([pull request](https://github.com/microsoft/winget-pkgs/pull/468535)); until it merges, use the manifests in [`packaging/winget`](packaging/winget) |
+| Cargo | `cargo install dtk --locked` |
+| Debian, Ubuntu | `dtk_amd64.deb` or `dtk_arm64.deb` from the [releases page](https://github.com/amaye15/dtk/releases) |
+| Fedora, RHEL | `dtk.x86_64.rpm` or `dtk.aarch64.rpm` from the releases page |
+| Any | static archives for macOS, Linux and Windows, each with a `.sha256` file |
 
-Another program named `dtk` exists (decomp-toolkit). Check that you have this one: `dtk --version` prints `dtk X.Y.Z`, and `dtk verify` prints `built-in checks passed`.
+[docs/INSTALL.md](docs/INSTALL.md) has update and uninstall steps for each way. Another program named `dtk` exists (decomp-toolkit). If `dtk verify` prints `built-in checks passed`, you have this one. For the drill-down commands in the summaries, install `qsv` and `jaq` (`brew install qsv jaq`).
 
-Then register the hook once and start a new Claude Code session:
+## What it recognizes
 
-```sh
-dtk init --global       # edits ~/.claude/settings.json, writes a backup first
-dtk doctor              # checks the hook, rtk, qsv and jaq
-dtk init --uninstall    # removes the dtk entry and restores rtk's own hook
-```
+`dtk` looks at Bash output and at whole-file `Read` of data files. Detection is strict: when it is not sure, the output passes through untouched.
 
-`dtk init` keeps every other setting and every other hook. Hooks load when a session starts, so a running session does not change.
+| Found in the output | Shown as |
+|---|---|
+| JSON Lines, JSON array of objects | rows and columns |
+| A JSON object that wraps one big array (`{"items": [...]}`), or is keyed by id | rows and columns |
+| CSV, TSV, `;` or `\|` separated text with a header | rows and columns |
+| Tables with borders: polars, psql, MySQL, SQLite, Markdown, rich | rows and columns |
+| Whitespace-aligned tables, such as pandas `to_string()` | rows and columns |
+| `ps aux`, `ps -ef`, `df -h` (the last column is free text) | rows and columns |
+| logfmt (`level=info msg="x"`) | rows and columns |
+| Apache and nginx access logs | rows and columns |
+| JSON lines behind a prefix (`docker compose logs`, `kubectl logs --prefix`) | rows and columns |
+| Plain text logs whose lines start with a timestamp: CI logs, application logs, syslog. A stack trace belongs to the line above it. | rows and columns, with errors and their context |
+| A JSON document that is not a table: `cargo metadata`, `terraform show -json`, a few big API records | an outline |
 
-For the drill-down commands in the summaries, install `qsv` and `jaq` (for example `brew install qsv jaq`).
+A table of 60 rows or fewer is re-encoded as CSV and nothing is dropped. A bigger table gets:
 
-## Working with rtk
+- the shape and size, the column names and types
+- per column: min, max, mean, median and p95 for numbers; value counts for labels and codes; the time range; null counts
+- for each numeric column, **the row that holds its largest and smallest value** (`max at order_id=100243`), so "which order was the slowest?" needs no second command
+- for text with many different values, the few message shapes with counts (`request # took #ms (2000)`)
+- the first rows and the last rows
+- the rows where a `level` says warn or error. In a text log, each error comes with the 4 lines before it, repeated errors are grouped by shape, and a log without a level field gets a `flag` column that dtk derives from words that lead a message or label it (`error:`, `FAILED`, `##[error]`). The summary says so.
+- the exact commands to query the full data with `qsv` and `jaq`
 
-rtk and dtk do different jobs and fit together:
+A **JSON document** gets an outline instead: each top-level key with its size, the merged shape of the records in each array (a key that only some records have is marked `?`, a field that is sometimes null reads `str|null`), and a `jaq` command to read any part.
+
+### What it never touches
+
+- Source code and prose. The model needs the exact text.
+- Directory listings (`ls -l`, `find`, `git ls-files`). In a listing the names are the content.
+- Small outputs: under 1,200 estimated tokens for a table, 4,000 for a JSON document (8,000 for `Read`). A small JSON file is read for its values.
+- Commands that ask for specific rows: `head`, `tail`, `sed -n`, `qsv slice`, and rtk's `--head-lines` and `--tail-lines`. Also commands that read the files dtk saved, so the drill-down commands in a summary return what they ask for.
+- JSON documents that come out of a `jq`, `jaq`, `gron` or `yq` query: the model asked for those values.
+- Output that rtk has already cut (`... (N lines truncated)`, `[see remaining: ...]`). A summary would claim to cover rows that are missing.
+- Reads with `offset` or `limit`, and anything in `exclude_commands`.
+
+## Works with rtk
+
+rtk and dtk do different jobs.
 
 | | rtk | dtk |
 |---|---|---|
-| Hook | `PreToolUse`: rewrites commands (`git status` becomes `rtk git status`) | `PostToolUse`: summarizes tables in the output |
-| Good at | known commands: git, cargo, tests, grep, ls | tables, CSV, JSONL, data frames |
-| Optional post-command pipeline | `rtk:posthook` compresses other output after the command | goes first, because it needs the raw table |
+| Hook | `PreToolUse`: rewrites commands (`git status` becomes `rtk git status`) | `PostToolUse`: summarizes data in the output |
+| Good at | known commands: git, cargo, tests, grep, ls | tables, CSV, JSON, logs |
 
-**One hook, a fixed order.** `dtk init --global` registers a single `PostToolUse` hook: `dtk hook claude --then rtk hook claude`.
+`dtk init --global` registers **one** `PostToolUse` hook: `dtk hook claude --then rtk hook claude`. dtk looks at each event first. If the output is data, dtk answers. Every other event goes to rtk unchanged, byte for byte. dtk goes first because a table that rtk had already cut would be summarized wrongly.
 
-1. dtk looks at the event first. If the output is a table, dtk answers, and rtk is not called.
-2. Every other event goes to rtk unchanged, byte for byte. rtk's answer and exit code come back as they are.
+What dtk does so that the two never get in each other's way:
 
-dtk must go first. A table that rtk had already cut to its first and last lines would be summarized wrongly.
+- **`rtk init` keeps working.** rtk recognizes its hook by its shape. dtk's entry holds a silent placeholder named `rtk`, so `rtk init -g` sees its hook as installed and adds no second hook that could replace dtk's summary. `rtk init -g --uninstall` removes only the placeholder.
+- **dtk sees through rtk's rewrites.** rtk turns `head -n 400 f` into `rtk read f --head-lines 400` and `cat f` into `rtk read f`. dtk still treats the first as a request for 400 rows, and `exclude_commands = ["^cat "]` still matches the second.
+- **dtk leaves what rtk cut.** The pointer to the rest (`[see remaining: ...]`, `[+N hidden: rtk recall ...]`) stays in front of the model.
+- **rtk's own `PostToolUse` entry is taken over** and put back exactly by `dtk init --uninstall`. rtk's `PreToolUse` hook is never touched.
+- `dtk gain` shows dtk's totals and rtk's totals together. `dtk init --global --no-rtk` skips the chain, and dtk works alone if rtk is not installed.
 
-**`rtk init` keeps working.** rtk recognizes its own hook in `settings.json` by its shape, `<path>/rtk hook claude`. If it did not find that, `rtk init -g` (which people re-run after upgrades) would add a second `PostToolUse` hook beside dtk's, and Claude Code applies the last matching one, so rtk's output could replace dtk's summary. So dtk's single entry holds two hooks: the chain, and a silent placeholder named `rtk` in dtk's data folder. rtk sees its hook as installed and adds nothing; `rtk init --show` and `rtk pipeline validate` stay satisfied; `rtk init -g --uninstall` removes only the placeholder. When you turn on rtk's `rtk:posthook` pipeline later, rtk widens the entry's matcher itself.
+All of this runs against the real rtk binary in CI (`tests/rtk_real.rs`, `tests/rtk_compat.rs`, and on Windows `tests/rtk_windows.rs`). The chain adds a few milliseconds: on one Mac, dtk alone took 2 to 7 ms, rtk alone 4 to 13 ms, and both together 17 to 21 ms.
 
-**rtk's own hook is taken over.** If rtk already has a `PostToolUse` entry (you enabled `rtk:posthook` and ran `rtk init -g` before installing dtk), `dtk init --global` takes it over, keeps its matcher, and runs rtk's hook through the chain. `dtk init --uninstall` puts rtk's entry back exactly, unless rtk itself removed it in the meantime.
-
-All of this is tested against the real rtk binary (`tests/rtk_real.rs`, run in CI on macOS and Linux): init twice, init in both orders, uninstall in both orders, and enabling the pipeline later.
-
-**rtk's `PreToolUse` hook is never touched.** The commands rtk rewrites (`rtk read data.csv`) still produce tables that dtk summarizes.
-
-**Shared view.** `dtk gain` prints dtk's totals and rtk's totals (`rtk gain`) together.
-
-Use `dtk init --global --no-rtk` to skip the chain. If rtk is not installed, dtk works alone.
-
-The two programs run one after the other, so the hook takes about the sum of both. Measured on one Mac, as medians: dtk alone 2 to 7 ms (about 2 ms for a typical event, about 7 ms for a 331 KB CSV), rtk alone 4 to 13 ms, both through the chain 17 to 21 ms. That is small next to a model call.
-
-Tested end to end with real rtk 1.1.0 and Claude Code: with `rtk:posthook` enabled, a 150-row JSONL log became a dtk summary (864 tokens), and an 850-line plain text output went through the chain to rtk, which cut it to 252 lines and added its `[full output: ...]` pointer.
-
-## Control
+## Commands
 
 | Command | Effect |
 |---|---|
-| `dtk mode shadow` | Decide and log, but change no output. Use it to see what `dtk` would do. |
-| `dtk mode live` | Replace output (the default). |
-| `DTK_DISABLED=1` | dtk passes every output through. The rtk chain still runs. |
-| `DTK_RAW=1 cat data.csv` | Pass this one command's output through. |
-
-Commands that ask for specific rows are never summarized: `qsv slice`, `qsv sample`, `head`, `tail`, `sed -n`, and rtk's `--max-lines` and `--tail-lines`. That includes the `rows:` command in a summary.
-| `dtk gain [--json]` | Totals from the decision log, with rtk's totals beside them. |
-| `dtk view FILE` | Show the lean view of a file or standard input. |
+| `dtk init --global [--no-rtk]` | Register the hook (and the rtk chain). |
+| `dtk init --uninstall [--purge]` | Remove the hook and restore rtk's entry. `--purge` also deletes dtk's data and config. |
+| `dtk mode shadow` / `dtk mode live` | Shadow decides and logs but changes no output. Live replaces output (the default). |
 | `dtk doctor` | Check the hook, rtk, `qsv`, `jaq` and the config. Exits 1 on a warning. |
 | `dtk verify` | Built-in PASS/FAIL checks of detection and decisions, then `doctor`. |
-| `dtk explain FILE --command CMD` | Say whether dtk would summarize this output, and why. Uses the hook's own decision function. |
-| `dtk discover` | Scan your Claude Code history for tables dtk would have summarized, and what that would save. Changes nothing. |
+| `dtk explain FILE --command CMD` | Say whether dtk would summarize this output, and why. It uses the hook's own decision function. |
+| `dtk discover [--since DAYS]` | Scan your Claude Code history for output dtk would have replaced, and what that would save. Changes nothing. |
+| `dtk view FILE` | Show the summary of a file or of standard input. |
+| `dtk gain [--json]` | Totals from the decision log, with rtk's totals beside them. |
 | `dtk config [--create]` | Show the settings in use, or write a default `config.toml`. |
+
+`DTK_DISABLED=1` makes dtk pass every output through (the rtk chain still runs). `DTK_RAW=1 cat data.csv` passes one command through.
 
 ## Config
 
@@ -138,33 +176,47 @@ Commands that ask for specific rows are never summarized: `qsv slice`, `qsv samp
 
 ```toml
 [hooks]
-# Leave these alone. "^text" matches the start of a command (or a file path for Read);
-# any other text matches anywhere in it.
+# "^text" matches the start of a command (or a file path for Read); any other text matches anywhere.
 exclude_commands = ["^kubectl", "psql"]
 
 [thresholds]
-min_tokens = 1200        # smallest output worth replacing (estimated tokens)
-budget = 2500            # largest summary
-min_persisted_rows = 30  # fewest rows for output that Claude Code saved to a file
+min_tokens = 1200          # smallest table worth replacing (estimated tokens)
+budget = 2500              # largest summary
+min_persisted_rows = 30    # fewest rows for output that Claude Code saved to a file
+min_outline_tokens = 4000  # smallest JSON document worth an outline
 ```
 
-A broken file means the defaults, never a failing hook; `dtk doctor` reports it.
+A broken file means the defaults. The hook never fails because of a typo, and `dtk doctor` reports it.
 
 ## Safety
 
-- The hook fails open. Any error means no output from dtk, so Claude Code keeps the original output. A chained command that is missing or runs longer than 10 seconds is skipped.
-- It only reads files under `~/.claude/`, the folder where Claude Code saves large outputs.
-- A summary is used only if it is clearly smaller: at least 30% fewer tokens for mid-size output, and always for output that Claude Code saved to a file.
-- Strict detection: prose, source code, single JSON objects, cargo output and numeric headers are not tables.
-- It handles Bash output and whole-file `Read` of data files. MCP tools are not touched.
+- **The hook fails open.** Any error means dtk adds nothing, and Claude Code keeps the original output. A chained command that is missing or runs longer than 10 seconds is skipped.
+- It reads only files under `~/.claude/`, where Claude Code saves large outputs.
+- A summary replaces the output only when it is clearly smaller: at least 30% fewer tokens for mid-size output, and always for output that Claude Code saved to a file.
+- It does not touch MCP tool output.
+- **Where data lives.** `~/.local/share/dtk/store/` holds full copies of replaced data (mode 0600 in a 0700 folder; the newest 60 files, nothing older than 14 days). `~/.local/share/dtk/decisions.jsonl` holds one line per decision, with the first 100 characters of the command. `~/.config/dtk/` holds the mode, the config and the record of what `dtk init` took over. Command output can contain secrets, so treat the store like the files Claude Code itself saves in `~/.claude/`.
 
-## Where data lives
+## How it is checked
 
-- `~/.local/share/dtk/store/` holds full copies of replaced data (CSV, and raw JSON or JSONL). Files are mode 0600 in a 0700 folder. The store keeps the newest 60 files and nothing older than 14 days.
-- `~/.local/share/dtk/decisions.jsonl` holds one JSON line per table found: format, rows, token counts, the decision, and the first 100 characters of the command. It stays under about 4 MB.
-- `~/.config/dtk/` holds the mode, `config.toml` and the record of what `dtk init` took over.
+144 tests, and one script that uses a real model. The plan and its results are in [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
 
-Command output can contain secrets. Treat the store like the files that Claude Code itself saves in `~/.claude/`.
+| Check | What it proves |
+|---|---|
+| `tests/corpus.rs` | Real output of pandas, polars, sqlite3, tabulate, rich, jq, git, `gh api`, `ps`, CI logs and more: 50 files are detected as expected, 27 are rejected. |
+| `tests/retention.rs` | The facts a summary must keep (row count, ranges, which row holds each extreme, value counts, first errors), computed by the test itself. 759 of 759 kept. |
+| `tests/oracle.rs` | dtk's types, null counts, min, max, mean, medians and counts equal `qsv`, `jaq`, `awk`, `grep` and `sed`. |
+| `tests/properties.rs` | Random text and bytes, and mutated real files, never panic and always give well-formed tables and smaller views. |
+| `tests/rtk_real.rs`, `tests/rtk_compat.rs` | The real rtk binary: every init, re-init and uninstall order, and rtk's command rewrites and cut output. |
+| `tests/outline.rs`, `tests/hook.rs`, `tests/tools.rs` | The hook against simulated Claude Code events, outlines, and the commands. |
+| `scripts/ab-test.sh` | Real Claude Code with and without dtk (see above). |
+| CI | macOS, Linux and Windows. The install routes are tested against each release by `install-test.yml`. |
+
+## Limits
+
+- Detection of whitespace-aligned text is a heuristic, and a wrong guess puts values under the wrong name. So dtk refuses what it cannot read safely: pandas `print(df)` (columns hidden behind `...`), `to_string()` with a datetime column (the labels could be wrong), and tables with column names that contain spaces, such as `netstat` and `lsof`. Print data with `df.to_csv()`, `df.to_json(orient="records", lines=True)` or polars.
+- Inputs above 128 MB are skipped. A column with more than 5,000 different values shows its message shapes only if there are at most 200 of them; otherwise it shows the count.
+- dtk is a separate program that calls rtk. It is not an rtk plugin: a plugin needs a custom rtk build, links rtk's source-available license, and would see only the first 30,000 characters of a large output.
+- It works with Claude Code only. Windows has an x86_64 build (no ARM64 build yet).
 
 ## Use as a library
 
@@ -175,34 +227,16 @@ if let Some((table, view)) = dtk::summarize(&text, &ctx, 2500) {
 }
 ```
 
-## Limits
-
-- Detection of whitespace-aligned text tables is a heuristic. The default `print(df)` of pandas hides columns behind `...`, so `dtk` does not treat it as a table. A pandas `to_string()` table with a datetime column is refused too, because pandas can join that column to its neighbour with one space and the column labels could come out wrong. Print with `df.to_csv()`, `df.to_json(orient="records", lines=True)` or polars, which `dtk` reads correctly.
-- Inputs above 128 MB are skipped.
-- Statistics cover the whole table. For columns with more than 5,000 distinct values, only a count is shown.
-- dtk is a separate program that calls rtk. It is not an rtk plugin: a plugin needs a custom rtk build, links rtk's source-available license, and would see only the first 30,000 characters of a large output.
-- Windows is not supported yet.
-
 ## Develop
 
 ```sh
 cargo test
 cargo clippy --all-targets -- -D warnings
+scripts/ab-test.sh      # real Claude Code, with and without dtk (about 25 seconds per run)
 ```
 
-How dtk is checked (the plan and its results are in `docs/PLAN-0.3.0.md`):
-
-| Gate | What it proves |
-|---|---|
-| `tests/corpus.rs` | A matrix of real output (pandas, polars, sqlite3, tabulate, rich, jq, git, `gh api`, and more): each of 43 files is detected as expected, and 29 negatives are rejected. See `tests/corpus/README.md`. |
-| `tests/properties.rs` | Random text and bytes, and mutated real files, never panic and always give well-formed tables and smaller views. |
-| `tests/oracle.rs` | dtk's types, null counts, min, max, mean, medians and category counts equal `qsv`, `jaq`, `awk`, `grep` and `sed`. |
-| `tests/rtk_real.rs` | The real rtk binary, in a throwaway HOME: every init, re-init and uninstall order. |
-| `tests/hook.rs`, `tests/rtk_integration.rs`, `tests/tools.rs` | The hook against simulated Claude Code events, the chain with a fake rtk, and the commands. |
-| `scripts/ab-test.sh` | Real Claude Code sessions with and without dtk on six formats: correct answers, fewer tokens. |
-
-All of the tests use a temporary home folder.
+Every test uses a temporary home folder.
 
 ## License
 
-MIT. See `LICENSE-MIT`.
+MIT. See [LICENSE-MIT](LICENSE-MIT).
