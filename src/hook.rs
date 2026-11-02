@@ -105,9 +105,10 @@ fn store_write(ext: &str, bytes: &[u8]) -> Option<PathBuf> {
 /// Keeps the store small: newest files only, nothing older than two weeks.
 fn prune(dir: &Path) {
     let Ok(rd) = fs::read_dir(dir) else { return };
+    // symlink_metadata: a link whose target was deleted still has an age and can be pruned.
     let mut files: Vec<(SystemTime, PathBuf)> = rd
         .filter_map(|e| e.ok())
-        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .filter_map(|e| Some((e.path().symlink_metadata().ok()?.modified().ok()?, e.path())))
         .collect();
     files.sort_by_key(|f| std::cmp::Reverse(f.0));
     let now = SystemTime::now();
@@ -170,6 +171,38 @@ fn under_claude_dir(p: &Path) -> bool {
     }
 }
 
+/// A long path (Claude Code keeps big outputs deep under `~/.claude/projects/...`) would be
+/// repeated in several lines of a summary. Give it a short name in the store: a symlink.
+fn short_path(target: &Path, ext: &str, write: bool) -> String {
+    let long = target.display().to_string();
+    if long.len() <= 60 || !write {
+        return long;
+    }
+    #[cfg(unix)]
+    {
+        let Some(dir) = data_dir().map(|d| d.join("store")) else {
+            return long;
+        };
+        if create_private_dir(&dir).is_err() {
+            return long;
+        }
+        let link = dir.join(format!(
+            "{}.{}",
+            &hex(&Sha256::digest(long.as_bytes()))[..12],
+            ext
+        ));
+        if fs::read_link(&link).ok().as_deref() != Some(target) {
+            let _ = fs::remove_file(&link);
+            if std::os::unix::fs::symlink(target, &link).is_err() {
+                return long;
+            }
+        }
+        link.display().to_string()
+    }
+    #[cfg(not(unix))]
+    long
+}
+
 /// Renders the lean view and, when `write` is set, saves the full data next to it.
 fn build(t: &Table, text: &str, persisted: Option<&Path>, write: bool) -> Rendered {
     let mut ctx = Ctx {
@@ -180,7 +213,7 @@ fn build(t: &Table, text: &str, persisted: Option<&Path>, write: bool) -> Render
     if t.rows.len() > lean::LOSSLESS_ROWS {
         let is_json = matches!(t.format, Format::Jsonl | Format::JsonArray);
         if t.format == Format::Csv && persisted.is_some() {
-            ctx.csv_path = persisted.map(|p| p.display().to_string());
+            ctx.csv_path = persisted.map(|p| short_path(p, "csv", write));
         } else {
             let saved = if write {
                 store_write("csv", lean::to_csv(t).as_bytes())
@@ -195,7 +228,15 @@ fn build(t: &Table, text: &str, persisted: Option<&Path>, write: bool) -> Render
         }
         if is_json {
             ctx.raw_path = match persisted {
-                Some(p) => Some(p.display().to_string()),
+                Some(p) => Some(short_path(
+                    p,
+                    if t.format == Format::Jsonl {
+                        "jsonl"
+                    } else {
+                        "json"
+                    },
+                    write,
+                )),
                 None => {
                     let ext = if t.format == Format::Jsonl {
                         "jsonl"

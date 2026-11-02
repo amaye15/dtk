@@ -43,6 +43,9 @@ pub struct ColStats {
     pub p95: Option<f64>,
     /// Most common values with their counts, most common first (at most 8).
     pub top: Vec<(String, usize)>,
+    /// For text with many distinct values: the shapes the values share (digits and ids replaced
+    /// by `#` and `<hex>`), with how many rows have each shape. Most common first (at most 8).
+    pub templates: Vec<(String, usize)>,
 }
 
 pub struct ColInfo {
@@ -145,6 +148,76 @@ fn pct_text(p: Option<(f64, f64)>) -> String {
         .unwrap_or_default()
 }
 
+fn is_uuid(c: &[char]) -> bool {
+    c.len() == 36
+        && c.iter().enumerate().all(|(i, ch)| match i {
+            8 | 13 | 18 | 23 => *ch == '-',
+            _ => ch.is_ascii_hexdigit(),
+        })
+}
+
+/// The shape of a text value: digit runs become `#`, long hex ids `<hex>`, uuids `<uuid>`.
+/// `request 4821 took 55ms for 9f8e7d6c5b4a` becomes `request # took #ms for <hex>`.
+pub fn template(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        let at_start = i == 0 || !chars[i - 1].is_ascii_alphanumeric();
+        if at_start && c.is_ascii_hexdigit() && i + 36 <= chars.len() && is_uuid(&chars[i..i + 36])
+        {
+            out.push_str("<uuid>");
+            i += 36;
+            continue;
+        }
+        if !c.is_ascii_alphanumeric() {
+            out.push(c);
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < chars.len() && chars[i].is_ascii_alphanumeric() {
+            i += 1;
+        }
+        let tok = &chars[start..i];
+        if tok.iter().all(char::is_ascii_digit) {
+            out.push('#');
+        } else if tok.len() >= 8
+            && tok.iter().all(char::is_ascii_hexdigit)
+            && tok.iter().any(char::is_ascii_digit)
+            && tok.iter().any(char::is_ascii_alphabetic)
+        {
+            out.push_str("<hex>");
+        } else {
+            let mut prev_digit = false;
+            for &t in tok {
+                if t.is_ascii_digit() {
+                    if !prev_digit {
+                        out.push('#');
+                    }
+                    prev_digit = true;
+                } else {
+                    out.push(t);
+                    prev_digit = false;
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Row counts per template, most common first.
+fn template_counts(distinct: &HashMap<&str, usize>) -> Vec<(String, usize)> {
+    let mut by: HashMap<String, usize> = HashMap::new();
+    for (v, n) in distinct {
+        *by.entry(template(v)).or_default() += n;
+    }
+    let mut v: Vec<(String, usize)> = by.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    v
+}
+
 fn top_pairs(distinct: &HashMap<&str, usize>, limit: usize) -> Vec<(String, usize)> {
     let mut v: Vec<(&&str, &usize)> = distinct.iter().collect();
     v.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
@@ -239,6 +312,12 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
     };
     // Codes such as HTTP status or a rating: counts say more than a min, max and mean.
     let few_values = !overflow && distinct.len() <= 12 && nonempty >= 2 * distinct.len();
+    // Text with many distinct values (messages with ids and numbers in them): group by shape.
+    let templates = if kind == Kind::Str && !overflow && distinct.len() > 12 {
+        template_counts(&distinct)
+    } else {
+        Vec::new()
+    };
     let pcts = if matches!(kind, Kind::Int | Kind::Float) {
         pct(&mut nums)
     } else {
@@ -264,6 +343,24 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
                 ">5000 distinct".to_string()
             } else if distinct.len() <= 12 {
                 format!("{} distinct: {}", distinct.len(), top_values(&distinct, 8))
+            } else if templates.len() >= 2 && templates.len() * 3 <= distinct.len() {
+                let shown: Vec<String> = templates
+                    .iter()
+                    .take(6)
+                    .map(|(t, n)| format!("{} ({})", t.chars().take(60).collect::<String>(), n))
+                    .collect();
+                let more = if templates.len() > 6 {
+                    format!(", +{} more", templates.len() - 6)
+                } else {
+                    String::new()
+                };
+                format!(
+                    "{} distinct, {} templates: {}{}",
+                    distinct.len(),
+                    templates.len(),
+                    shown.join("; "),
+                    more
+                )
             } else {
                 let unique = if distinct.len() == nonempty {
                     ", all unique"
@@ -292,6 +389,7 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
         p50: pcts.map(|p| p.0),
         p95: pcts.map(|p| p.1),
         top: top_pairs(&distinct, 8),
+        templates: templates.into_iter().take(8).collect(),
     };
     ColInfo {
         kind,
@@ -648,6 +746,74 @@ mod tests {
         let t = detect(&text).unwrap();
         let r = render(&t, &ctx(), 2500);
         assert!(est_tokens(&r.text) * 20 < est_tokens(&text));
+    }
+
+    #[test]
+    fn template_replaces_numbers_and_ids() {
+        assert_eq!(template("request 4821 took 55ms"), "request # took #ms");
+        assert_eq!(template("user 9f8e7d6c5b4a done"), "user <hex> done");
+        assert_eq!(
+            template("id 123e4567-e89b-12d3-a456-426614174000 ok"),
+            "id <uuid> ok"
+        );
+        assert_eq!(template("v1.2.3 build abc"), "v#.#.# build abc");
+        assert_eq!(template("plain text"), "plain text");
+        assert_eq!(
+            template("deadbeef"),
+            "deadbeef",
+            "letters only is a word, not an id"
+        );
+    }
+
+    #[test]
+    fn many_distinct_messages_collapse_to_their_templates_with_exact_counts() {
+        let mut s = String::from("level,msg\n");
+        for i in 0..2000 {
+            s.push_str(&format!("info,request {} took {}ms\n", i, i * 3 % 997));
+        }
+        for i in 0..700 {
+            s.push_str(&format!("warn,cache miss for key a{:07x}9\n", i * 7919));
+        }
+        for i in 0..300 {
+            s.push_str(&format!("error,worker {} crashed\n", i));
+        }
+        let t = detect(&s).unwrap();
+        let info = analyze(&t);
+        let c = &info[1];
+        assert_eq!(
+            c.stats.templates[0],
+            ("request # took #ms".to_string(), 2000)
+        );
+        assert_eq!(
+            c.stats.templates[1],
+            ("cache miss for key <hex>".to_string(), 700)
+        );
+        assert_eq!(c.stats.templates[2], ("worker # crashed".to_string(), 300));
+        assert!(
+            c.summary.starts_with("3000 distinct, 3 templates: request # took #ms (2000); cache miss for key <hex> (700); worker # crashed (300)"),
+            "{}",
+            c.summary
+        );
+    }
+
+    #[test]
+    fn messages_that_really_differ_are_not_forced_into_templates() {
+        let mut s = String::from("id,note\n");
+        for i in 0..100 {
+            s.push_str(&format!(
+                "{},{}\n",
+                i,
+                ["alpha beta", "gamma delta", "epsilon", "zeta eta theta"][i % 4].to_string()
+                    + &"x".repeat(i % 17)
+            ));
+        }
+        let t = detect(&s).unwrap();
+        let info = analyze(&t);
+        assert!(
+            info[1].stats.templates.is_empty() || !info[1].summary.contains("templates"),
+            "{}",
+            info[1].summary
+        );
     }
 
     #[test]

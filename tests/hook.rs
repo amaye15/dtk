@@ -144,7 +144,18 @@ fn reads_the_saved_file_for_large_outputs() {
     let text = upd["stdout"].as_str().unwrap();
     assert!(text.starts_with("[dtk] jsonl: 2000 rows"), "{text}");
     assert!(upd.get("persistedOutputPath").is_none());
-    assert!(text.contains(&saved.display().to_string()));
+    // The path in the summary leads to the saved file (directly, or through a short link).
+    let raw_line = text.lines().find(|l| l.starts_with("raw: ")).expect(text);
+    let shown = raw_line
+        .trim_start_matches("raw: ")
+        .split(' ')
+        .next()
+        .unwrap();
+    assert_eq!(
+        std::fs::canonicalize(shown).unwrap(),
+        std::fs::canonicalize(&saved).unwrap(),
+        "{raw_line}"
+    );
 }
 
 #[test]
@@ -382,5 +393,47 @@ fn a_polars_table_from_a_python_command_is_summarized() {
     assert!(
         text.contains("cols: id:int name:str amount:float"),
         "{text}"
+    );
+}
+
+#[test]
+fn a_long_saved_path_gets_a_short_link_in_the_store() {
+    let home = temp_home("shortlink");
+    let deep = home.join(".claude/projects/-Users-someone-very-long-project-name-here/0123456789abcdef0123456789abcdef/tool-results");
+    std::fs::create_dir_all(&deep).unwrap();
+    let saved = deep.join("bxyz123");
+    std::fs::write(&saved, jsonl(2000)).unwrap();
+    assert!(saved.display().to_string().len() > 60);
+    let head: String = jsonl(2000).chars().take(30000).collect();
+    let resp = json!({"stdout": head, "stderr": "", "interrupted": false, "isImage": false,
+        "persistedOutputPath": saved.display().to_string(), "persistedOutputSize": 99999});
+    let (_, out, _) = run(&home, &["hook", "claude"], &event("Bash", resp), &[]);
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let text = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
+        .as_str()
+        .unwrap();
+    assert!(
+        !text.contains(&saved.display().to_string()),
+        "the long path must not appear: {text}"
+    );
+    let raw_line = text.lines().find(|l| l.starts_with("raw: ")).unwrap();
+    let link = raw_line
+        .trim_start_matches("raw: ")
+        .split(' ')
+        .next()
+        .unwrap();
+    assert!(
+        link.contains("/.local/share/dtk/store/") && link.ends_with(".jsonl"),
+        "{raw_line}"
+    );
+    assert_eq!(
+        std::fs::read_link(link).unwrap(),
+        saved,
+        "the link points at the real file"
+    );
+    assert_eq!(
+        std::fs::read_to_string(link).unwrap(),
+        jsonl(2000),
+        "and reads through"
     );
 }

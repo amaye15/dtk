@@ -107,3 +107,16 @@ web access logs (common and combined), and JSONL with a per-line prefix.
 - Real defects the new fixtures found, now fixed: a wide table with few rows was shown in full
   (83 columns of nested JSON, no saving); a tiny table could get a summary bigger than itself;
   a `-` in the bytes column made it text instead of a number.
+
+### S4. Smaller, smarter summaries: DONE
+- Text columns with many distinct values are grouped by message shape (digits become `#`, long
+  hex ids `<hex>`, uuids `<uuid>`). Unit test with a known mix (2,000 / 700 / 300 over 3,000
+  distinct messages) checks the exact counts. On a 4,000-line logfmt log whose messages all
+  differ, the `msg` column reads as 6 templates with counts, and the whole view is 1,343 real
+  tokens against 150,409 for the raw log (99.1% less).
+- A long saved-file path (Claude Code keeps big outputs deep under `~/.claude/projects/...`) is
+  given a short symlink in dtk's store, so it is not repeated in three lines. Real tokenizer
+  (o200k_base), 5,000-row CSV saved under a realistic long path: 996 tokens before, 792 after
+  (-20.5%; target was -10%). The test checks that the link reads through to the saved file.
+- A test with deliberately mixed data found the limit: a random hex id that happens to be all
+  digits is a number, so a template can split in two (6 and 3 rows in the log above).
