@@ -505,3 +505,39 @@ fn the_placeholder_does_nothing_for_hook_claude_and_says_so_otherwise() {
     assert_eq!((code, out.as_str()), (2, ""));
     assert!(err.contains("placeholder for rtk"), "{err}");
 }
+
+#[test]
+fn uninstall_purge_removes_dtks_data_and_config_but_plain_uninstall_keeps_them() {
+    let home = temp_home("purge");
+    run(&home, &["init", "--global"], "", &[]);
+    run(&home, &["config", "--create"], "", &[]);
+    // Make some data.
+    let ev = bash_event_for_purge();
+    run(&home, &["hook", "claude"], &ev, &[]);
+    let data = home.join(".local/share/dtk");
+    let config = home.join(".config/dtk");
+    assert!(data.exists() && config.exists());
+    let (code, out, _) = run(&home, &["init", "--uninstall"], "", &[]);
+    assert_eq!(code, 0);
+    assert!(
+        out.contains("data and config are kept") && out.contains("to remove the program itself"),
+        "{out}"
+    );
+    assert!(
+        data.exists() && config.join("config.toml").exists(),
+        "a plain uninstall keeps them"
+    );
+    let (_, out, _) = run(&home, &["init", "--uninstall", "--purge"], "", &[]);
+    assert!(
+        out.contains("removed") && !data.exists() && !config.exists(),
+        "{out}"
+    );
+}
+
+fn bash_event_for_purge() -> String {
+    json!({
+        "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": "cat e.jsonl"},
+        "tool_response": {"stdout": jsonl(300), "stderr": "", "interrupted": false, "isImage": false},
+    })
+    .to_string()
+}

@@ -185,11 +185,30 @@ fn entry(matcher: &str, commands: &[String]) -> Value {
     })
 }
 
+/// How to remove the program, for the way it was installed (read from where the binary is).
+pub fn removal_hint(exe: &std::path::Path) -> String {
+    let p = exe.display().to_string().replace('\\', "/");
+    let lower = p.to_ascii_lowercase();
+    if lower.contains("/cellar/") || lower.contains("/homebrew/") || lower.contains("/linuxbrew/") {
+        "brew uninstall dtk".to_string()
+    } else if lower.contains("/.cargo/bin/") {
+        "cargo uninstall dtk".to_string()
+    } else if lower.contains("/scoop/") {
+        "scoop uninstall dtk".to_string()
+    } else if lower.contains("/winget/") || lower.contains("/windowsapps/") {
+        "winget uninstall amaye15.dtk".to_string()
+    } else if lower.starts_with("/usr/bin/") {
+        "sudo apt remove dtk   (Debian, Ubuntu)  or  sudo rpm -e dtk   (Fedora, RHEL)".to_string()
+    } else {
+        format!("delete the file {p}")
+    }
+}
+
 pub fn run(args: &[String]) -> i32 {
     let uninstall = args.iter().any(|a| a == "--uninstall");
     let no_rtk = args.iter().any(|a| a == "--no-rtk");
     if !args.iter().any(|a| a == "--global") && !uninstall {
-        eprintln!("usage: dtk init --global [--no-rtk] | dtk init --uninstall");
+        eprintln!("usage: dtk init --global [--no-rtk] | dtk init --uninstall [--purge]");
         return 2;
     }
     let Some(path) = settings_path() else {
@@ -354,6 +373,18 @@ pub fn run(args: &[String]) -> i32 {
     }
     if uninstall {
         println!("dtk: hook removed from {}", path.display());
+        if args.iter().any(|a| a == "--purge") {
+            for dir in [data_dir(), config_dir()].into_iter().flatten() {
+                if dir.exists() && fs::remove_dir_all(&dir).is_ok() {
+                    println!("dtk: removed {}", dir.display());
+                }
+            }
+        } else {
+            println!("dtk: dtk's data and config are kept; add --purge to remove them too");
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            println!("dtk: to remove the program itself: {}", removal_hint(&exe));
+        }
     } else {
         println!(
             "dtk: hook registered in {} (backup: {})",
@@ -382,6 +413,34 @@ mod tests {
         assert_eq!(
             command_path(Path::new("/Users/some one/bin/dtk")),
             "\"/Users/some one/bin/dtk\""
+        );
+    }
+
+    #[test]
+    fn the_removal_hint_matches_how_dtk_was_installed() {
+        let h = |p: &str| removal_hint(Path::new(p));
+        assert_eq!(
+            h("/opt/homebrew/Cellar/dtk/0.4.0/bin/dtk"),
+            "brew uninstall dtk"
+        );
+        assert_eq!(h("/opt/homebrew/bin/dtk"), "brew uninstall dtk");
+        assert_eq!(
+            h("/home/linuxbrew/.linuxbrew/bin/dtk"),
+            "brew uninstall dtk"
+        );
+        assert_eq!(h("/Users/me/.cargo/bin/dtk"), "cargo uninstall dtk");
+        assert_eq!(
+            h("C:\\Users\\me\\scoop\\apps\\dtk\\current\\dtk.exe"),
+            "scoop uninstall dtk"
+        );
+        assert_eq!(
+            h("C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Links\\dtk.exe"),
+            "winget uninstall amaye15.dtk"
+        );
+        assert!(h("/usr/bin/dtk").contains("apt remove dtk"));
+        assert_eq!(
+            h("/Users/me/.local/bin/dtk"),
+            "delete the file /Users/me/.local/bin/dtk"
         );
     }
 
