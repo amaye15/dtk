@@ -1,6 +1,6 @@
 //! Lean views: a small, typed summary of a table that keeps what an agent acts on.
 
-use crate::table::Table;
+use crate::table::{Format, Table};
 use std::collections::HashMap;
 
 /// Tables up to this many rows are re-encoded as CSV and nothing is dropped.
@@ -537,7 +537,10 @@ fn shell_quote(p: &str) -> String {
     }
 }
 
-const LEVEL_NAMES: [&str; 5] = ["level", "severity", "lvl", "loglevel", "log_level"];
+const LEVEL_NAMES: [&str; 6] = ["level", "severity", "lvl", "loglevel", "log_level", "flag"];
+/// Lines shown above each error in a text log.
+const CONTEXT_LINES: usize = 4;
+
 const BAD_LEVELS: [&str; 8] = [
     "warn", "warning", "error", "err", "fatal", "critical", "crit", "panic",
 ];
@@ -695,7 +698,44 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
             .iter()
             .filter(|r| BAD_LEVELS.contains(&r[li].to_lowercase().as_str()))
             .collect();
-        if !bad.is_empty() {
+        if !bad.is_empty() && t.format == Format::TextLog {
+            // In a text log the lines just before an error say what failed. Errors come first,
+            // each with the lines above it; a warning stands alone.
+            let is_warn =
+                |r: &Vec<String>| matches!(r[li].to_lowercase().as_str(), "warn" | "warning");
+            let (mut errors, mut warns) = (Vec::new(), Vec::new());
+            for (i, r) in t.rows.iter().enumerate() {
+                if BAD_LEVELS.contains(&r[li].to_lowercase().as_str()) {
+                    if is_warn(r) { &mut warns } else { &mut errors }.push(i);
+                }
+            }
+            let cap = p.important + 8;
+            let mut keep = std::collections::BTreeSet::new();
+            for &i in &errors {
+                if keep.len() >= cap {
+                    break;
+                }
+                keep.extend(i.saturating_sub(CONTEXT_LINES)..=i);
+            }
+            for &i in &warns {
+                if keep.len() >= cap {
+                    break;
+                }
+                keep.insert(i);
+            }
+            let shown: Vec<&Vec<String>> = keep.iter().map(|&i| &t.rows[i]).collect();
+            out.push_str(&format!(
+                "{} error{}, {} warning{} ({}); showing {} lines, each error with the {} lines before it:\n{}\n",
+                errors.len(),
+                if errors.len() == 1 { "" } else { "s" },
+                warns.len(),
+                if warns.len() == 1 { "" } else { "s" },
+                t.headers[li],
+                shown.len(),
+                CONTEXT_LINES,
+                show(&shown)
+            ));
+        } else if !bad.is_empty() {
             let shown: Vec<&Vec<String>> = bad.iter().take(p.important).copied().collect();
             out.push_str(&format!(
                 "{} rows with {}=warn/error: showing {} of {}:\n{}\n",

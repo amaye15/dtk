@@ -1,0 +1,126 @@
+﻿2026-11-02T02:35:49.0810010Z Current runner version: '2.338.2'
+2026-11-02T02:35:49.0836317Z ##[group]Runner Image Provisioner
+2026-11-02T02:35:49.0837121Z Hosted Compute Agent
+2026-11-02T02:35:49.0838006Z Version: 20261021.618
+2026-11-02T02:35:49.0838618Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-11-02T02:35:49.0839352Z Build Date: 2026-10-21T00:45:21Z
+2026-11-02T02:35:49.0839993Z Worker ID: {9a5a9a0f-3fa4-4c86-bf9b-4a01026c6382}
+2026-11-02T02:35:49.0840695Z Region: westcentralus
+2026-11-02T02:35:49.0841233Z Cloud: Azure
+2026-11-02T02:35:49.0841746Z ##[endgroup]
+2026-11-02T02:35:49.0843010Z ##[group]Operating System
+2026-11-02T02:35:49.0843609Z Microsoft Windows Server 2025
+2026-11-02T02:35:49.0844294Z 10.0.26100
+2026-11-02T02:35:49.0844781Z Datacenter
+2026-11-02T02:35:49.0845262Z ##[endgroup]
+2026-11-02T02:35:49.0845825Z ##[group]Runner Image
+2026-11-02T02:35:49.0846375Z Image: windows-2025-vs2026
+2026-11-02T02:35:49.0846970Z Version: 20261021.278.1
+2026-11-02T02:35:49.0848425Z Included Software: https://github.com/actions/runner-images/blob/win25-vs2026/20261021.278/images/windows/Windows2025-VS2026-Readme.md
+2026-11-02T02:35:49.0850027Z Image Release: https://github.com/actions/runner-images/releases/tag/win25-vs2026%2F20261021.278
+2026-11-02T02:35:49.0850983Z ##[endgroup]
+2026-11-02T02:35:49.0852201Z ##[group]GITHUB_TOKEN Permissions
+2026-11-02T02:35:49.0854263Z Contents: read
+2026-11-02T02:35:49.0854858Z Metadata: read
+2026-11-02T02:35:49.0855377Z Packages: read
+2026-11-02T02:35:49.0855880Z ##[endgroup]
+2026-11-02T02:35:49.0858234Z Secret source: Actions
+2026-11-02T02:35:49.0859147Z Cache mode: write
+2026-11-02T02:35:49.0859886Z Prepare workflow directory
+2026-11-02T02:35:49.1370765Z Prepare all required actions
+2026-11-02T02:35:49.1421949Z Getting action download info
+2026-11-02T02:35:49.4179725Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-11-02T02:35:49.6651909Z Complete job name: install-ps1
+2026-11-02T02:35:49.8219791Z ##[group]Run actions/checkout@v4
+2026-11-02T02:35:49.8220888Z with:
+2026-11-02T02:35:49.8221296Z   repository: amaye15/dtk
+2026-11-02T02:35:49.8225913Z   token: ***
+2026-11-02T02:35:49.8226314Z   ssh-strict: true
+2026-11-02T02:35:49.8226720Z   ssh-user: git
+2026-11-02T02:35:49.8227124Z   persist-credentials: true
+2026-11-02T02:35:49.8227576Z   clean: true
+2026-11-02T02:35:49.8227989Z   sparse-checkout-cone-mode: true
+2026-11-02T02:35:49.8228458Z   fetch-depth: 1
+2026-11-02T02:35:49.8228839Z   fetch-tags: false
+2026-11-02T02:35:49.8229233Z   show-progress: true
+2026-11-02T02:35:49.8229632Z   lfs: false
+2026-11-02T02:35:49.8230001Z   submodules: false
+2026-11-02T02:35:49.8230405Z   set-safe-directory: true
+2026-11-02T02:35:49.8230867Z   allow-unsafe-pr-checkout: false
+2026-11-02T02:35:49.8231589Z env:
+2026-11-02T02:35:49.8231950Z   DTK_VERSION: v0.4.0
+2026-11-02T02:35:49.8232362Z ##[endgroup]
+2026-11-02T02:35:49.9683647Z Syncing repository: amaye15/dtk
+2026-11-02T02:35:49.9686101Z ##[group]Getting Git version info
+2026-11-02T02:35:49.9687030Z Working directory is 'D:\a\dtk\dtk'
+2026-11-02T02:35:50.0411117Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-11-02T02:35:50.3987856Z git version 2.56.0.windows.2
+2026-11-02T02:35:50.4041550Z ##[endgroup]
+2026-11-02T02:35:50.4061921Z Temporarily overriding HOME='D:\a\_temp\547e44c2-1a4d-49f0-948a-2c599ff48040' before making global git config changes
+2026-11-02T02:35:50.4064002Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T02:35:50.4074939Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\dtk\dtk
+2026-11-02T02:35:50.4769119Z Deleting the contents of 'D:\a\dtk\dtk'
+2026-11-02T02:35:50.4774877Z ##[group]Initializing the repository
+2026-11-02T02:35:50.4784046Z [command]"C:\Program Files\Git\bin\git.exe" init D:\a\dtk\dtk
+2026-11-02T02:35:50.5773020Z Initialized empty Git repository in D:/a/dtk/dtk/.git/
+2026-11-02T02:35:50.5830216Z [command]"C:\Program Files\Git\bin\git.exe" remote add origin https://github.com/amaye15/dtk
+2026-11-02T02:35:50.6584670Z ##[endgroup]
+2026-11-02T02:35:50.6585821Z ##[group]Disabling automatic garbage collection
+2026-11-02T02:35:50.6592292Z [command]"C:\Program Files\Git\bin\git.exe" config --local gc.auto 0
+2026-11-02T02:35:50.6953448Z ##[endgroup]
+2026-11-02T02:35:50.6954475Z ##[group]Setting up auth
+2026-11-02T02:35:50.6964978Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T02:35:50.7326563Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-11-02T02:35:52.1779699Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T02:35:52.2149105Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-11-02T02:35:52.7512679Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T02:35:52.7876762Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-11-02T02:35:53.3398237Z [command]"C:\Program Files\Git\bin\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2026-11-02T02:35:53.3814693Z ##[endgroup]
+2026-11-02T02:35:53.3815472Z ##[group]Fetching the repository
+2026-11-02T02:35:53.3829230Z [command]"C:\Program Files\Git\bin\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +233b61bb76b7656b5c34d59cc04f2c52db66e428:refs/remotes/origin/main
+2026-11-02T02:35:54.6509332Z From https://github.com/amaye15/dtk
+2026-11-02T02:35:54.6543501Z  * [new ref]         233b61bb76b7656b5c34d59cc04f2c52db66e428 -> origin/main
+2026-11-02T02:35:54.6544967Z ##[endgroup]
+2026-11-02T02:35:54.6545544Z ##[group]Determining the checkout info
+2026-11-02T02:35:54.6547222Z ##[endgroup]
+2026-11-02T02:35:54.6557039Z [command]"C:\Program Files\Git\bin\git.exe" sparse-checkout disable
+2026-11-02T02:35:54.7056454Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all extensions.worktreeConfig
+2026-11-02T02:35:54.7414602Z ##[group]Checking out the ref
+2026-11-02T02:35:54.7423076Z [command]"C:\Program Files\Git\bin\git.exe" checkout --progress --force -B main refs/remotes/origin/main
+2026-11-02T02:35:54.8410382Z Switched to a new branch 'main'
+2026-11-02T02:35:54.8430354Z branch 'main' set up to track 'origin/main'.
+2026-11-02T02:35:54.8490489Z ##[endgroup]
+2026-11-02T02:35:54.8955921Z [command]"C:\Program Files\Git\bin\git.exe" log -1 --format=%H
+2026-11-02T02:35:54.9289861Z 233b61bb76b7656b5c34d59cc04f2c52db66e428
+2026-11-02T02:35:54.9689017Z ##[group]Run $env:DTK_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'bin'
+2026-11-02T02:35:54.9689887Z [36;1m$env:DTK_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'bin'[0m
+2026-11-02T02:35:54.9690265Z [36;1m./install.ps1[0m
+2026-11-02T02:35:55.0897351Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-11-02T02:35:55.0897774Z env:
+2026-11-02T02:35:55.0897968Z   DTK_VERSION: v0.4.0
+2026-11-02T02:35:55.0898176Z ##[endgroup]
+2026-11-02T02:35:55.6108199Z dtk install: downloading dtk-v0.4.0-x86_64-pc-windows-msvc.zip
+2026-11-02T02:35:57.2031087Z [31;1mWrite-Error: [0mD:\a\dtk\dtk\install.ps1:53[0m
+2026-11-02T02:35:57.2031870Z [31;1m[0m[36;1mLine |[0m
+2026-11-02T02:35:57.2033856Z [31;1m[0m[36;1m[36;1m  53 | [0m … -ne $got) { [36;1mFail "checksum mismatch (expected $want, got $got); not i[0m …[0m
+2026-11-02T02:35:57.2035409Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m     | [31;1m               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+2026-11-02T02:35:57.2037497Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mdtk install: checksum mismatch (expected 54, got[0m
+2026-11-02T02:35:57.2038417Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m[31;1m[36;1m     | [31;1m60b34035cddd26c6d32ab6cf62d7baf228a82331861ad4b88475347718c54122); not installing[0m
+2026-11-02T02:35:57.2743745Z ##[error]Process completed with exit code 1.
+2026-11-02T02:35:57.3009786Z Post job cleanup.
+2026-11-02T02:35:57.4685437Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-11-02T02:35:57.5030080Z git version 2.56.0.windows.2
+2026-11-02T02:35:57.5092524Z Temporarily overriding HOME='D:\a\_temp\83f202a3-e236-4cd8-a90f-c66a232cbd29' before making global git config changes
+2026-11-02T02:35:57.5102673Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T02:35:57.5103345Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\dtk\dtk
+2026-11-02T02:35:57.5481028Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T02:35:57.5972565Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-11-02T02:35:58.1730135Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T02:35:58.2061449Z http.https://github.com/.extraheader
+2026-11-02T02:35:58.2107993Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2026-11-02T02:35:58.2478580Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-11-02T02:35:58.7854966Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T02:35:58.8240805Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-11-02T02:35:59.3620316Z Cleaning up orphan processes
+2026-11-02T02:35:59.3743353Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

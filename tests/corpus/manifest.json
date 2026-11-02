@@ -561,6 +561,49 @@
         "%iused",
         "Mounted on"
       ]
+    },
+    {
+      "file": "positive/gha_job_failed.log",
+      "format": "text-log",
+      "rows": 126,
+      "cols": 3,
+      "headers": [
+        "ts",
+        "msg",
+        "flag"
+      ]
+    },
+    {
+      "file": "positive/gha_job_long.log",
+      "format": "text-log",
+      "rows": 1169,
+      "cols": 3,
+      "headers": [
+        "ts",
+        "msg",
+        "flag"
+      ]
+    },
+    {
+      "file": "positive/syslog_lines.log",
+      "format": "text-log",
+      "rows": 60,
+      "cols": 2,
+      "headers": [
+        "ts",
+        "msg"
+      ]
+    },
+    {
+      "file": "positive/app_log_brackets.log",
+      "format": "text-log",
+      "rows": 60,
+      "cols": 3,
+      "headers": [
+        "ts",
+        "level",
+        "msg"
+      ]
     }
   ],
   "negative": [
@@ -653,16 +696,8 @@
       "note": "two pairs per line"
     },
     {
-      "file": "negative/syslog_lines.log",
-      "note": "free text with quotes and brackets absent"
-    },
-    {
       "file": "negative/quoted_text_lines.log",
       "note": "bracket and quote shapes but not an access log"
-    },
-    {
-      "file": "negative/app_log_brackets.log",
-      "note": "bracketed timestamp, free text"
     },
     {
       "file": "negative/prefixed_text.txt",

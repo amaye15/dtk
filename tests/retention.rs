@@ -156,6 +156,27 @@ fn facts(t: &Table) -> Vec<Fact> {
             }
         }
     }
+    // Trouble: the first few rows with an error-like level are named in the summary (by their
+    // first value, which for a log is the time).
+    if let Some(lc) = t.headers.iter().position(|h| {
+        ["level", "severity", "lvl", "loglevel", "log_level", "flag"]
+            .contains(&h.to_lowercase().as_str())
+    }) {
+        let bad: Vec<usize> = (0..n)
+            .filter(|&r| {
+                ["error", "err", "fatal", "critical", "crit", "panic"]
+                    .contains(&t.rows[r][lc].to_lowercase().as_str())
+            })
+            .take(5)
+            .collect();
+        for r in bad {
+            fact(
+                format!("error row {r} ({}) is shown", t.rows[r][0]),
+                vec![t.rows[r][0].clone()],
+                None,
+            );
+        }
+    }
     let first = t.rows[0][0].clone();
     let last = t.rows[n - 1][0].clone();
     fact("first row".into(), vec![first], None);

@@ -30,8 +30,10 @@ pub enum Format {
     AccessLog,
     /// JSON lines with a prefix such as `web-1  | ` in front of each object.
     PrefixedJsonl,
-    /// Whitespace table with a free-text last column: `ps aux`, `df -h`, `netstat`.
+    /// Whitespace table with a free-text last column: `ps aux`, `df -h`.
     TailText,
+    /// Plain text lines that start with a timestamp.
+    TextLog,
 }
 
 impl Format {
@@ -42,6 +44,7 @@ impl Format {
             Format::Csv => "csv",
             Format::Tsv => "tsv",
             Format::Aligned | Format::Bordered | Format::TailText => "table",
+            Format::TextLog => "text-log",
             Format::JsonObject => "json-object",
             Format::Logfmt => "logfmt",
             Format::AccessLog => "access-log",
@@ -86,6 +89,7 @@ pub fn detect(text: &str) -> Option<Table> {
         .or_else(|| parse_delimited(text))
         .or_else(|| parse_aligned(text))
         .or_else(|| crate::textcols::parse_tail_text(text))
+        .or_else(|| crate::logs::parse_text_log(text))
 }
 
 /// The objects of a JSON array, or the entries of a JSON object whose values are objects.
