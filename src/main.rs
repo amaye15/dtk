@@ -1,4 +1,7 @@
+mod config;
+mod discover;
 mod doctor;
+mod explain;
 mod hook;
 mod init;
 
@@ -18,9 +21,15 @@ usage:
   dtk init --global --no-rtk
                            register without the rtk chain
   dtk init --uninstall     remove the hook again (and restore rtk's own PostToolUse hook)
-  dtk doctor               check the hook, rtk and the helper tools
+  dtk doctor               check the hook, rtk, the helper tools and the config
+  dtk verify               built-in self-test of detection and decisions, then doctor
+  dtk explain [FILE|-] [--command CMD] [--read] [--saved]
+                           say whether dtk would summarize this output, and why
+  dtk discover [--all | --since DAYS] [--limit N] [--json]
+                           scan your Claude Code history for tables dtk would have summarized
+  dtk config [--create]    show the settings in use, or write a default config file
   dtk mode [shadow|live]   show or set the mode (shadow = log only, change nothing)
-  dtk gain                 totals from the decision log, with rtk's totals beside them
+  dtk gain [--json]        totals from the decision log, with rtk's totals beside them
   dtk --version
 
 environment:
@@ -45,6 +54,48 @@ fn quiet_on_broken_pipe() {
     }));
 }
 
+/// `dtk config [--create]`: show the settings in use, or write the default file.
+fn config_command(args: &[String]) -> i32 {
+    let Some(path) = config::path() else { return 1 };
+    if args.iter().any(|a| a == "--create") {
+        if path.exists() {
+            eprintln!("dtk: {} already exists; not touching it", path.display());
+            return 1;
+        }
+        if let Some(dir) = path.parent() {
+            let _ = hook::create_private_dir(dir);
+        }
+        return match std::fs::write(&path, config::default_file()) {
+            Ok(()) => {
+                println!("dtk: wrote {}", path.display());
+                0
+            }
+            Err(e) => {
+                eprintln!("dtk: cannot write {}: {e}", path.display());
+                1
+            }
+        };
+    }
+    let (cfg, error) = config::Config::load();
+    println!(
+        "file:               {}{}",
+        path.display(),
+        if path.exists() {
+            ""
+        } else {
+            " (does not exist; defaults)"
+        }
+    );
+    if let Some(e) = error {
+        println!("problem:            {e} (defaults are used)");
+    }
+    println!("exclude_commands:   {:?}", cfg.exclude_commands);
+    println!("min_tokens:         {}", cfg.min_tokens);
+    println!("budget:             {}", cfg.budget);
+    println!("min_persisted_rows: {}", cfg.min_persisted_rows);
+    0
+}
+
 fn main() -> ExitCode {
     quiet_on_broken_pipe();
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -52,8 +103,12 @@ fn main() -> ExitCode {
         Some("hook") => hook::run(&args[1..]),
         Some("view") => hook::view(args.get(1).map(String::as_str)),
         Some("mode") => hook::mode(args.get(1).map(String::as_str)),
-        Some("gain") => hook::gain(),
-        Some("doctor") => doctor::run(),
+        Some("gain") => hook::gain(args.iter().any(|a| a == "--json")),
+        Some("doctor") => i32::from(doctor::run() > 0),
+        Some("explain") => explain::explain(&args[1..]),
+        Some("verify") => explain::verify(),
+        Some("discover") => discover::run(&args[1..]),
+        Some("config") => config_command(&args[1..]),
         Some("init") => init::run(&args[1..]),
         Some("--version") | Some("-V") => {
             println!("dtk {}", env!("CARGO_PKG_VERSION"));

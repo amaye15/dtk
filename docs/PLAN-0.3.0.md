@@ -120,3 +120,26 @@ web access logs (common and combined), and JSONL with a per-line prefix.
   (-20.5%; target was -10%). The test checks that the link reads through to the saved file.
 - A test with deliberately mixed data found the limit: a random hex id that happens to be all
   digits is a number, so a template can split in two (6 and 3 rows in the log above).
+
+### S5. rtk-style tools: DONE
+- One decision function, `evaluate`, now serves the hook, `dtk explain`, `dtk verify` and
+  `dtk discover`. G1 test `explain_agrees_with_the_hook_on_every_corpus_fixture` runs all 77
+  corpus fixtures through both and requires that the hook replaces the output exactly when
+  `explain` says APPLY.
+- `dtk verify`: 24 built-in PASS/FAIL checks (each format detected and summarized to under a
+  third, prose and code left alone, row requests and exclusions honoured, small outputs left
+  alone, saved-to-file output replaced), then the setup checks of `dtk doctor`. It first failed
+  on a healthy install because three of its own samples were under the 1,200-token minimum.
+- `dtk discover` on a hand-built transcript is checked for exact counts (6 results, 3 tables, 2
+  shown in full, 1 saved to a file, a ranged Read skipped, a head request skipped). That test
+  found that short transcript lines were skipped, which dropped every saved-to-file output.
+  On one real session (2,150 tool results) the result count equals an independent `jaq` count.
+  On the real 30-day history (84 sessions, 53,858 results, 1.8 s): 58 tables, 11 replaceable,
+  about 17K estimated tokens. Most tables in that history are small, and the biggest
+  opportunities are test files from building dtk, so dtk is not a big saver for ordinary
+  coding work.
+- `~/.config/dtk/config.toml` (`exclude_commands`, thresholds). A broken file falls back to the
+  defaults, and `dtk doctor` says so (tested).
+- `dtk gain --json`, and `install.sh`: tested against the real v0.2.0 release (checksum ok,
+  installed, runs); a deliberately corrupted download is refused and nothing is installed.
+- CI installs the real rtk, qsv (macOS) and jaq, so G4 and G5 run there instead of being skipped.

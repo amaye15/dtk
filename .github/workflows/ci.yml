@@ -7,6 +7,7 @@ on:
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
@@ -15,6 +16,28 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+
+      # The tests that compare dtk with other tools (G4) and with the real rtk (G5) need those
+      # tools. Without them the tests print SKIPPED, so they are installed here.
+      - name: Install rtk, qsv and jaq (macOS)
+        if: runner.os == 'macOS'
+        run: brew install rtk qsv jaq
+      - name: Install rtk and jaq (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL https://github.com/rtk-ai/rtk/releases/download/v1.1.0/rtk-x86_64-unknown-linux-musl.tar.gz | tar -xz -C "$HOME/.local/bin" rtk
+          curl -fsSL -o "$HOME/.local/bin/jaq" https://github.com/01mf02/jaq/releases/latest/download/jaq-x86_64-unknown-linux-musl
+          chmod +x "$HOME/.local/bin/jaq"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Show the tools
+        run: |
+          rtk --version
+          jaq --version
+          command -v qsv && qsv --version | cut -c1-40 || echo "qsv: not installed on this runner"
+
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+      - name: dtk verify
+        run: cargo run --locked --quiet -- verify || true

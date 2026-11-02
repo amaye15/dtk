@@ -17,7 +17,12 @@ fn on_path(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+static WARNINGS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 fn line(tag: &str, text: &str) {
+    if tag == "warn" {
+        WARNINGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
     println!("[{tag}] {text}");
 }
 
@@ -173,5 +178,25 @@ pub fn run() -> i32 {
             line("warn", &format!("{name} not found. Summaries point at it for {why}. Install: brew install {name}"));
         }
     }
-    0
+    let (cfg, error) = crate::config::Config::load();
+    let cfg_path = crate::config::path();
+    match (error, cfg_path.as_ref().is_some_and(|p| p.exists())) {
+        (Some(e), _) => line(
+            "warn",
+            &format!("config.toml is ignored (defaults are used): {e}"),
+        ),
+        (None, true) => line(
+            "ok",
+            &format!(
+                "config: {} ({} exclusions)",
+                cfg_path.unwrap().display(),
+                cfg.exclude_commands.len()
+            ),
+        ),
+        (None, false) => line(
+            "--",
+            "no config file (defaults). Create one with: dtk config --create",
+        ),
+    }
+    WARNINGS.load(std::sync::atomic::Ordering::Relaxed) as i32
 }

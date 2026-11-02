@@ -6,6 +6,7 @@
 //! With `--then CMD ARGS...` the hook is a front door: dtk handles tables, and hands every other
 //! event, byte for byte, to CMD (normally `rtk hook claude`). One registered hook, a fixed order.
 
+use crate::config::Config;
 use dtk::lean::{self, est_tokens, Ctx, Rendered};
 use dtk::table::{self, Format, Table};
 use serde_json::{json, Value};
@@ -17,14 +18,8 @@ use std::process::{Command, Stdio};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// Smallest output (estimated tokens) worth replacing when Claude Code shows it in full.
-const MIN_TOKENS: usize = 1200;
 /// What the model sees for an output Claude Code saved to a file: a short preview and a path.
 const STUB_TOKENS: usize = 580;
-/// Largest summary, in estimated tokens.
-const BUDGET: usize = 2500;
-/// Fewest rows for which a saved-to-file output is replaced.
-const MIN_PERSISTED_ROWS: usize = 30;
 const KEEP_FILES: usize = 60;
 const KEEP_SECS: u64 = 14 * 24 * 3600;
 /// Longest the chained command may run.
@@ -204,7 +199,13 @@ fn short_path(target: &Path, ext: &str, write: bool) -> String {
 }
 
 /// Renders the lean view and, when `write` is set, saves the full data next to it.
-fn build(t: &Table, text: &str, persisted: Option<&Path>, write: bool) -> Rendered {
+pub fn build(
+    t: &Table,
+    text: &str,
+    persisted: Option<&Path>,
+    write: bool,
+    budget: usize,
+) -> Rendered {
     let mut ctx = Ctx {
         bytes: text.len(),
         csv_path: None,
@@ -257,7 +258,7 @@ fn build(t: &Table, text: &str, persisted: Option<&Path>, write: bool) -> Render
             };
         }
     }
-    lean::render(t, &ctx, BUDGET)
+    lean::render(t, &ctx, budget)
 }
 
 /// `dtk hook claude [--then CMD ARGS...]`
@@ -373,7 +374,7 @@ fn handle(input: &str) -> Option<String> {
 }
 
 /// Commands that ask for specific rows must get them, not a summary of them.
-fn wants_raw(cmd: &str) -> bool {
+pub fn wants_raw(cmd: &str) -> bool {
     const MARKERS: [&str; 6] = [
         "DTK_RAW",
         "qsv slice",
@@ -389,41 +390,152 @@ fn wants_raw(cmd: &str) -> bool {
         .any(|t| t == "head" || t == "tail")
 }
 
+/// What came in: the text of a tool result, and where it came from.
+pub struct Input<'a> {
+    /// `Bash` or `Read`.
+    pub tool: &'a str,
+    /// The command, or the file path for `Read`.
+    pub subject: &'a str,
+    pub text: &'a str,
+    /// A file on disk that holds this very data, so the summary can point at it.
+    pub file: Option<&'a Path>,
+    /// Claude Code saved the output to a file and shows the model only a short preview.
+    pub persisted: bool,
+}
+
+/// What dtk makes of an [`Input`]. The hook, `explain`, `verify` and `discover` all use this one
+/// function, so what they say about a decision is what the hook does.
+pub struct Verdict {
+    pub table: Option<Table>,
+    pub rendered: Option<Rendered>,
+    pub tokens_full: usize,
+    /// What the model would see without dtk.
+    pub baseline: usize,
+    /// What the model sees with the summary.
+    pub after: usize,
+    pub applies: bool,
+    pub reason: String,
+}
+
+pub fn evaluate(inp: &Input, cfg: &Config, write: bool) -> Verdict {
+    let tokens_full = est_tokens(inp.text);
+    let mut v = Verdict {
+        table: None,
+        rendered: None,
+        tokens_full,
+        baseline: if inp.persisted {
+            STUB_TOKENS
+        } else {
+            tokens_full
+        },
+        after: 0,
+        applies: false,
+        reason: String::new(),
+    };
+    if std::env::var("DTK_DISABLED")
+        .map(|x| x == "1")
+        .unwrap_or(false)
+    {
+        v.reason = "DTK_DISABLED=1 is set".into();
+        return v;
+    }
+    if inp.tool == "Bash" && wants_raw(inp.subject) {
+        v.reason =
+            "the command asks for exact rows (DTK_RAW, head, tail, sed -n, qsv slice, ...)".into();
+        return v;
+    }
+    if cfg.is_excluded(inp.subject) {
+        v.reason = "excluded by exclude_commands in config.toml".into();
+        return v;
+    }
+    let Some(table) = table::detect(inp.text) else {
+        v.reason = format!(
+            "not a table: no JSONL, JSON, CSV, logfmt, access log, or aligned or bordered table found (needs at least {} rows)",
+            table::MIN_ROWS
+        );
+        return v;
+    };
+    let rendered = build(&table, inp.text, inp.file, write, cfg.budget);
+    v.after = est_tokens(&rendered.text);
+    let rows = table.rows.len();
+    let (applies, reason) = if inp.persisted {
+        if rows >= cfg.min_persisted_rows {
+            (true, format!("saved-to-file output: the summary covers all {rows} rows and replaces a preview of about {STUB_TOKENS} tokens"))
+        } else {
+            (
+                false,
+                format!(
+                    "only {rows} rows (saved-to-file output needs {})",
+                    cfg.min_persisted_rows
+                ),
+            )
+        }
+    } else if v.tokens_full < cfg.min_tokens {
+        (
+            false,
+            format!(
+                "small output ({} est. tokens, threshold {}): shown as is",
+                v.tokens_full, cfg.min_tokens
+            ),
+        )
+    } else if v.after * 10 > v.tokens_full * 7 {
+        (
+            false,
+            format!(
+                "the summary ({} tokens) would not be at least 30% smaller than the output ({})",
+                v.after, v.tokens_full
+            ),
+        )
+    } else {
+        (
+            true,
+            format!(
+                "the summary is {}% smaller",
+                100 - v.after * 100 / v.tokens_full.max(1)
+            ),
+        )
+    };
+    v.applies = applies;
+    v.reason = reason;
+    v.table = Some(table);
+    v.rendered = Some(rendered);
+    v
+}
+
 /// One line of the decision log.
 struct Decision<'a> {
     tool: &'a str,
     what: String,
-    table: &'a table::Table,
+    verdict: &'a Verdict,
     persisted: bool,
-    rendered: &'a Rendered,
-    tokens_full: usize,
-    baseline: usize,
-    would_apply: bool,
     applied: bool,
     live: bool,
 }
 
 fn log_table(d: &Decision) {
+    let (Some(table), Some(rendered)) = (&d.verdict.table, &d.verdict.rendered) else {
+        return;
+    };
     log_decision(json!({
         "ts": now_secs(),
         "mode": if d.live { "live" } else { "shadow" },
         "tool": d.tool,
-        "format": d.table.format.name(),
-        "rows": d.table.rows.len(),
-        "cols": d.table.headers.len(),
+        "format": table.format.name(),
+        "rows": table.rows.len(),
+        "cols": table.headers.len(),
         "persisted": d.persisted,
-        "lossless": d.rendered.lossless,
-        "tokens_full": d.tokens_full,
-        "tokens_baseline": d.baseline,
-        "tokens_after": est_tokens(&d.rendered.text),
-        "would_apply": d.would_apply,
+        "lossless": rendered.lossless,
+        "tokens_full": d.verdict.tokens_full,
+        "tokens_baseline": d.verdict.baseline,
+        "tokens_after": d.verdict.after,
+        "would_apply": d.verdict.applies,
         "applied": d.applied,
         "cmd": d.what,
     }));
 }
 
 /// File types that can hold a table. Source code is never read or checked.
-const DATA_EXTS: [&str; 11] = [
+pub const DATA_EXTS: [&str; 11] = [
     "csv", "tsv", "psv", "jsonl", "ndjson", "json", "log", "txt", "dat", "out", "tbl",
 ];
 
@@ -450,31 +562,35 @@ fn handle_read(ev: &Value) -> Option<String> {
         return None;
     }
     let text = file.get("content")?.as_str()?;
-    let table = table::detect(text)?;
     let live = is_live();
-    let tokens_full = est_tokens(text);
-    let rendered = build(&table, text, Some(Path::new(path)), live);
-    let after = est_tokens(&rendered.text);
-    let would_apply = tokens_full >= MIN_TOKENS && after * 10 <= tokens_full * 7;
-    let applied = live && would_apply;
+    let cfg = Config::load().0;
+    let v = evaluate(
+        &Input {
+            tool: "Read",
+            subject: path,
+            text,
+            file: Some(Path::new(path)),
+            persisted: false,
+        },
+        &cfg,
+        live,
+    );
+    let applied = live && v.applies;
     log_table(&Decision {
         tool: "Read",
         what: path.chars().take(100).collect(),
-        table: &table,
+        verdict: &v,
         persisted: false,
-        rendered: &rendered,
-        tokens_full,
-        baseline: tokens_full,
-        would_apply,
         applied,
         live,
     });
     if !applied {
         return None;
     }
-    let shown = rendered.text.lines().count();
+    let shown_text = v.rendered?.text;
+    let shown = shown_text.lines().count();
     let mut new_file = file.clone();
-    new_file.insert("content".to_string(), Value::String(rendered.text));
+    new_file.insert("content".to_string(), Value::String(shown_text));
     new_file.insert("numLines".to_string(), json!(shown));
     new_file.insert("totalLines".to_string(), json!(shown));
     let mut updated = resp.clone();
@@ -489,9 +605,6 @@ fn handle_bash(ev: &Value) -> Option<String> {
         .and_then(|i| i.get("command"))
         .and_then(Value::as_str)
         .unwrap_or("");
-    if wants_raw(command) {
-        return None;
-    }
     let resp = ev.get("tool_response")?.as_object()?;
     if resp.get("isImage").and_then(Value::as_bool) == Some(true)
         || resp.get("interrupted").and_then(Value::as_bool) == Some(true)
@@ -508,31 +621,25 @@ fn handle_bash(ev: &Value) -> Option<String> {
         Some(_) => return None,
         None => stdout.to_string(),
     };
-    let table = table::detect(&text)?;
     let live = is_live();
-    let tokens_full = est_tokens(&text);
-    let baseline = if persisted.is_some() {
-        STUB_TOKENS
-    } else {
-        tokens_full
-    };
-    let rendered = build(&table, &text, persisted.as_deref(), live);
-    let after = est_tokens(&rendered.text);
-    let would_apply = if persisted.is_some() {
-        table.rows.len() >= MIN_PERSISTED_ROWS
-    } else {
-        tokens_full >= MIN_TOKENS && after * 10 <= tokens_full * 7
-    };
-    let applied = live && would_apply;
+    let cfg = Config::load().0;
+    let v = evaluate(
+        &Input {
+            tool: "Bash",
+            subject: command,
+            text: &text,
+            file: persisted.as_deref(),
+            persisted: persisted.is_some(),
+        },
+        &cfg,
+        live,
+    );
+    let applied = live && v.applies;
     log_table(&Decision {
         tool: "Bash",
         what: command.chars().take(100).collect(),
-        table: &table,
+        verdict: &v,
         persisted: persisted.is_some(),
-        rendered: &rendered,
-        tokens_full,
-        baseline,
-        would_apply,
         applied,
         live,
     });
@@ -540,7 +647,7 @@ fn handle_bash(ev: &Value) -> Option<String> {
         return None;
     }
     let mut updated = resp.clone();
-    updated.insert("stdout".to_string(), Value::String(rendered.text));
+    updated.insert("stdout".to_string(), Value::String(v.rendered?.text));
     updated.remove("persistedOutputPath");
     updated.remove("persistedOutputSize");
     let out = json!({"hookSpecificOutput": {"hookEventName": "PostToolUse", "updatedToolOutput": Value::Object(updated)}});
@@ -572,7 +679,7 @@ pub fn view(arg: Option<&str>) -> i32 {
         );
         return 1;
     };
-    let r = build(&t, &text, path.as_deref(), true);
+    let r = build(&t, &text, path.as_deref(), true, Config::load().0.budget);
     println!("{}", r.text);
     eprintln!(
         "dtk: {} est. tokens -> {}",
@@ -627,7 +734,7 @@ fn rtk_totals() -> Option<(i64, i64)> {
 }
 
 /// `dtk gain`: totals from the decision log, with rtk's totals beside them.
-pub fn gain() -> i32 {
+pub fn gain(as_json: bool) -> i32 {
     let Some(dir) = data_dir() else { return 1 };
     let log = fs::read_to_string(dir.join("decisions.jsonl")).unwrap_or_default();
     let (mut applied_mid, mut saved_mid, mut applied_big, mut after_big) = (0u64, 0i64, 0u64, 0u64);
@@ -662,6 +769,23 @@ pub fn gain() -> i32 {
             would += 1;
             would_saved += baseline - after;
         }
+    }
+    if as_json {
+        let rtk =
+            rtk_totals().map(|(saved, cmds)| json!({"tokens_saved": saved, "commands": cmds}));
+        println!(
+            "{}",
+            json!({
+                "tables_seen": seen,
+                "mode": if is_live() { "live" } else { "shadow" },
+                "shown_in_full": {"outputs": applied_mid, "est_tokens_saved": saved_mid},
+                "saved_to_file": {"outputs": applied_big, "summary_tokens": after_big, "replaces_preview_tokens": STUB_TOKENS},
+                "shadow_only": {"outputs": would, "est_tokens_saved": would_saved},
+                "by_format": by_format,
+                "rtk": rtk,
+            })
+        );
+        return 0;
     }
     println!(
         "dtk gain: {seen} tables seen, mode {}",
