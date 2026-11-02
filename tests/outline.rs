@@ -121,7 +121,8 @@ fn a_big_document_becomes_an_outline_that_names_everything() {
         "array[40] of {name:str, sensitive:bool, value:str}",
         ".applyable: bool true",
         ".errored: bool false",
-        "drill: jaq",
+        "drill: ",
+        " get ",
     ] {
         assert!(text.contains(want), "missing {want:?} in:\n{text}");
     }

@@ -59,6 +59,11 @@ truth_slowest=$(qsv sort -s latency_ms -N -R "$C/csv_orders.csv" | qsv select or
 truth_ps=$(awk 'NR>1 && $3+0>m {m=$3+0; p=$2} END{print p}' "$C/ps_aux.txt")
 truth_ci=$(grep -B1 '##\[error\]' "$C/gha_job_long.log" | head -1 | sed 's/^[^ ]* //; s/\r$//')
 truth_meta=$(jaq '.packages | length' "$D/cargo_metadata.json")
+# Real-world columns, a combined filter that needs the drill-down, and a wide table.
+M="$C/messy_orders.csv"
+truth_age=$(qsv fmt --out-delimiter '\t' "$M" | awk -F'\t' 'NR>1 && $4 !~ /^(N\/A|NA|-|\?)$/ {s+=$4; n++} END {printf "%d", s/n + 0.5}')
+truth_filter=$(qsv fmt --out-delimiter '\t' "$M" | awk -F'\t' 'NR>1 && $2=="eu" {v=$5; gsub(/[$,]/, "", v); if (v+0 > 400) n++} END {print n+0}')
+truth_wide=$(awk -F, 'NR==1 {for (i=1;i<=NF;i++) h[i]=$i; next} {for (i=2;i<=61;i++) s[i]+=$i} END {for (i=2;i<=61;i++) if (s[i] > m) {m=s[i]; b=h[i]}; print b}' "$C/wide_features.csv")
 
 # name | file | question | expected words (all must appear in the answer)
 CASES=(
@@ -72,6 +77,9 @@ CASES=(
 "ps aux|$C/ps_aux.txt|Which PID uses the most CPU (column %CPU)? Give the PID.|$truth_ps"
 "ci log|$C/gha_job_long.log|This is a CI log. What is the output line just before the line with ##[error]?|$truth_ci"
 "json document|$D/cargo_metadata.json|How many entries does the packages array have? Give the number.|$truth_meta"
+"messy mean|$M|What is the mean of the age column, ignoring the N/A, NA, - and ? values? Round to a whole number.|$truth_age"
+"filter+count|$M|How many orders have region eu and a price above 400 dollars? Give the number.|$truth_filter"
+"wide means|$C/wide_features.csv|Which of the columns feat_0 to feat_59 has the highest mean? Give its name.|$truth_wide"
 )
 
 run_one() { # question file disabled -> prints "tokens|turns|first_tokens|answer"
@@ -89,7 +97,8 @@ run_one() { # question file disabled -> prints "tokens|turns|first_tokens|answer
   total=$(echo "$lens" | awk '{s+=$1} END{print s+0}')
   first=$(echo "$lens" | head -1)
   turns=$(jaq -r 'select(.type=="result") | .num_turns' "$out" 2>/dev/null | tail -1)
-  answer=$(jaq -r 'select(.type=="result") | .result' "$out" 2>/dev/null | tail -1 | tr '\n' ' ')
+  # the whole final message: the answer may be its first paragraph, with a note after it
+  answer=$(jaq -r 'select(.type=="result") | .result' "$out" 2>/dev/null | tr '\n' ' ')
   echo "$((total / 4))|${turns:-?}|$(( ${first:-0} / 4 ))|$answer"
 }
 
@@ -120,9 +129,11 @@ for c in "${CASES[@]}"; do
   printf '%-14s %9s %9s %5s%%  %-9s %-9s  %s -> %s   (%s)\n' "$name" "$t0" "$t1" "$saved" "$ok0/$RUNS" "$ok1/$RUNS" "$n0" "$n1" "$want"
   [ "$ok1" -ge "$ok0" ] || fail=1          # never less correct than without dtk
   [ "$ok1" -ge 1 ] || fail=1               # right at least once with dtk
-  # Never more tokens over the conversation, give or take 15% (+50): when Claude Code has saved a
-  # big output to a file, the model already sees a preview of about 550 tokens, and dtk swaps it
-  # for a summary of about the same size that covers all rows. That costs nothing and tells more.
-  [ "$t1" -le $(( t0 * 115 / 100 + 50 )) ] || fail=1
+  # Never more tokens over the conversation, give or take 15% and 300 tokens (about half of
+  # Claude Code's preview). When Claude Code has saved a big output to a file, the model already
+  # sees a preview of about 550 tokens, and dtk swaps it for a summary of about the same size
+  # that covers all rows; a drill-down command's output may add a few hundred more. That costs
+  # almost nothing and tells more.
+  [ "$t1" -le $(( t0 * 115 / 100 + 300 )) ] || fail=1
 done
 [ "$fail" = 0 ] && echo "G6 PASS: with dtk, answers are as right as without, and no case costs noticeably more tokens" || { echo "G6 FAIL"; exit 1; }

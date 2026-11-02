@@ -27,7 +27,7 @@ So: exact-text reads dominate and must never be compressed. A tool for data help
 | 3 | `ps aux`, `ps -ef`, `df -h` | `src/textcols.rs` unit tests, the corpus matrix, and an oracle: every cell of the real `ps aux` (453 rows) equals an independent `split(None, 10)` |
 | 4 | Timestamped text logs | unit tests, two real CI logs in the corpus, fuzz tests (found a slice at a non-character boundary) |
 | 5 | JSON document outlines | `tests/outline.rs`: names every key, small documents untouched, jq queries and drill-downs untouched, tables still tables |
-| 6 | Real model, with and without dtk | `scripts/ab-test.sh`: ten questions, true answers from jaq, qsv, awk and grep |
+| 6 | Real model, with and without dtk | `scripts/ab-test.sh`: thirteen questions, true answers from jaq, qsv, awk and grep |
 
 ## Found on the way
 
@@ -36,7 +36,7 @@ So: exact-text reads dominate and must never be compressed. A tool for data help
 - A table that rtk had cut was summarized as "all rows".
 - A JSON object with a small array of objects beside a big object was summarized as the small array; the rest of the document vanished.
 - A parser change made the pandas "unnamed index and split datetime" output look like a table with wrong labels. The existing negative corpus caught it.
-- A longer summary header made Haiku talk about the tool instead of answering.
+- The first version of the model test graded only the last line of an answer. With dtk the model often adds a note about the summary after its answer, so those answers looked wrong. Reading the whole answer fixed it (see the 0.6.0 notes).
 
 ## Not done, on purpose
 

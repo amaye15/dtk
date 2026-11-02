@@ -317,7 +317,6 @@ pub fn outline(v: &Value, bytes: usize, file: Option<&str>, budget: usize) -> St
 }
 
 fn outline_with(v: &Value, bytes: usize, file: Option<&str>, lim: Limits) -> String {
-    let f = file.map(shell_quote).unwrap_or_else(|| "<file>".into());
     let mut out = String::new();
     let mut biggest: Option<(String, usize, bool)> = None; // key, size, array of objects
     match v {
@@ -404,13 +403,17 @@ fn outline_with(v: &Value, bytes: usize, file: Option<&str>, lim: Limits) -> Str
         _ => return String::new(),
     }
     // One example is enough: the outline already shows the keys and the shapes.
+    let (dtk, f) = (
+        crate::lean::command_name(),
+        file.map_or_else(|| "<file>".to_string(), crate::lean::file_ref),
+    );
     let example = match (&biggest, v) {
-        (Some((k, _, _)), _) => format!("jaq -c '{}[0]' {f}", key_path(k)),
-        (None, Value::Array(_)) => format!("jaq -c '.[0]' {f}"),
-        _ => format!("jaq 'keys' {f}"),
+        (Some((k, _, _)), _) => format!("{dtk} get {f} '{}[0]'", key_path(k)),
+        (None, Value::Array(_)) => format!("{dtk} get {f} '.[0]'"),
+        _ => format!("{dtk} get {f} '. | keys'"),
     };
     out.push_str(&format!(
-        "drill: {example}   (jaq path syntax; the file is the full document)"
+        "drill: {example}   (paths: .a.b[0]  .items[]  .items | length  .items | keys)"
     ));
     out.push('\n');
     out.trim_end().to_string()
@@ -490,7 +493,7 @@ mod tests {
             ".root: str \"/work\"",
             ".flag: bool true",
             ".empty: {}",
-            "jaq -c '.packages[0]' /tmp/doc.json",
+            "dtk get /tmp/doc.json '.packages[0]'",
         ] {
             assert!(text.contains(want), "missing {want:?} in:\n{text}");
         }

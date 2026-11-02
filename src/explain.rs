@@ -348,6 +348,39 @@ pub fn verify() -> i32 {
             ),
         );
     }
+    // Real-world columns: placeholders in a column of numbers, and numbers written as $1,234.56.
+    let mut messy = String::from("id,age,price,note\n");
+    for i in 0..120 {
+        let age = if i % 6 == 0 {
+            "N/A".to_string()
+        } else {
+            (20 + i % 50).to_string()
+        };
+        messy.push_str(&format!(
+            "{i},{age},\"${},{:03}.00\",row {i}\n",
+            1 + i % 9,
+            (i * 7) % 1000
+        ));
+    }
+    let v = evaluate(
+        &Input {
+            tool: "Bash",
+            subject: "cat people.csv",
+            text: &messy,
+            file: None,
+            persisted: false,
+        },
+        &cfg,
+        false,
+    );
+    let shown = v.rendered.as_ref().map_or("", |r| r.text.as_str());
+    t.check(
+        "counts placeholders and reads formatted numbers",
+        shown.contains("age: 20..69 mean")
+            && shown.contains("20 placeholders excluded (N/A 20)")
+            && shown.contains("written with currency"),
+        shown,
+    );
     let prose = "The quick brown fox jumps over the lazy dog, and then it rests.\n".repeat(60);
     let v = evaluate(
         &Input {

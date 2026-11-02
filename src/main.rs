@@ -4,6 +4,7 @@ mod doctor;
 mod explain;
 mod hook;
 mod init;
+mod query;
 mod rtk;
 
 use std::process::ExitCode;
@@ -25,6 +26,8 @@ usage:
   dtk init --uninstall     remove the hook again (and restore rtk's own PostToolUse hook)
   dtk doctor               check the hook, rtk, the helper tools and the config
   dtk verify               built-in self-test of detection and decisions, then doctor
+  dtk rows|top|count|where|stats|get FILE ...
+                           read more of the data behind a summary (see `dtk rows --help`)
   dtk explain [FILE|-] [--command CMD] [--read] [--saved]
                            say whether dtk would summarize this output, and why
   dtk discover [--all | --since DAYS] [--limit N] [--json]
@@ -135,6 +138,11 @@ fn main() -> ExitCode {
         return code;
     }
     quiet_on_broken_pipe();
+    if !hook::dtk_on_path() {
+        if let Ok(exe) = std::env::current_exe() {
+            dtk::lean::set_command_name(&dtk::lean::shell_quote(&exe.display().to_string()));
+        }
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
         Some("hook") => hook::run(&args[1..]),
@@ -147,6 +155,7 @@ fn main() -> ExitCode {
         Some("discover") => discover::run(&args[1..]),
         Some("config") => config_command(&args[1..]),
         Some("init") => init::run(&args[1..]),
+        Some(c) if query::COMMANDS.contains(&c) => query::run(c, &args[1..]),
         Some("--version") | Some("-V") => {
             println!("dtk {}", env!("CARGO_PKG_VERSION"));
             0

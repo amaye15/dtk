@@ -625,8 +625,23 @@ pub fn analyze(t: &Table) -> Vec<ColInfo> {
         .map(|c| analyze_col(t.rows.iter().map(|r| r[c].as_str())))
         .collect();
     add_extremes(t, &mut info);
+    // A wide table has dozens of statistics lines. Keep each short: the quantiles can be had
+    // for any column with `dtk stats`.
+    if t.headers.len() > WIDE_COLS {
+        for i in info.iter_mut() {
+            if let (Some(p50), Some(p95)) = (i.stats.p50, i.stats.p95) {
+                i.summary = i.summary.replacen(&pct_text(Some((p50, p95))), "", 1);
+            }
+        }
+    }
     info
 }
+
+/// Above this many columns a table gets statistics for only a dozen of them.
+const VERY_WIDE_COLS: usize = 40;
+
+/// A table with more columns than this is "wide": its statistics lines drop p50 and p95.
+const WIDE_COLS: usize = 24;
 
 /// Most columns that get a "which row?" note. More would cost more than they are worth.
 const EXTREME_COLS: usize = 5;
@@ -647,7 +662,7 @@ pub fn id_column(t: &Table, info: &[ColInfo]) -> Option<usize> {
 }
 
 /// Does a column name say "identifier"? `id`, `order_id`, `userId`, `uuid`, `index`.
-fn id_like_name(name: &str) -> bool {
+pub(crate) fn id_like_name(name: &str) -> bool {
     let n = name.to_lowercase();
     matches!(
         n.as_str(),
@@ -826,7 +841,7 @@ pub fn to_csv(t: &Table) -> String {
     s
 }
 
-pub(crate) fn shell_quote(p: &str) -> String {
+pub fn shell_quote(p: &str) -> String {
     // Windows accepts forward slashes everywhere, and a backslash path would need quoting.
     let p = if cfg!(windows) {
         p.replace('\\', "/")
@@ -864,7 +879,7 @@ const PROFILES: [Profile; 3] = [
         tail: 4,
         important: 20,
         max_cell: 60,
-        stat_cols: 40,
+        stat_cols: 30,
     },
     Profile {
         head: 4,
@@ -975,22 +990,11 @@ fn compact_cols(headers: &[String], info: &[ColInfo]) -> String {
     out.join(" ")
 }
 
-/// How to name the data file in a command: its short id when it is one of dtk's own files.
+/// The data file as a command names it.
 fn data_ref(ctx: &Ctx) -> String {
-    match &ctx.csv_path {
-        Some(p) => {
-            let stem = std::path::Path::new(p)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("");
-            if stem.len() == 12 && stem.bytes().all(|b| b.is_ascii_hexdigit()) {
-                stem.to_string()
-            } else {
-                shell_quote(p)
-            }
-        }
-        None => "<data file>".to_string(),
-    }
+    ctx.csv_path
+        .as_deref()
+        .map_or_else(|| "<data file>".to_string(), file_ref)
 }
 
 /// Rows that repeat an earlier row, which most data sets do not mean to have.
@@ -1036,17 +1040,24 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
         out.push_str(&format!("raw: {} ({})\n", shell_quote(p), t.format.name()));
     }
     // Every column is named. A wide table gets statistics for its first columns only.
-    let k = p.stat_cols.min(cols);
+    // A very wide table (dozens of features) gets statistics for a dozen columns; the model asks
+    // for the others with `dtk stats`, and every column is named above.
+    let k = if cols > VERY_WIDE_COLS {
+        p.stat_cols.min(12)
+    } else {
+        p.stat_cols.min(cols)
+    };
     out.push_str(&format!("cols: {}\n", compact_cols(&t.headers, info)));
     for (h, i) in t.headers.iter().zip(info).take(k) {
         out.push_str(&format!("{}: {}\n", h, i.summary));
     }
     if cols > k {
         out.push_str(&format!(
-            "no statistics shown for the other {} columns ({}..{}): dtk stats {} NAME...\n",
+            "no statistics shown for the other {} columns ({}..{}): {} stats {} NAME...\n",
             cols - k,
             t.headers[k],
             t.headers[cols - 1],
+            command_name(),
             data_ref(ctx)
         ));
     }
@@ -1166,38 +1177,79 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
     out.trim_end().to_string()
 }
 
+/// How the summaries call dtk. `dtk` when that works in the model's shell; the full path when
+/// the folder dtk is installed in is not on the PATH.
+static COMMAND: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+pub fn set_command_name(name: &str) {
+    let _ = COMMAND.set(name.to_string());
+}
+
+pub fn command_name() -> &'static str {
+    COMMAND.get().map_or("dtk", String::as_str)
+}
+
+/// How to name a data file in a command: the short id when it is one of dtk's own files
+/// (`5fa6aeae75bd` for `.../dtk/store/5fa6aeae75bd.csv`), else the quoted path.
+pub(crate) fn file_ref(path: &str) -> String {
+    let p = std::path::Path::new(path);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let in_store = p
+        .parent()
+        .and_then(|d| d.file_name())
+        .is_some_and(|n| n == "store");
+    if in_store && stem.len() == 12 && stem.bytes().all(|b| b.is_ascii_hexdigit()) {
+        stem.to_string()
+    } else {
+        shell_quote(path)
+    }
+}
+
+/// The commands that read more of the data behind a summary, with real column names and values
+/// as examples so that the model can copy them.
 fn drill(t: &Table, info: &[ColInfo], ctx: &Ctx) -> String {
-    let mut s = String::new();
-    let col = info
+    let Some(csv) = &ctx.csv_path else {
+        return String::new();
+    };
+    let (dtk, f) = (command_name(), file_ref(csv));
+    let word = |x: &str| {
+        if !x.is_empty()
+            && x.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+        {
+            x.to_string()
+        } else {
+            format!("'{}'", x.replace('\'', "'\\''"))
+        }
+    };
+    let label = info
         .iter()
         .position(|i| i.kind == Kind::Str && i.distinct.is_some_and(|d| d > 1 && d <= 50))
-        .unwrap_or(0);
-    let name = t.headers[col].replace('"', "");
-    if let Some(p) = &ctx.csv_path {
-        let p = shell_quote(p);
-        s.push_str(&format!(
-            "drill: qsv sqlp {p} 'select \"{name}\", count(*) n from _t_1 group by \"{name}\" order by n desc'\n"
-        ));
-        s.push_str(&format!(
-            "rows: qsv slice -s <start> -l <count> {p}   (start counts from 0)\n"
+        .or_else(|| info.iter().position(|i| i.kind == Kind::Str));
+    let id = id_column(t, info);
+    let measure = (0..t.headers.len()).find(|&c| {
+        matches!(info[c].kind, Kind::Int | Kind::Float)
+            && !info[c].few_values
+            && Some(c) != id
+            && !id_like_name(&t.headers[c])
+    });
+    let mut cmds: Vec<String> = Vec::new();
+    if let Some(l) = label {
+        cmds.push(format!("{dtk} count {f} {}", word(&t.headers[l])));
+    }
+    if let Some(m) = measure {
+        cmds.push(format!("{dtk} top {f} {} 10", word(&t.headers[m])));
+    }
+    if let Some((l, top)) = label.and_then(|l| Some((l, info[l].stats.top.first()?))) {
+        cmds.push(format!(
+            "{dtk} where {f} {} = {}",
+            word(&t.headers[l]),
+            word(&top.0)
         ));
     }
-    if let Some(p) = &ctx.raw_path {
-        if matches!(
-            t.format,
-            crate::table::Format::Jsonl | crate::table::Format::JsonArray
-        ) {
-            let q = shell_quote(p);
-            let pick = format!("select(.[\"{name}\"]==\"<value>\")");
-            let filter = if t.format == crate::table::Format::Jsonl {
-                pick
-            } else {
-                format!(".[] | {pick}")
-            };
-            s.push_str(&format!("json: jaq -c '{filter}' {q}\n"));
-        }
-    }
-    s
+    cmds.push(format!("{dtk} rows {f} 100 20"));
+    cmds.push(format!("{dtk} stats {f} NAME..."));
+    format!("drill: {}\n", cmds.join("  |  "))
 }
 
 #[cfg(test)]
@@ -1234,7 +1286,17 @@ mod tests {
             .contains("cols: id:int name:str region:str amount:float ok:bool"));
         assert!(r.text.contains("id: 1000..1499"));
         assert!(r.text.contains("region: 3 distinct: "));
-        assert!(r.text.contains("qsv sqlp /tmp/x.csv"));
+        assert!(
+            r.text.contains("drill: dtk count /tmp/x.csv name  |  dtk top /tmp/x.csv amount 10  |  dtk where /tmp/x.csv name = user_0"),
+            "{}",
+            r.text
+        );
+        assert!(
+            r.text
+                .contains("dtk rows /tmp/x.csv 100 20  |  dtk stats /tmp/x.csv NAME..."),
+            "{}",
+            r.text
+        );
         assert!(est_tokens(&r.text) <= 2500);
     }
 
@@ -1245,9 +1307,11 @@ mod tests {
         assert!(r
             .text
             .contains("rows with level=warn/error: showing 20 of 200"));
-        assert!(r
-            .text
-            .contains("jaq -c 'select(.[\"level\"]==\"<value>\")'"));
+        assert!(
+            r.text.contains("dtk where /tmp/x.csv level = info"),
+            "{}",
+            r.text
+        );
     }
 
     #[test]
