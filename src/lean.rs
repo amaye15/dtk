@@ -41,7 +41,7 @@ pub struct ColStats {
     pub mean: Option<f64>,
     pub p50: Option<f64>,
     pub p95: Option<f64>,
-    /// Most common values with their counts, most common first (at most 8).
+    /// Most common values with their counts, most common first (at most 12).
     pub top: Vec<(String, usize)>,
     /// For text with many distinct values: the shapes the values share (digits and ids replaced
     /// by `#` and `<hex>`), with how many rows have each shape. Most common first (at most 8).
@@ -50,6 +50,8 @@ pub struct ColStats {
 
 pub struct ColInfo {
     pub kind: Kind,
+    /// A column of codes or labels: its values are listed with counts, not as a range.
+    pub few_values: bool,
     pub summary: String,
     /// Distinct count when known and small enough to group by.
     pub distinct: Option<usize>,
@@ -326,7 +328,7 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
     let mut summary = match kind {
         Kind::Empty => "all empty".to_string(),
         Kind::Int | Kind::Float if few_values => {
-            format!("{} distinct: {}", distinct.len(), top_values(&distinct, 8))
+            format!("{} distinct: {}", distinct.len(), top_values(&distinct, 12))
         }
         Kind::Int => format!("{}..{} mean {}{}", imin, imax, fnum(mean), pct_text(pcts)),
         Kind::Float => format!(
@@ -342,7 +344,7 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
             if overflow {
                 ">5000 distinct".to_string()
             } else if distinct.len() <= 12 {
-                format!("{} distinct: {}", distinct.len(), top_values(&distinct, 8))
+                format!("{} distinct: {}", distinct.len(), top_values(&distinct, 12))
             } else if templates.len() >= 2 && templates.len() * 3 <= distinct.len() {
                 let shown: Vec<String> = templates
                     .iter()
@@ -388,11 +390,12 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
         mean: numeric.then_some(mean),
         p50: pcts.map(|p| p.0),
         p95: pcts.map(|p| p.1),
-        top: top_pairs(&distinct, 8),
+        top: top_pairs(&distinct, 12),
         templates: templates.into_iter().take(8).collect(),
     };
     ColInfo {
         kind,
+        few_values,
         summary,
         distinct: if overflow { None } else { Some(distinct.len()) },
         stats,
@@ -400,9 +403,85 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
 }
 
 pub fn analyze(t: &Table) -> Vec<ColInfo> {
-    (0..t.headers.len())
+    let mut info: Vec<ColInfo> = (0..t.headers.len())
         .map(|c| analyze_col(t.rows.iter().map(|r| r[c].as_str())))
-        .collect()
+        .collect();
+    add_extremes(t, &mut info);
+    info
+}
+
+/// Most columns that get a "which row?" note. More would cost more than they are worth.
+const EXTREME_COLS: usize = 5;
+/// An id longer than this is a blob, not a name for a row.
+const ID_MAX_CHARS: usize = 40;
+
+/// The column that names a row: the first of the first three whose values are all different, not
+/// empty and short (an order id, a timestamp). `None` means rows are named by their position.
+pub fn id_column(t: &Table, info: &[ColInfo]) -> Option<usize> {
+    let n = t.rows.len();
+    (0..t.headers.len().min(3)).find(|&c| {
+        info[c].distinct == Some(n)
+            && info[c].stats.nulls == 0
+            && t.rows.iter().all(|r| r[c].chars().count() <= ID_MAX_CHARS)
+    })
+}
+
+/// "Which order was the slowest?" is the first question about a table of numbers, and the min
+/// and the max alone do not answer it. Add the row that holds each, named by its id.
+fn add_extremes(t: &Table, info: &mut [ColInfo]) {
+    let id = id_column(t, info);
+    let name = |r: usize| match id {
+        Some(c) => format!("{}={}", t.headers[c], trunc(&t.rows[r][c], ID_MAX_CHARS)),
+        None => format!("row {r}"),
+    };
+    let mut done = 0;
+    for c in 0..t.headers.len() {
+        if done == EXTREME_COLS {
+            break;
+        }
+        let numeric = matches!(info[c].kind, Kind::Int | Kind::Float);
+        // Codes (HTTP status, ratings) are listed with counts, and an id names rows itself.
+        if !numeric || info[c].few_values || Some(c) == id {
+            continue;
+        }
+        let (Some(lo), Some(hi)) = (info[c].stats.min, info[c].stats.max) else {
+            continue;
+        };
+        if hi <= lo {
+            continue;
+        }
+        let at = |target: f64| -> (Option<usize>, usize) {
+            let mut first = None;
+            let mut count = 0;
+            for (r, row) in t.rows.iter().enumerate() {
+                let v = &row[c];
+                if !has_leading_zero(v) && v.parse::<f64>().ok() == Some(target) {
+                    first.get_or_insert(r);
+                    count += 1;
+                }
+            }
+            (first, count)
+        };
+        let label = |target: f64| {
+            let (first, count) = at(target);
+            first.map(|r| {
+                if count > 1 {
+                    format!("{} (+{} more)", name(r), count - 1)
+                } else {
+                    name(r)
+                }
+            })
+        };
+        if let (Some(max_at), Some(min_at)) = (label(hi), label(lo)) {
+            let note = format!(" | max at {max_at}, min at {min_at}");
+            // The note goes before the null count that analyze_col may have added.
+            match info[c].summary.find(" | nulls ") {
+                Some(i) => info[c].summary.insert_str(i, &note),
+                None => info[c].summary.push_str(&note),
+            }
+            done += 1;
+        }
+    }
 }
 
 fn trunc(s: &str, max: usize) -> String {
