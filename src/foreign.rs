@@ -568,13 +568,11 @@ pub fn parse_records(text: &str) -> Option<Table> {
                 cur.push((k.trim().to_string(), v.trim().to_string()));
             }
             // A value that wraps onto the next line.
-            _ => match cur.last_mut() {
-                Some(last) => {
-                    last.1.push('\n');
-                    last.1.push_str(line.trim());
-                }
-                None => return None,
-            },
+            _ => {
+                let last = cur.last_mut()?;
+                last.1.push('\n');
+                last.1.push_str(line.trim());
+            }
         }
     }
     if !cur.is_empty() {
