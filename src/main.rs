@@ -47,7 +47,18 @@ fn quiet_on_broken_pipe() {
             .cloned()
             .or_else(|| info.payload().downcast_ref::<&str>().map(|s| s.to_string()))
             .unwrap_or_default();
-        if text.contains("Broken pipe") {
+        // Unix says "Broken pipe"; Windows says "The pipe is being closed" (os error 232) or
+        // "The pipe has been ended" (os error 109).
+        if [
+            "Broken pipe",
+            "pipe is being closed",
+            "pipe has been ended",
+            "os error 232",
+            "os error 109",
+        ]
+        .iter()
+        .any(|m| text.contains(m))
+        {
             std::process::exit(0);
         }
         default(info);
