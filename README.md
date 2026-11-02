@@ -48,13 +48,21 @@ Claude Code already saves outputs of 30,000 characters or more to a file and sho
 
 ## Install
 
-Download the archive for your system from the [releases page](https://github.com/amaye15/dtk/releases), check the `.sha256` file, and put `dtk` on your `PATH`. Or install from crates.io, or build it:
+Pick one. Each way ends with the same check, `dtk verify`. The full guide, with update and uninstall steps for each way, is [docs/INSTALL.md](docs/INSTALL.md).
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/amaye15/dtk/main/install.sh | sh   # checks the SHA-256
-cargo install dtk
-cargo install --path . --locked     # from a clone
-```
+| System | Command |
+|---|---|
+| macOS, Linux | `curl -fsSL https://raw.githubusercontent.com/amaye15/dtk/main/install.sh \| sh` (checks the SHA-256) |
+| Homebrew | `brew install amaye15/tap/dtk` |
+| Windows (PowerShell) | `irm https://raw.githubusercontent.com/amaye15/dtk/main/install.ps1 \| iex` |
+| Scoop | `scoop bucket add amaye15 https://github.com/amaye15/scoop-bucket` then `scoop install dtk` |
+| winget | manifests in [`packaging/winget`](packaging/winget); see the install guide |
+| Cargo | `cargo install dtk --locked` (or `--git https://github.com/amaye15/dtk`) |
+| Debian, Ubuntu | `.deb` from the [releases page](https://github.com/amaye15/dtk/releases) (`dtk_amd64.deb`, `dtk_arm64.deb`) |
+| Fedora, RHEL | `.rpm` from the releases page (`dtk.x86_64.rpm`, `dtk.aarch64.rpm`) |
+| Any | pre-built archives for macOS, Linux (static) and Windows, each with a `.sha256` file |
+
+Another program named `dtk` exists (decomp-toolkit). Check that you have this one: `dtk --version` prints `dtk X.Y.Z`, and `dtk verify` prints `built-in checks passed`.
 
 Then register the hook once and start a new Claude Code session:
 
