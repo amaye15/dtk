@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.0
+
+Compatibility with rtk (found by running the real rtk 1.1.0; `tests/rtk_compat.rs`):
+
+- rtk rewrites `head -n 400 f` to `rtk read f --head-lines 400`. dtk did not know `--head-lines` and summarized the 400 rows that were asked for. It now sees through rtk's rewrites.
+- `exclude_commands = ["^cat "]` stopped matching once rtk rewrote `cat f` to `rtk read f`. Patterns are now matched against the command as typed and as rewritten.
+- A table that rtk had cut (`... (N lines truncated)` with a pointer such as `[see remaining: ...]` or `[+N hidden: rtk recall HASH]`) was summarized as "all rows", and the pointer to the rest was lost. dtk now leaves output that rtk cut.
+
+Summaries that keep more of what questions need:
+
+- Each numeric column says which row holds its largest and smallest value, named by id (`max at order_id=100243, min at order_id=100136`). Columns of up to 12 values list all of them (they stopped at 8). About 5% more tokens per summary.
+- `tests/retention.rs` lists the facts a summary must keep (row count, column names, ranges, which row, value counts, time span, first and last row, the first errors), computes them with its own arithmetic, and checks the summary text: 564 of 742 facts kept before, 100% after.
+
+New formats:
+
+- `ps aux`, `ps -ef`, `df -h`: tables whose last column is free text. The parse is strict, because a wrong guess puts values under the wrong names. Real `ps aux`: 453 rows, 38,148 tokens to 739, every cell equal to an independent split.
+- Plain text logs that start with a timestamp (GitHub Actions, application logs, syslog). Errors are shown with the lines before them. Real failed CI job: 21,703 tokens to 569, and the summary shows the cause, which Claude Code's preview (the first 550 tokens, all runner set-up) did not.
+- JSON documents that are not tables get an outline (see the README). `cargo metadata`: 37,913 tokens to 271.
+- Fixed: a JSON object with a small array of objects beside a big object (40 outputs next to 120 resources one level deeper) was summarized as the small array, and the rest was dropped. The rows must now be 70% of the document.
+- Fixed: a panic on multi-byte text in the new log parser, found by the fuzz tests.
+
+Not detected on purpose: directory listings such as `ls -l` and `find` (the names are the content).
+
 ## 0.4.0
 
 - Every install way that rtk has: the `install.sh` script (now with `DTK_VERSION`, `DTK_INSTALL_DIR` and `DTK_SKIP_CHECKSUM`, and a refusal to install a file whose SHA-256 sum does not match), an `install.ps1` for Windows, a Homebrew tap (`brew install amaye15/tap/dtk`), a Scoop bucket, winget manifests, pre-built archives for macOS, Linux (static musl, x86_64 and ARM64) and Windows, `.deb` and `.rpm` packages, and `cargo install`. The guide is `docs/INSTALL.md`.

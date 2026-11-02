@@ -237,6 +237,64 @@ fn samples() -> Vec<Sample> {
         format: "jsonl-prefixed",
         text: s,
     });
+    // A CI log: timestamps, no level field, one failed step.
+    let mut s = String::new();
+    for i in 0..300 {
+        let msg = if i == 250 {
+            "##[error]Process completed with exit code 1.".to_string()
+        } else {
+            format!("   Compiling crate{i} v0.1.{}", i % 9)
+        };
+        s.push_str(&format!(
+            "2026-11-02T02:{:02}:{:02}.123456Z {msg}\n",
+            i / 60,
+            i % 60
+        ));
+    }
+    out.push(Sample {
+        name: "timestamped text log",
+        format: "text-log",
+        text: s,
+    });
+    // ps aux: the last column is free text.
+    let mut s = String::from(
+        "USER               PID  %CPU %MEM      VSZ    RSS   TT  STAT STARTED      TIME COMMAND\n",
+    );
+    for i in 0..120 {
+        s.push_str(&format!(
+            "{:<14} {:>7} {:>5.1} {:>4.1} {:>8} {:>6}   ??  Ss    9:{:02}AM   0:{:02}.00 /usr/bin/tool{}\n",
+            ["root", "dev"][i % 2],
+            100 + i * 3,
+            (i % 7) as f64 * 1.1,
+            (i % 4) as f64 * 0.3,
+            400_000 + i * 100,
+            20_000 + i * 10,
+            i % 60,
+            i % 60,
+            [" --a", "", " --b --c"][i % 3]
+        ));
+    }
+    out.push(Sample {
+        name: "ps aux",
+        format: "table",
+        text: s,
+    });
+    // A JSON document with no rows to count: a small array beside a big nested one.
+    let resources: Vec<String> = (0..400)
+        .map(|i| format!("{{\"address\":\"res.web[{i}]\",\"type\":\"vm\",\"size\":{i},\"tags\":{{\"env\":\"prod\"}}}}"))
+        .collect();
+    let outputs: Vec<String> = (0..12)
+        .map(|i| format!("{{\"name\":\"out{i}\",\"value\":\"v{i}\"}}"))
+        .collect();
+    out.push(Sample {
+        name: "JSON document",
+        format: "json-document",
+        text: format!(
+            "{{\"version\":\"1\",\"planned\":{{\"root\":{{\"resources\":[{}]}}}},\"outputs\":[{}]}}",
+            resources.join(","),
+            outputs.join(",")
+        ),
+    });
     out
 }
 
@@ -274,11 +332,7 @@ pub fn verify() -> i32 {
             &cfg,
             false,
         );
-        let found = v
-            .table
-            .as_ref()
-            .map(|x| x.format.name())
-            .unwrap_or("nothing");
+        let found = v.detected.as_ref().map(|d| d.name).unwrap_or("nothing");
         t.check(
             &format!("detects {} as {}", s.name, s.format),
             found == s.format,

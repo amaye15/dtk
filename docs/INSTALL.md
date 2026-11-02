@@ -11,7 +11,7 @@ dtk --version
 which dtk          # Windows: where dtk
 ```
 
-**Name collision.** Other programs use the name `dtk` (for example decomp-toolkit, a game-modding tool). If `dtk --version` prints something other than `dtk X.Y.Z`, or if `dtk --help` does not start with `dtk: data token killer`, you have another program. Remove it or put this one first on your `PATH`. `dtk verify` is the final test: it prints `20 of 20 built-in checks passed` only for this program.
+**Name collision.** Other programs use the name `dtk` (for example decomp-toolkit, a game-modding tool). If `dtk --version` prints something other than `dtk X.Y.Z`, or if `dtk --help` does not start with `dtk: data token killer`, you have another program. Remove it or put this one first on your `PATH`. `dtk verify` is the final test: it prints `N of N built-in checks passed` (all of them) only for this program.
 
 ## Quick install
 
@@ -131,7 +131,7 @@ If rtk is installed, dtk chains to it, and `rtk init -g` keeps working. Use `dtk
 
 ```sh
 dtk --version           # dtk X.Y.Z
-dtk verify              # 20 built-in checks, then the setup checks; prints "all good"
+dtk verify              # built-in checks, then the setup checks; prints "all good"
 dtk doctor              # the setup checks only
 dtk discover            # what dtk would have saved in your Claude Code history
 ```

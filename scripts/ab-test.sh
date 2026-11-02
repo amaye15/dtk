@@ -5,16 +5,46 @@
 # computed by another tool (jaq, qsv, awk, grep), so "correct" does not depend on dtk.
 # The run "without" sets DTK_DISABLED=1; both runs have the same hooks otherwise (rtk included).
 #
-# Needs: the Claude Code CLI (CLAUDE_BIN, default `claude`), jaq, qsv, awk, grep.
-# Usage: scripts/ab-test.sh            (about 20 seconds per run, 2 runs per format)
+# The hooks come from a throwaway project (--setting-sources project), so your own settings are
+# not used and not changed. The project registers the dtk binary under test, chained to rtk as
+# `dtk init --global` does, and rtk's PreToolUse hook when rtk is installed.
+#
+# It reports, per case and per arm: the tokens that tool results put in front of the model over
+# the whole conversation (not just the first result: a follow-up command to read what the
+# summary left out costs tokens too), the number of turns, and whether the answer is right.
+#
+# Needs: the Claude Code CLI (CLAUDE_BIN), jaq, qsv, awk, grep.
+# Environment: DTK_BIN (default target/release/dtk), MODEL (default haiku), AB_RUNS (default 1).
+# Usage: scripts/ab-test.sh            (about 25 seconds per run)
 set -u
-CLAUDE_BIN="${CLAUDE_BIN:-claude}"
-MODEL="${MODEL:-haiku}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -z "${CLAUDE_BIN:-}" ]; then
+  # Claude Code 2.1.37 ignores the hook's replacement of a tool result; use a newer binary.
+  CLAUDE_BIN="$(ls -d "$HOME"/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude 2>/dev/null | sort -V | tail -1)"
+  CLAUDE_BIN="${CLAUDE_BIN:-claude}"
+fi
+DTK_BIN="${DTK_BIN:-$HERE/target/release/dtk}"
+MODEL="${MODEL:-haiku}"
+RUNS="${AB_RUNS:-1}"
 C="$HERE/tests/corpus/positive"
+D="$HERE/tests/corpus/documents"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+[ -x "$DTK_BIN" ] || { echo "DTK_BIN not found: $DTK_BIN (run cargo build --release)"; exit 2; }
 
-# name | file | question | expected words (all must appear in the answer)
+# The project: hooks for the binary under test.
+mkdir -p "$WORK/proj/.claude"
+PRE=""
+if command -v rtk >/dev/null 2>&1; then
+  PRE='"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"rtk hook claude"}]}],'
+  CHAIN="$DTK_BIN hook claude --then rtk hook claude"
+else
+  CHAIN="$DTK_BIN hook claude"
+fi
+cat > "$WORK/proj/.claude/settings.json" <<EOF
+{"hooks":{$PRE"PostToolUse":[{"matcher":"Bash|Read","hooks":[{"type":"command","command":"$CHAIN"}]}]}}
+EOF
+
+# ---- the questions and their true answers (computed without dtk) -------------------------------
 truth_csv=$(qsv frequency -s region -l 1 "$C/csv_orders.csv" | sed -n 2p | awk -F, '{print $2" "$3}')
 truth_jsonl=$(jaq -s '[.[].latency_ms] | max' "$C/jsonl_orders.jsonl")
 truth_logfmt=$(grep -c ' level=error ' "$C/logfmt_service.log")
@@ -23,7 +53,13 @@ truth_wrapped=$(jaq '[.items[] | select(.phase=="Failed")] | length' "$C/wrapped
 # The fixture has 80 lines, which is under dtk's minimum size on purpose; use a bigger log.
 for _ in 1 2 3 4; do cat "$C/docker_compose_logs.txt"; done > "$WORK/compose_logs.txt"
 truth_prefixed=$(grep -c '^web-1' "$WORK/compose_logs.txt")
+# Which row holds the largest value? Needs the row, not only the maximum.
+truth_slowest=$(qsv sort -s latency_ms -N -R "$C/csv_orders.csv" | qsv select order_id | sed -n 2p)
+truth_ps=$(awk 'NR>1 && $3+0>m {m=$3+0; p=$2} END{print p}' "$C/ps_aux.txt")
+truth_ci=$(grep -B1 '##\[error\]' "$C/gha_job_long.log" | head -1 | sed 's/^[^ ]* //; s/\r$//')
+truth_meta=$(jaq '.packages | length' "$D/cargo_metadata.json")
 
+# name | file | question | expected words (all must appear in the answer)
 CASES=(
 "csv|$C/csv_orders.csv|Which region has the most orders, and how many orders does it have?|$truth_csv"
 "jsonl|$C/jsonl_orders.jsonl|What is the highest latency_ms value?|$truth_jsonl"
@@ -31,17 +67,24 @@ CASES=(
 "access log|$C/access_combined.log|How many requests returned status 404?|$truth_access"
 "wrapped json|$C/wrapped_items.json|How many pods have phase Failed?|$truth_wrapped"
 "prefixed jsonl|$WORK/compose_logs.txt|How many log lines come from web-1?|$truth_prefixed"
+"slowest row|$C/csv_orders.csv|Which order_id has the highest latency_ms? Give the order_id.|$truth_slowest"
+"ps aux|$C/ps_aux.txt|Which PID uses the most CPU (column %CPU)? Give the PID.|$truth_ps"
+"ci log|$C/gha_job_long.log|This is a CI log. What is the output line just before the line with ##[error]?|$truth_ci"
+"json document|$D/cargo_metadata.json|How many entries does the packages array have? Give the number.|$truth_meta"
 )
 
-run_one() { # dir question file disabled -> prints "chars turns answer"
-  local dir="$1" q="$2" file="$3" off="$4" out="$WORK/run.$$.jsonl"
-  ( cd "$dir" && DTK_DISABLED="$off" "$CLAUDE_BIN" -p "Run this bash command: cat $file   Then answer in one short line: $q" \
-      --model "$MODEL" --allowedTools Bash --output-format stream-json --verbose < /dev/null > "$out" 2>/dev/null )
-  local chars turns answer
-  chars=$(jaq -c 'select(.type=="user") | .message.content? | select(type=="array") | .[] | select(.type=="tool_result") | .content | if type=="array" then map(.text) | join("") else . end | length' "$out" 2>/dev/null | head -1)
+run_one() { # question file disabled -> prints "tokens|turns|first_tokens|answer"
+  local q="$1" file="$2" off="$3" out="$WORK/run.$$.jsonl"
+  ( cd "$WORK/proj" && DTK_DISABLED="$off" "$CLAUDE_BIN" -p "Run this bash command: cat $file   Then answer in one short line: $q" \
+      --model "$MODEL" --allowedTools Bash --setting-sources project \
+      --output-format stream-json --verbose < /dev/null > "$out" 2>/dev/null )
+  local lens total first turns answer
+  lens=$(jaq -r 'select(.type=="user") | .message.content? | select(type=="array") | .[] | select(.type=="tool_result") | .content | (if type=="array" then map(.text // "") | join("") else . end) | length' "$out" 2>/dev/null)
+  total=$(echo "$lens" | awk '{s+=$1} END{print s+0}')
+  first=$(echo "$lens" | head -1)
   turns=$(jaq -r 'select(.type=="result") | .num_turns' "$out" 2>/dev/null | tail -1)
   answer=$(jaq -r 'select(.type=="result") | .result' "$out" 2>/dev/null | tail -1 | tr '\n' ' ')
-  echo "${chars:-0}|${turns:-?}|$answer"
+  echo "$((total / 4))|${turns:-?}|$(( ${first:-0} / 4 ))|$answer"
 }
 
 correct() { # answer expected -> yes/no (every expected word appears)
@@ -50,18 +93,24 @@ correct() { # answer expected -> yes/no (every expected word appears)
   echo yes
 }
 
-mkdir -p "$WORK/proj"
-printf '%-16s %12s %12s %8s   %s\n' "format" "tokens w/o" "tokens with" "saved" "answers (without / with)"
+printf 'model %s, %s run(s) per arm; dtk: %s\n' "$MODEL" "$RUNS" "$("$DTK_BIN" --version)"
+printf '%-14s %9s %9s %6s  %-9s %-9s  %s\n' "case" "tok w/o" "tok with" "saved" "right w/o" "right with" "turns w/o -> with   (expected)"
 fail=0
 for c in "${CASES[@]}"; do
   IFS='|' read -r name file q want <<< "$c"
-  IFS='|' read -r c0 t0 a0 <<< "$(run_one "$WORK/proj" "$q" "$file" 1)"
-  IFS='|' read -r c1 t1 a1 <<< "$(run_one "$WORK/proj" "$q" "$file" 0)"
-  ok0=$(correct "$a0" "$want"); ok1=$(correct "$a1" "$want")
-  tok0=$((c0 / 4)); tok1=$((c1 / 4))
-  saved=$(( tok0 > 0 ? (tok0 - tok1) * 100 / tok0 : 0 ))
-  printf '%-16s %12s %12s %7s%%   %s / %s   (expected: %s; turns %s -> %s)\n' "$name" "$tok0" "$tok1" "$saved" "$ok0" "$ok1" "$want" "$t0" "$t1"
-  [ "$ok1" = yes ] || fail=1
-  [ "$tok1" -lt "$tok0" ] || fail=1
+  t0=0; t1=0; n0=0; n1=0; r0=0; r1=0; ok0=0; ok1=0
+  for _ in $(seq "$RUNS"); do
+    IFS='|' read -r tok0 turn0 _ a0 <<< "$(run_one "$q" "$file" 1)"
+    IFS='|' read -r tok1 turn1 _ a1 <<< "$(run_one "$q" "$file" 0)"
+    t0=$((t0 + tok0)); t1=$((t1 + tok1)); n0=$((n0 + ${turn0:-0})); n1=$((n1 + ${turn1:-0}))
+    [ "$(correct "$a0" "$want")" = yes ] && ok0=$((ok0 + 1))
+    [ "$(correct "$a1" "$want")" = yes ] && ok1=$((ok1 + 1))
+  done
+  t0=$((t0 / RUNS)); t1=$((t1 / RUNS))
+  saved=$(( t0 > 0 ? (t0 - t1) * 100 / t0 : 0 ))
+  printf '%-14s %9s %9s %5s%%  %-9s %-9s  %s -> %s   (%s)\n' "$name" "$t0" "$t1" "$saved" "$ok0/$RUNS" "$ok1/$RUNS" "$n0" "$n1" "$want"
+  [ "$ok1" -ge "$ok0" ] || fail=1          # never less correct than without dtk
+  [ "$ok1" -ge 1 ] || fail=1               # right at least once with dtk
+  [ "$t1" -le "$t0" ] || fail=1            # never more tokens over the conversation
 done
-[ "$fail" = 0 ] && echo "G6 PASS: correct answers with dtk, and fewer tokens on every format" || { echo "G6 FAIL"; exit 1; }
+[ "$fail" = 0 ] && echo "G6 PASS: with dtk, answers are as right as without, and no case costs more tokens" || { echo "G6 FAIL"; exit 1; }
