@@ -440,8 +440,7 @@ pub fn parse_number_grid(text: &str) -> Option<Table> {
     let widths: Vec<usize> = rows.iter().map(Vec::len).collect();
     let (w, same) = crate::table::mode(&widths)?;
     if rows.len() < MIN_ROWS
-        || w < 2
-        || w > 200
+        || !(2..=200).contains(&w)
         || same * 20 < rows.len() * 19
         || other * 20 > rows.len()
     {
@@ -460,7 +459,7 @@ pub fn parse_number_grid(text: &str) -> Option<Table> {
 /// data: the same number of fields on 98% of the lines, three or more fields, at least a third of
 /// the columns numbers, and short cells.
 pub fn parse_headerless(text: &str) -> Option<Table> {
-    for d in [b'|', b',', b'\t', b';'] {
+    for d in *b"|,\t;" {
         if let Some(t) = headerless_with(text, d) {
             return Some(t);
         }
@@ -487,7 +486,7 @@ fn headerless_with(text: &str, d: u8) -> Option<Table> {
     }
     let widths: Vec<usize> = recs.iter().map(Vec::len).collect();
     let (w, same) = crate::table::mode(&widths)?;
-    if w < 3 || w > 200 || same * 50 < recs.len() * 49 {
+    if !(3..=200).contains(&w) || same * 50 < recs.len() * 49 {
         return None;
     }
     recs.retain(|r| r.len() == w);
