@@ -1,0 +1,505 @@
+{
+ "positive": [
+  {
+   "file": "positive/csv_orders.csv",
+   "format": "csv",
+   "rows": 300,
+   "cols": 7,
+   "headers": [
+    "order_id",
+    "ts",
+    "customer",
+    "region",
+    "amount",
+    "status",
+    "latency_ms"
+   ]
+  },
+  {
+   "file": "positive/tsv_orders.tsv",
+   "format": "tsv",
+   "rows": 300,
+   "cols": 7,
+   "headers": [
+    "order_id",
+    "ts",
+    "customer",
+    "region",
+    "amount",
+    "status",
+    "latency_ms"
+   ]
+  },
+  {
+   "file": "positive/jsonl_orders.jsonl",
+   "format": "jsonl",
+   "rows": 300,
+   "cols": 7,
+   "headers": [
+    "order_id",
+    "ts",
+    "customer",
+    "region",
+    "amount",
+    "status",
+    "latency_ms"
+   ]
+  },
+  {
+   "file": "positive/json_array_orders.json",
+   "format": "json-array",
+   "rows": 300,
+   "cols": 7,
+   "headers": [
+    "order_id",
+    "ts",
+    "customer",
+    "region",
+    "amount",
+    "status",
+    "latency_ms"
+   ]
+  },
+  {
+   "file": "positive/json_array_pretty.json",
+   "format": "json-array",
+   "rows": 120,
+   "cols": 7,
+   "headers": [
+    "order_id",
+    "ts",
+    "customer",
+    "region",
+    "amount",
+    "status",
+    "latency_ms"
+   ]
+  },
+  {
+   "file": "positive/csv_crlf.csv",
+   "format": "csv",
+   "rows": 300,
+   "cols": 7,
+   "headers": [
+    "order_id",
+    "ts",
+    "customer",
+    "region",
+    "amount",
+    "status",
+    "latency_ms"
+   ]
+  },
+  {
+   "file": "positive/csv_semicolon.csv",
+   "format": "csv",
+   "rows": 300,
+   "cols": 7,
+   "headers": [
+    "order_id",
+    "ts",
+    "customer",
+    "region",
+    "amount",
+    "status",
+    "latency_ms"
+   ]
+  },
+  {
+   "file": "positive/csv_quoted.csv",
+   "format": "csv",
+   "rows": 80,
+   "cols": 3,
+   "headers": [
+    "id",
+    "note",
+    "amount"
+   ]
+  },
+  {
+   "file": "positive/pandas_to_string.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 7,
+   "headers": [
+    "idx",
+    "order_id",
+    "customer",
+    "region",
+    "amount",
+    "status",
+    "latency_ms"
+   ]
+  },
+  {
+   "file": "positive/polars_orders.txt",
+   "format": "table",
+   "rows": 100,
+   "cols": 6,
+   "headers": [
+    "order_id",
+    "customer",
+    "region",
+    "amount",
+    "status",
+    "latency_ms"
+   ]
+  },
+  {
+   "file": "positive/sqlite_box.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/sqlite_table.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/sqlite_markdown.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/sqlite_column.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/sqlite_csv.csv",
+   "format": "csv",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/sqlite_json.json",
+   "format": "json-array",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/tabulate_psql.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/tabulate_grid.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/tabulate_pipe.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/tabulate_github.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/tabulate_simple.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/tabulate_rounded_grid.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/tabulate_fancy_grid.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/tabulate_presto.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/tabulate_orgtbl.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/tabulate_outline.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/rich_table.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/rich_table_ansi.txt",
+   "format": "table",
+   "rows": 60,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/json_array_ansi.json",
+   "format": "json-array",
+   "rows": 120,
+   "cols": 7,
+   "headers": [
+    "order_id",
+    "ts",
+    "customer",
+    "region",
+    "amount",
+    "status",
+    "latency_ms"
+   ]
+  },
+  {
+   "file": "positive/git_log_tsv.txt",
+   "format": "tsv",
+   "rows": 80,
+   "cols": 4
+  },
+  {
+   "file": "positive/csv_comment_header.csv",
+   "format": "csv",
+   "rows": 80,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  },
+  {
+   "file": "positive/csv_bom.csv",
+   "format": "csv",
+   "rows": 80,
+   "cols": 4,
+   "headers": [
+    "id",
+    "name",
+    "amount",
+    "status"
+   ]
+  }
+ ],
+ "negative": [
+  {
+   "file": "negative/pandas_default_print.txt",
+   "note": "columns hidden behind ..."
+  },
+  {
+   "file": "negative/pandas_datetime_to_string.txt",
+   "note": "datetime column glued by one space; labels unsafe"
+  },
+  {
+   "file": "negative/readme.md",
+   "note": ""
+  },
+  {
+   "file": "negative/rust_source.rs",
+   "note": ""
+  },
+  {
+   "file": "negative/changelog.md",
+   "note": ""
+  },
+  {
+   "file": "negative/cargo_test_output.txt",
+   "note": "real cargo output"
+  },
+  {
+   "file": "negative/git_diff.txt",
+   "note": "real diff"
+  },
+  {
+   "file": "negative/git_log_default.txt",
+   "note": "real git log"
+  },
+  {
+   "file": "negative/env_output.txt",
+   "note": "KEY=value lines"
+  },
+  {
+   "file": "negative/brew_list.txt",
+   "note": "two columns"
+  },
+  {
+   "file": "negative/ls_l.txt",
+   "note": "real ls -l"
+  },
+  {
+   "file": "negative/python_script.py",
+   "note": ""
+  },
+  {
+   "file": "negative/json_object_single.json",
+   "note": "one object"
+  },
+  {
+   "file": "negative/prose.txt",
+   "note": "comma prose"
+  },
+  {
+   "file": "negative/python_traceback.txt",
+   "note": ""
+  },
+  {
+   "file": "negative/shell_pipelines.txt",
+   "note": "pipes without a rule line"
+  },
+  {
+   "file": "negative/yaml_list.yaml",
+   "note": "yaml"
+  },
+  {
+   "file": "negative/numbers_only.txt",
+   "note": "numeric header"
+  },
+  {
+   "file": "negative/shell_script.sh",
+   "note": "comment lines then commands"
+  }
+ ],
+ "either": [
+  {
+   "file": "either/ps_aux.txt"
+  },
+  {
+   "file": "either/df_h.txt"
+  },
+  {
+   "file": "either/lsof_i.txt"
+  },
+  {
+   "file": "either/netstat.txt"
+  },
+  {
+   "file": "either/qsv_stats_table.txt"
+  }
+ ]
+}

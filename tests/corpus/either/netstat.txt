@@ -1,0 +1,80 @@
+Active Internet connections (including servers)
+Proto Recv-Q Send-Q  Local Address          Foreign Address        (state)    
+tcp4       0      0  192.168.4.22.53560     20.52.64.206.443       ESTABLISHED
+tcp4       0      0  192.168.4.22.53555     20.52.64.206.443       ESTABLISHED
+tcp4       0      0  192.168.4.22.53554     13.107.5.93.443        ESTABLISHED
+tcp6       0      0  2403:5813:d18e:0.53549 2607:6bc0::10.443      ESTABLISHED
+tcp6       0      0  2403:5813:d18e:0.53546 2607:6bc0::10.443      ESTABLISHED
+tcp6       0      0  2403:5813:d18e:0.60236 2600:1415:11::68.443   ESTABLISHED
+tcp4       0      0  192.168.4.22.59949     140.82.114.26.443      ESTABLISHED
+tcp6       0      0  2403:5813:d18e:0.52270 2607:6bc0::10.443      ESTABLISHED
+tcp6       0      0  2403:5813:d18e:0.51425 2600:1901:0:9e23.443   ESTABLISHED
+tcp6       0      0  2403:5813:d18e:0.51420 2607:6bc0::10.443      ESTABLISHED
+tcp6       0      0  2403:5813:d18e:0.51414 2607:6bc0::10.443      ESTABLISHED
+tcp4       0      0  192.168.4.22.53162     140.82.112.25.443      ESTABLISHED
+tcp6       0      0  2403:5813:d18e:0.51411 2607:6bc0::10.443      ESTABLISHED
+tcp6       0      0  2403:5813:d18e:0.58473 2607:6bc0::10.443      ESTABLISHED
+tcp6       0      0  2403:5813:d18e:0.51274 2607:6bc0::10.443      ESTABLISHED
+tcp6       0      0  2403:5813:d18e:0.51262 2607:6bc0::10.443      ESTABLISHED
+tcp6       0      0  2403:5813:d18e:0.62202 2404:6800:4008:c.5228  ESTABLISHED
+tcp4       0      0  127.0.0.1.62146        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.47927        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.40175        *.*                    LISTEN     
+tcp6       0      0  2403:5813:d18e:0.53289 2606:4700:20::68.443   ESTABLISHED
+tcp4       0      0  127.0.0.1.51311        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.51305        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.51307        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.51306        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.51304        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.15696        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.45019        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.51732        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.18769        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.37964        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.49374        *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.5037         *.*                    LISTEN     
+tcp4       0      0  127.0.0.1.4444         *.*                    LISTEN     
+tcp6       0      0  2403:5813:d18e:0.53566 2600:9000:2212:c.443   TIME_WAIT  
+tcp6       0      0  2403:5813:d18e:0.53569 2600:9000:2212:c.443   TIME_WAIT  
+tcp4       0      0  192.168.4.22.59591     17.57.145.40.5223      ESTABLISHED
+udp6       0      0  2403:5813:d18e:0.55704 2404:6800:4006:8.443              
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp46      0      0  *.5353                 *.*                               
+udp46      0      0  *.5353                 *.*                               
+udp46      0      0  *.5353                 *.*                               
+udp46      0      0  *.5353                 *.*                               
+udp46      0      0  *.5353                 *.*                               
+udp46      0      0  *.5353                 *.*                               
+udp46      0      0  *.5353                 *.*                               
+udp4       0      0  *.5353                 *.*                               
+udp46      0      0  *.5353                 *.*                               
+udp46      0      0  *.5353                 *.*                               
+udp4       0      0  *.5353                 *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp6       0      0  *.5353                 *.*                               
+udp4       0      0  *.5353                 *.*                               
+udp46      0      0  *.*                    *.*                               
+udp4       0      0  *.*                    *.*                               
+udp4       0      0  *.137                  *.*                               
+udp4       0      0  *.138                  *.*                               
+Active Multipath Internet connections
+Proto/ID  Flags      Local Address          Foreign Address        (state)    
+icm6       0      0  *.*                    *.*                               
+Active LOCAL (UNIX) domain sockets
+Address          Type   Recv-Q Send-Q            Inode             Conn             Refs          Nextref Addr

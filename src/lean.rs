@@ -29,11 +29,26 @@ impl Kind {
     }
 }
 
+/// The numbers behind a column summary, for programs that want them (`dtk view --json`, tests).
+#[derive(Debug, Clone, Default)]
+pub struct ColStats {
+    pub nonempty: usize,
+    pub nulls: usize,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub mean: Option<f64>,
+    pub p50: Option<f64>,
+    pub p95: Option<f64>,
+    /// Most common values with their counts, most common first (at most 8).
+    pub top: Vec<(String, usize)>,
+}
+
 pub struct ColInfo {
     pub kind: Kind,
     pub summary: String,
     /// Distinct count when known and small enough to group by.
     pub distinct: Option<usize>,
+    pub stats: ColStats,
 }
 
 /// Where the full data lives, so the summary can point at it.
@@ -114,13 +129,27 @@ fn top_values(distinct: &HashMap<&str, usize>, limit: usize) -> String {
 }
 
 /// " p50 X p95 Y" (nearest rank), or nothing when there are too few values to mean much.
-fn percentiles(nums: &mut [f64]) -> String {
+fn pct(nums: &mut [f64]) -> Option<(f64, f64)> {
     if nums.len() < 20 {
-        return String::new();
+        return None;
     }
     nums.sort_by(|a, b| a.total_cmp(b));
     let at = |p: f64| nums[((nums.len() - 1) as f64 * p).round() as usize];
-    format!(" p50 {} p95 {}", fnum(at(0.5)), fnum(at(0.95)))
+    Some((at(0.5), at(0.95)))
+}
+
+fn pct_text(p: Option<(f64, f64)>) -> String {
+    p.map(|(a, b)| format!(" p50 {} p95 {}", fnum(a), fnum(b)))
+        .unwrap_or_default()
+}
+
+fn top_pairs(distinct: &HashMap<&str, usize>, limit: usize) -> Vec<(String, usize)> {
+    let mut v: Vec<(&&str, &usize)> = distinct.iter().collect();
+    v.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    v.into_iter()
+        .take(limit)
+        .map(|(k, n)| (k.to_string(), *n))
+        .collect()
 }
 
 fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
@@ -208,24 +237,23 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
     };
     // Codes such as HTTP status or a rating: counts say more than a min, max and mean.
     let few_values = !overflow && distinct.len() <= 12 && nonempty >= 2 * distinct.len();
+    let pcts = if matches!(kind, Kind::Int | Kind::Float) {
+        pct(&mut nums)
+    } else {
+        None
+    };
     let mut summary = match kind {
         Kind::Empty => "all empty".to_string(),
         Kind::Int | Kind::Float if few_values => {
             format!("{} distinct: {}", distinct.len(), top_values(&distinct, 8))
         }
-        Kind::Int => format!(
-            "{}..{} mean {}{}",
-            imin,
-            imax,
-            fnum(mean),
-            percentiles(&mut nums)
-        ),
+        Kind::Int => format!("{}..{} mean {}{}", imin, imax, fnum(mean), pct_text(pcts)),
         Kind::Float => format!(
             "{}..{} mean {}{}",
             fnum(fmin),
             fnum(fmax),
             fnum(mean),
-            percentiles(&mut nums)
+            pct_text(pcts)
         ),
         Kind::Time => format!("{}..{}", tmin.unwrap_or(""), tmax.unwrap_or("")),
         Kind::Bool => top_values(&distinct, 2),
@@ -252,10 +280,22 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
     if nulls > 0 {
         summary.push_str(&format!(" | nulls {}", nulls));
     }
+    let numeric = matches!(kind, Kind::Int | Kind::Float);
+    let stats = ColStats {
+        nonempty,
+        nulls,
+        min: numeric.then(|| if kind == Kind::Int { imin as f64 } else { fmin }),
+        max: numeric.then(|| if kind == Kind::Int { imax as f64 } else { fmax }),
+        mean: numeric.then_some(mean),
+        p50: pcts.map(|p| p.0),
+        p95: pcts.map(|p| p.1),
+        top: top_pairs(&distinct, 8),
+    };
     ColInfo {
         kind,
         summary,
         distinct: if overflow { None } else { Some(distinct.len()) },
+        stats,
     }
 }
 

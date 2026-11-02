@@ -1,0 +1,1719 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+new file mode 100644
+index 0000000..6505457
+--- /dev/null
++++ b/CHANGELOG.md
+@@ -0,0 +1,19 @@
++# Changelog
++
++## 0.2.0
++
++- Summarize data files that Claude reads with the `Read` tool (whole-file reads of `.csv`, `.tsv`, `.jsonl`, `.json`, `.log`, `.txt` and a few more). Reads with `offset` or `limit` pass through.
++- Read tables drawn with borders: polars, psql, MySQL, SQLite and Markdown.
++- Add the median (p50) and p95 to numeric columns.
++- Never summarize the output of commands that ask for specific rows (`qsv slice`, `head`, `tail`, `sed -n`, rtk's `--max-lines` and `--tail-lines`). `DTK_RAW=1` passes one command through.
++- Refuse pandas `to_string()` tables when the column labels could be wrong (a datetime column joined to its neighbour by one space). This fixes mislabelled columns.
++- `dtk init` now registers the `Bash|Read` matcher. `dtk doctor` warns about registrations made before 0.2.0.
++- The rtk chain waits for the chained command with short checks at first (0.2 ms, backing off to 10 ms) instead of a fixed 10 ms sleep.
++
++## 0.1.1
++
++- A closed output pipe (`dtk view big.csv | head`) ends quietly instead of printing a panic.
++
++## 0.1.0
++
++- First release: summaries of JSONL, JSON arrays, CSV, TSV and aligned tables in Bash output; the rtk chain; `dtk init`, `doctor`, `gain`, `view` and `mode`.
+diff --git a/Cargo.lock b/Cargo.lock
+index 8c89363..77c0514 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -69,7 +69,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "dtk"
+-version = "0.1.0"
++version = "0.2.0"
+ dependencies = [
+  "csv",
+  "serde_json",
+diff --git a/Cargo.toml b/Cargo.toml
+index 557f76e..a1a50d1 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,6 +1,6 @@
+ [package]
+ name = "dtk"
+-version = "0.1.0"
++version = "0.2.0"
+ edition = "2021"
+ rust-version = "1.80"
+ description = "Data token killer: a Claude Code hook that turns big tables, CSV, JSON and JSONL tool output into lean summaries. Works with rtk."
+diff --git a/README.md b/README.md
+index 39038c5..e87eb21 100644
+--- a/README.md
++++ b/README.md
+@@ -6,13 +6,14 @@ It is one small Rust binary (about 600 KB) with no runtime dependencies.
+ 
+ ## What it does
+ 
+-Claude Code sends the output of a Bash command to the model. For `cat data.csv`, `python report.py` or `tail -n 500 app.log`, that output can be tens of thousands of tokens of rows. `dtk` runs after the command (a `PostToolUse` hook) and checks whether the output is a table.
++Claude Code sends the output of a Bash command to the model. For `cat data.csv`, `python report.py` or `tail -n 500 app.log`, that output can be tens of thousands of tokens of rows. `dtk` runs after the command (a `PostToolUse` hook) and checks whether the output is a table. It also checks data files that Claude reads with the `Read` tool.
+ 
+ | Input found in the output | Treated as |
+ |---|---|
+ | JSON Lines (one object per line) | `jsonl` |
+ | JSON array of objects | `json-array` |
+ | CSV, or TSV, `;` and `\|` separated text with a header row | `csv`, `tsv` |
++| Tables drawn with borders: polars, psql, MySQL, SQLite, Markdown | `table` |
+ | Whitespace-aligned tables, such as `DataFrame.to_string()` | `table` |
+ 
+ Anything else passes through untouched.
+@@ -21,7 +22,7 @@ For a table of 60 rows or fewer, `dtk` re-encodes it as CSV and drops nothing. F
+ 
+ - the shape and the size
+ - the column names with types
+-- per-column statistics: min, max and mean for numbers; value counts for categories and codes; the time range for timestamps; null counts
++- per-column statistics: min, max, mean, median (p50) and p95 for numbers; value counts for categories and codes; the time range for timestamps; null counts
+ - the first rows and the last rows
+ - the rows where a `level` or `severity` column says warn or error
+ - the exact commands to query the full data, with `qsv` and `jaq`
+@@ -38,6 +39,8 @@ Measured with OpenAI's `o200k_base` tokenizer, as a stand-in for Claude's:
+ 
+ Claude Code already saves outputs of 30,000 characters or more to a file and shows the model a preview of the first lines. `dtk` reads that saved file, so its summary covers all rows, not only the first lines.
+ 
++**The `Read` tool.** When Claude reads a whole data file (`.csv`, `.tsv`, `.jsonl`, `.json`, `.log`, `.txt` and a few more), the model gets the summary instead of every row. A read with `offset` or `limit` is a request for exact lines, so it is left alone. Source code is never checked. `dtk` works on the result after `Read` ran, so it cannot show anything that your permission rules blocked. Claude Code refuses `Read` on files over 256 KB; use `cat` or `dtk view` for those.
++
+ ## Install
+ 
+ Download the archive for your system from the [releases page](https://github.com/amaye15/dtk/releases), check the `.sha256` file, and put `dtk` on your `PATH`. Or install from crates.io, or build it:
+@@ -84,6 +87,8 @@ dtk must go first. A table that rtk had already cut to its first and last lines
+ 
+ Use `dtk init --global --no-rtk` to skip the chain. If rtk is not installed, dtk works alone.
+ 
++The two programs run one after the other, so the hook takes about the sum of both. Measured on one Mac, as medians: dtk alone 2 to 7 ms (about 2 ms for a typical event, about 7 ms for a 331 KB CSV), rtk alone 4 to 13 ms, both through the chain 17 to 21 ms. That is small next to a model call.
++
+ Tested end to end with real rtk 1.1.0 and Claude Code: with `rtk:posthook` enabled, a 150-row JSONL log became a dtk summary (864 tokens), and an 850-line plain text output went through the chain to rtk, which cut it to 252 lines and added its `[full output: ...]` pointer.
+ 
+ ## Control
+@@ -93,6 +98,9 @@ Tested end to end with real rtk 1.1.0 and Claude Code: with `rtk:posthook` enabl
+ | `dtk mode shadow` | Decide and log, but change no output. Use it to see what `dtk` would do. |
+ | `dtk mode live` | Replace output (the default). |
+ | `DTK_DISABLED=1` | dtk passes every output through. The rtk chain still runs. |
++| `DTK_RAW=1 cat data.csv` | Pass this one command's output through. |
++
++Commands that ask for specific rows are never summarized: `qsv slice`, `qsv sample`, `head`, `tail`, `sed -n`, and rtk's `--max-lines` and `--tail-lines`. That includes the `rows:` command in a summary.
+ | `dtk gain` | Totals from the decision log, with rtk's totals beside them. |
+ | `dtk view FILE` | Show the lean view of a file or standard input. |
+ | `dtk doctor` | Check the setup. |
+@@ -103,7 +111,7 @@ Tested end to end with real rtk 1.1.0 and Claude Code: with `rtk:posthook` enabl
+ - It only reads files under `~/.claude/`, the folder where Claude Code saves large outputs.
+ - A summary is used only if it is clearly smaller: at least 30% fewer tokens for mid-size output, and always for output that Claude Code saved to a file.
+ - Strict detection: prose, source code, single JSON objects, cargo output and numeric headers are not tables.
+-- It handles Bash output only. The `Read` tool and MCP tools are not touched.
++- It handles Bash output and whole-file `Read` of data files. MCP tools are not touched.
+ 
+ ## Where data lives
+ 
+@@ -124,7 +132,7 @@ if let Some((table, view)) = dtk::summarize(&text, &ctx, 2500) {
+ 
+ ## Limits
+ 
+-- Detection of aligned text tables is a heuristic. The default `print(df)` of pandas hides columns behind `...`, so `dtk` does not treat it as a table. Print with `df.to_string()`, `df.to_csv()` or `df.to_json(orient="records", lines=True)`.
++- Detection of whitespace-aligned text tables is a heuristic. The default `print(df)` of pandas hides columns behind `...`, so `dtk` does not treat it as a table. A pandas `to_string()` table with a datetime column is refused too, because pandas can join that column to its neighbour with one space and the column labels could come out wrong. Print with `df.to_csv()`, `df.to_json(orient="records", lines=True)` or polars, which `dtk` reads correctly.
+ - Inputs above 128 MB are skipped.
+ - Statistics cover the whole table. For columns with more than 5,000 distinct values, only a count is shown.
+ - dtk is a separate program that calls rtk. It is not an rtk plugin: a plugin needs a custom rtk build, links rtk's source-available license, and would see only the first 30,000 characters of a large output.
+@@ -137,7 +145,7 @@ cargo test
+ cargo clippy --all-targets -- -D warnings
+ ```
+ 
+-The unit tests cover detection and rendering. `tests/hook.rs` runs the real binary against simulated Claude Code events, and `tests/rtk_integration.rs` tests the rtk chain, the folding and the restore with a fake `rtk`. All of them use a temporary home folder.
++The unit tests cover detection and rendering. `tests/hook.rs` runs the real binary against simulated Claude Code events (including real pandas output in `tests/fixtures/`), and `tests/rtk_integration.rs` tests the rtk chain, the folding and the restore with a fake `rtk`. All of them use a temporary home folder.
+ 
+ ## License
+ 
+diff --git a/docs/PLAN-0.3.0.md b/docs/PLAN-0.3.0.md
+new file mode 100644
+index 0000000..048a93b
+--- /dev/null
++++ b/docs/PLAN-0.3.0.md
+@@ -0,0 +1,79 @@
++# dtk 0.3.0 plan
++
++Goal: handle more data formats with better automatic detection, keep working with rtk in every
++way rtk is used, and follow rtk's practices (self-checks, explain, discover, config, installer).
++
++Rule for this plan: a step is done only when its check passes. The checks are commands, not
++opinions. Results are filled in at the end of each step.
++
++## Gates every step must pass
++
++| Gate | Command | Passes when |
++|---|---|---|
++| G1 | `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` | no warning, no failure |
++| G2 | `cargo test --test corpus` | every fixture is detected with the expected format, rows and columns; every negative fixture is rejected |
++| G3 | `cargo test --test properties` | random and mutated inputs never panic; every table has equal-width rows; an applied summary is smaller than its input |
++| G4 | `cargo test --test oracle` | dtk's counts, min, max, mean and percentiles equal `qsv` and `jaq` on the corpus (skipped if they are not installed) |
++| G5 | `cargo test --test rtk_real` | the real rtk binary, in a throwaway HOME, installs, re-installs and uninstalls without touching dtk's entry, and the reverse (skipped if rtk is not installed; CI installs it) |
++| G6 | `scripts/ab-test.sh` (end of plan) | real Claude Code sessions with and without dtk give the same correct answers with fewer tokens |
++
++## Steps
++
++### S1. Full rtk compatibility
++Problem found with the real rtk 1.1.0: after `dtk init`, running `rtk init -g` again appends a
++second, separate `PostToolUse` hook. Claude Code applies the last matching entry, so rtk's output
++could replace dtk's summary.
++
++Design: one entry with two hooks, the dtk chain and a silent placeholder named `rtk` in dtk's
++data folder. rtk recognizes its hook by the shape `<path>/rtk hook claude`, so it sees its hook as
++installed and adds no duplicate. rtk's uninstall removes only the placeholder.
++
++Checks: `tests/rtk_real.rs` (G5) covers init twice, no duplicate, rtk uninstall keeps dtk, dtk
++uninstall restores rtk's entry, enabling `rtk:posthook` later widens the matcher, `rtk init --show`
++and `rtk pipeline validate` report no missing hook.
++
++### S2. Cleaner input
++ANSI colours, CRLF, a byte-order mark, comment and preamble lines, and the full box-drawing range
++(rich tables) no longer stop detection.
++
++Checks: new positive fixtures in `tests/corpus/` for each (G2).
++
++### S3. More formats
++JSON objects that wrap one big array (`{"items": [...]}`, as `kubectl` and many APIs return),
++JSON objects keyed by id, logfmt (`level=info msg="x"`), web access logs (common and combined),
++and JSONL with a per-line prefix (`docker compose logs`).
++
++Checks: at least two positive fixtures and three negative fixtures per format (G2); counts equal
++`jaq` and `qsv` (G4).
++
++### S4. Smaller, smarter summaries
++Group high-cardinality text columns by message template (digits and ids replaced), so a log with
++4,000 different messages shows its 8 real templates with counts. Short store paths, so a long
++path is not repeated three times.
++
++Checks: a fixture with a known template mix reports exact counts; token estimate of the summary
++for the 5,000-row CSV falls by at least 10% (G1).
++
++### S5. rtk-style tools
++`dtk explain` (why was this output summarized or not), `dtk verify` (self-test of the whole
++setup), `dtk discover` (scan Claude Code transcripts for tables that dtk would have summarized),
++`dtk gain --json`, a config file with `exclude_commands` and thresholds, and `install.sh`.
++
++Checks: one integration test per command (G1); `dtk discover` run on real transcripts reports
++numbers that match a manual count on one session.
++
++### S6. Prove it, then release
++Run G1 to G6, record the real-tokenizer results, publish 0.3.0.
++
++## Results
++
++### S1. Full rtk compatibility: DONE
++- G1: 52 tests pass, lint clean.
++- G5: `cargo test --test rtk_real` runs 7 tests against the real rtk 1.1.0: init twice adds no
++  second hook; rtk-first then dtk takes over; `rtk init --show` and `rtk pipeline validate` stay
++  satisfied; `rtk init --uninstall` removes only the placeholder; `dtk init --uninstall` gives
++  rtk's own entry back exactly (and does not bring back one that rtk removed); a later
++  `rtk:posthook` widens the matcher through rtk itself; the real chain sends tables to dtk and
++  everything else to rtk.
++- Real Claude Code session on the real settings: summary received, answer correct (23 = 23).
++
+diff --git a/src/doctor.rs b/src/doctor.rs
+index eba6a26..4593bac 100644
+--- a/src/doctor.rs
++++ b/src/doctor.rs
+@@ -1,7 +1,7 @@
+ //! `dtk doctor`: checks that the hook, rtk and the helper tools are wired up.
+ 
+ use crate::hook::{config_dir, data_dir, is_live};
+-use crate::init::{is_dtk, is_only_rtk, rtk_on_path, settings_path};
++use crate::init::{has_placeholder, is_dtk, is_only_rtk, rtk_on_path, settings_path, shim_path};
+ use serde_json::Value;
+ use std::fs;
+ use std::process::{Command, Stdio};
+@@ -56,6 +56,7 @@ pub fn run() -> i32 {
+         .unwrap_or_default();
+     let dtk_entries: Vec<&Value> = post.iter().filter(|e| is_dtk(e)).collect();
+     let mut chained = false;
++    let mut placeholder = false;
+     match dtk_entries.len() {
+         0 => line(
+             "warn",
+@@ -71,8 +72,15 @@ pub fn run() -> i32 {
+                 .and_then(Value::as_str)
+                 .unwrap_or("");
+             chained = cmd.contains("--then");
++            placeholder = has_placeholder(e);
+             let exe = cmd.split_whitespace().next().unwrap_or("");
+             let matcher = e.get("matcher").and_then(Value::as_str).unwrap_or("");
++            if matcher != "*" && !matcher.split('|').any(|m| m == "Read") {
++                line(
++                    "warn",
++                    "the hook was registered before Read support, so data files read with the Read tool are not summarized. Run: dtk init --global",
++                );
++            }
+             if std::path::Path::new(exe).exists() {
+                 line(
+                     "ok",
+@@ -119,6 +127,18 @@ pub fn run() -> i32 {
+                 "ok",
+                 "dtk is chained to rtk: one PostToolUse hook, dtk first, then rtk",
+             );
++            let shim_ok = shim_path().map(|p| p.exists()).unwrap_or(false);
++            if placeholder && shim_ok {
++                line(
++                    "ok",
++                    "rtk init sees its PostToolUse hook as installed (dtk's placeholder), so it adds no second hook",
++                );
++            } else {
++                line(
++                    "warn",
++                    "dtk's placeholder for rtk is missing, so `rtk init -g` may add a second hook. Run: dtk init --global",
++                );
++            }
+         } else if !dtk_entries.is_empty() {
+             line("--", "dtk is not chained to rtk. Run: dtk init --global (needed only if you use rtk's PostToolUse pipeline)");
+         }
+diff --git a/src/hook.rs b/src/hook.rs
+index cdc72d9..d8d185b 100644
+--- a/src/hook.rs
++++ b/src/hook.rs
+@@ -287,6 +287,8 @@ fn run_chain(argv: &[String], input: &[u8]) -> i32 {
+         .and_then(|v| v.parse::<u64>().ok())
+         .unwrap_or(CHAIN_TIMEOUT_MS);
+     let start = Instant::now();
++    // Check often at first (hooks usually answer in a few milliseconds), then back off.
++    let mut nap = Duration::from_micros(200);
+     let status = loop {
+         match child.try_wait() {
+             Ok(Some(st)) => break Some(st),
+@@ -295,7 +297,10 @@ fn run_chain(argv: &[String], input: &[u8]) -> i32 {
+                 let _ = child.wait();
+                 break None;
+             }
+-            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
++            Ok(None) => {
++                std::thread::sleep(nap);
++                nap = (nap * 2).min(Duration::from_millis(10));
++            }
+             Err(_) => break None,
+         }
+     };
+@@ -316,11 +321,136 @@ fn handle(input: &str) -> Option<String> {
+         return None;
+     }
+     let ev: Value = serde_json::from_str(input).ok()?;
+-    if ev.get("hook_event_name")?.as_str()? != "PostToolUse"
+-        || ev.get("tool_name")?.as_str()? != "Bash"
++    if ev.get("hook_event_name")?.as_str()? != "PostToolUse" {
++        return None;
++    }
++    match ev.get("tool_name")?.as_str()? {
++        "Bash" => handle_bash(&ev),
++        "Read" => handle_read(&ev),
++        _ => None,
++    }
++}
++
++/// Commands that ask for specific rows must get them, not a summary of them.
++fn wants_raw(cmd: &str) -> bool {
++    const MARKERS: [&str; 6] = [
++        "DTK_RAW",
++        "qsv slice",
++        "qsv sample",
++        "sed -n",
++        "--max-lines",
++        "--tail-lines",
++    ];
++    if MARKERS.iter().any(|m| cmd.contains(m)) {
++        return true;
++    }
++    cmd.split(|c: char| c.is_whitespace() || matches!(c, '|' | ';' | '&'))
++        .any(|t| t == "head" || t == "tail")
++}
++
++/// One line of the decision log.
++struct Decision<'a> {
++    tool: &'a str,
++    what: String,
++    table: &'a table::Table,
++    persisted: bool,
++    rendered: &'a Rendered,
++    tokens_full: usize,
++    baseline: usize,
++    would_apply: bool,
++    applied: bool,
++    live: bool,
++}
++
++fn log_table(d: &Decision) {
++    log_decision(json!({
++        "ts": now_secs(),
++        "mode": if d.live { "live" } else { "shadow" },
++        "tool": d.tool,
++        "format": d.table.format.name(),
++        "rows": d.table.rows.len(),
++        "cols": d.table.headers.len(),
++        "persisted": d.persisted,
++        "lossless": d.rendered.lossless,
++        "tokens_full": d.tokens_full,
++        "tokens_baseline": d.baseline,
++        "tokens_after": est_tokens(&d.rendered.text),
++        "would_apply": d.would_apply,
++        "applied": d.applied,
++        "cmd": d.what,
++    }));
++}
++
++/// File types that can hold a table. Source code is never read or checked.
++const DATA_EXTS: [&str; 11] = [
++    "csv", "tsv", "psv", "jsonl", "ndjson", "json", "log", "txt", "dat", "out", "tbl",
++];
++
++/// The `Read` tool on a data file. By now `Read` has passed the permission rules, so replacing
++/// its content cannot reveal anything the model was not allowed to read.
++fn handle_read(ev: &Value) -> Option<String> {
++    let resp = ev.get("tool_response")?.as_object()?;
++    let file = resp.get("file")?.as_object()?;
++    let path = file.get("filePath")?.as_str()?;
++    let ext = Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
++    if !DATA_EXTS.contains(&ext.as_str()) {
++        return None;
++    }
++    // A range is a request for exact lines: leave it alone.
++    let input = ev.get("tool_input");
++    if input.and_then(|i| i.get("offset")).is_some() || input.and_then(|i| i.get("limit")).is_some()
++    {
++        return None;
++    }
++    let lines = file.get("numLines")?.as_u64()?;
++    if file.get("startLine").and_then(Value::as_u64).unwrap_or(1) != 1
++        || file.get("totalLines")?.as_u64()? != lines
+     {
+         return None;
+     }
++    let text = file.get("content")?.as_str()?;
++    let table = table::detect(text)?;
++    let live = is_live();
++    let tokens_full = est_tokens(text);
++    let rendered = build(&table, text, Some(Path::new(path)), live);
++    let after = est_tokens(&rendered.text);
++    let would_apply = tokens_full >= MIN_TOKENS && after * 10 <= tokens_full * 7;
++    let applied = live && would_apply;
++    log_table(&Decision {
++        tool: "Read",
++        what: path.chars().take(100).collect(),
++        table: &table,
++        persisted: false,
++        rendered: &rendered,
++        tokens_full,
++        baseline: tokens_full,
++        would_apply,
++        applied,
++        live,
++    });
++    if !applied {
++        return None;
++    }
++    let shown = rendered.text.lines().count();
++    let mut new_file = file.clone();
++    new_file.insert("content".to_string(), Value::String(rendered.text));
++    new_file.insert("numLines".to_string(), json!(shown));
++    new_file.insert("totalLines".to_string(), json!(shown));
++    let mut updated = resp.clone();
++    updated.insert("file".to_string(), Value::Object(new_file));
++    let out = json!({"hookSpecificOutput": {"hookEventName": "PostToolUse", "updatedToolOutput": Value::Object(updated)}});
++    Some(out.to_string())
++}
++
++fn handle_bash(ev: &Value) -> Option<String> {
++    let command = ev
++        .get("tool_input")
++        .and_then(|i| i.get("command"))
++        .and_then(Value::as_str)
++        .unwrap_or("");
++    if wants_raw(command) {
++        return None;
++    }
+     let resp = ev.get("tool_response")?.as_object()?;
+     if resp.get("isImage").and_then(Value::as_bool) == Some(true)
+         || resp.get("interrupted").and_then(Value::as_bool) == Some(true)
+@@ -353,29 +483,18 @@ fn handle(input: &str) -> Option<String> {
+         tokens_full >= MIN_TOKENS && after * 10 <= tokens_full * 7
+     };
+     let applied = live && would_apply;
+-    let cmd: String = ev
+-        .get("tool_input")
+-        .and_then(|i| i.get("command"))
+-        .and_then(Value::as_str)
+-        .unwrap_or("")
+-        .chars()
+-        .take(100)
+-        .collect();
+-    log_decision(json!({
+-        "ts": now_secs(),
+-        "mode": if live { "live" } else { "shadow" },
+-        "format": table.format.name(),
+-        "rows": table.rows.len(),
+-        "cols": table.headers.len(),
+-        "persisted": persisted.is_some(),
+-        "lossless": rendered.lossless,
+-        "tokens_full": tokens_full,
+-        "tokens_baseline": baseline,
+-        "tokens_after": after,
+-        "would_apply": would_apply,
+-        "applied": applied,
+-        "cmd": cmd,
+-    }));
++    log_table(&Decision {
++        tool: "Bash",
++        what: command.chars().take(100).collect(),
++        table: &table,
++        persisted: persisted.is_some(),
++        rendered: &rendered,
++        tokens_full,
++        baseline,
++        would_apply,
++        applied,
++        live,
++    });
+     if !applied {
+         return None;
+     }
+diff --git a/src/init.rs b/src/init.rs
+index 8ee1d84..7e41fbd 100644
+--- a/src/init.rs
++++ b/src/init.rs
+@@ -3,18 +3,28 @@
+ //! The file is edited as JSON, key order is kept, unrelated hooks are left alone, and a backup
+ //! is written once.
+ //!
+-//! rtk integration: if rtk has its own `PostToolUse` hook, dtk takes over that registration and
+-//! runs rtk's hook itself, after dtk (`dtk hook claude --then rtk hook claude`). That gives one
+-//! hook and a fixed order. The folded entries are saved in `~/.config/dtk/init-state.json` so
+-//! `--uninstall` can restore them exactly.
++//! rtk integration. dtk registers ONE `PostToolUse` entry with two hooks:
++//!
++//! 1. `dtk hook claude --then rtk hook claude`: does the work. dtk handles tables, and every other
++//!    event goes to rtk byte for byte.
++//! 2. A silent placeholder called `rtk` in dtk's data folder. rtk recognizes its own hook by the
++//!    shape `<path>/rtk hook claude`. With the placeholder in place, `rtk init` sees its hook as
++//!    installed and adds no second one (a second hook would run in parallel, and Claude Code
++//!    applies the last matching entry). `rtk init --uninstall` removes only the placeholder.
++//!
++//! If rtk already has its own `PostToolUse` entry, dtk takes it over. The original is saved in
++//! `~/.config/dtk/init-state.json`, so `--uninstall` can give it back.
+ 
+-use crate::hook::{config_dir, create_private_dir, home};
++use crate::hook::{config_dir, create_private_dir, data_dir, home};
+ use serde_json::{json, Value};
+ use std::fs;
+ use std::path::PathBuf;
+ use std::process::{Command, Stdio};
+ 
+ const DEFAULT_THEN: &str = "rtk hook claude";
++/// Tools dtk handles itself: Bash output and whole-file reads of data files.
++const OWN_MATCHER: &str = "Bash|Read";
++const SHIM_BODY: &str = "#!/bin/sh\n# dtk placeholder. It lets `rtk init` see its PostToolUse hook as installed.\n# The real rtk runs inside dtk's hook chain. This script does nothing.\nexit 0\n";
+ 
+ pub fn settings_path() -> Option<PathBuf> {
+     Some(home()?.join(".claude/settings.json"))
+@@ -24,6 +34,10 @@ fn state_path() -> Option<PathBuf> {
+     Some(config_dir()?.join("init-state.json"))
+ }
+ 
++pub fn shim_path() -> Option<PathBuf> {
++    Some(data_dir()?.join("shim").join("rtk"))
++}
++
+ fn commands(entry: &Value) -> Vec<String> {
+     entry
+         .get("hooks")
+@@ -36,13 +50,23 @@ fn commands(entry: &Value) -> Vec<String> {
+         .unwrap_or_default()
+ }
+ 
+-/// A hook entry that runs `dtk hook claude`.
++/// The silent placeholder command.
++pub fn is_placeholder(cmd: &str) -> bool {
++    let c = cmd.replace('"', "");
++    c.contains("/dtk/shim/rtk") && c.trim_end().ends_with("hook claude")
++}
++
++/// A hook entry that holds dtk's chain, or its placeholder.
+ pub fn is_dtk(entry: &Value) -> bool {
+     commands(entry)
+         .iter()
+         .any(|c| c.contains("dtk") && c.contains("hook claude"))
+ }
+ 
++pub fn has_placeholder(entry: &Value) -> bool {
++    commands(entry).iter().any(|c| is_placeholder(c))
++}
++
+ /// A hook entry that holds only rtk hook commands.
+ pub fn is_only_rtk(entry: &Value) -> bool {
+     let cmds = commands(entry);
+@@ -60,9 +84,29 @@ pub fn rtk_on_path() -> bool {
+         .unwrap_or(false)
+ }
+ 
+-/// Union of matchers, always including `Bash`. `*` or an empty matcher means every tool.
+-fn union_matchers(parts: &[String]) -> String {
+-    let mut out: Vec<String> = vec!["Bash".to_string()];
++/// Creates the placeholder script and returns its hook command.
++fn ensure_shim() -> Option<String> {
++    let p = shim_path()?;
++    create_private_dir(p.parent()?).ok()?;
++    if fs::read_to_string(&p).ok().as_deref() != Some(SHIM_BODY) {
++        fs::write(&p, SHIM_BODY).ok()?;
++    }
++    #[cfg(unix)]
++    {
++        use std::os::unix::fs::PermissionsExt;
++        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).ok()?;
++    }
++    let s = p.display().to_string();
++    Some(if s.contains(char::is_whitespace) || s.contains('"') {
++        format!("\"{}\" hook claude", s.replace('"', "\\\""))
++    } else {
++        format!("{s} hook claude")
++    })
++}
++
++/// Distinct tokens of the given matchers, in order. `*` or an empty matcher means every tool.
++fn union_tokens(parts: &[String]) -> String {
++    let mut out: Vec<String> = Vec::new();
+     for m in parts {
+         if m.is_empty() || m == "*" {
+             return "*".to_string();
+@@ -113,6 +157,13 @@ fn save_folded(folded: &[(String, String)]) {
+     let _ = fs::write(path, serde_json::to_string_pretty(&v).unwrap_or_default());
+ }
+ 
++fn entry(matcher: &str, commands: &[String]) -> Value {
++    json!({
++        "matcher": matcher,
++        "hooks": commands.iter().map(|c| json!({"type": "command", "command": c})).collect::<Vec<_>>()
++    })
++}
++
+ pub fn run(args: &[String]) -> i32 {
+     let uninstall = args.iter().any(|a| a == "--uninstall");
+     let no_rtk = args.iter().any(|a| a == "--no-rtk");
+@@ -169,61 +220,102 @@ pub fn run(args: &[String]) -> i32 {
+     };
+ 
+     let mut folded = load_folded();
++    // What an earlier install left: its matchers (rtk may have widened them), and whether the
++    // placeholder is still there. rtk's own uninstall removes the placeholder.
++    let mut own_matchers: Vec<String> = Vec::new();
++    let mut had_placeholder = false;
++    for e in post.iter().filter(|e| is_dtk(e)) {
++        if let Some(m) = e.get("matcher").and_then(Value::as_str) {
++            own_matchers.push(m.to_string());
++        }
++        had_placeholder |= has_placeholder(e);
++    }
+     post.retain(|e| !is_dtk(e));
+     let mut notes: Vec<String> = Vec::new();
+ 
+     if uninstall || no_rtk {
+-        // Put back what an earlier install folded in.
+-        for (matcher, command) in folded.drain(..) {
+-            post.push(
+-                json!({"matcher": matcher, "hooks": [{"type": "command", "command": command}]}),
+-            );
+-            notes.push(format!(
+-                "restored the rtk PostToolUse hook (matcher {matcher})"
+-            ));
++        // rtk's registration lived inside dtk's entry. Give it back, unless rtk itself removed it.
++        if had_placeholder {
++            let extras = own_matchers
++                .iter()
++                .flat_map(|m| m.split('|'))
++                .any(|t| !OWN_MATCHER.split('|').any(|o| o == t));
++            let matchers: Vec<String> = if !folded.is_empty() {
++                folded.iter().map(|f| f.0.clone()).collect()
++            } else if extras {
++                own_matchers.clone()
++            } else {
++                Vec::new()
++            };
++            if !matchers.is_empty() {
++                let matcher = union_tokens(&matchers);
++                let cmd = folded
++                    .first()
++                    .map(|f| f.1.clone())
++                    .unwrap_or_else(|| DEFAULT_THEN.to_string());
++                post.push(entry(&matcher, &[cmd]));
++                notes.push(format!(
++                    "restored the rtk PostToolUse hook (matcher {matcher})"
++                ));
++            }
+         }
++        folded.clear();
+     }
+     if !uninstall {
+         let chain = !no_rtk;
+-        let mut then_cmd = folded.first().map(|f| f.1.clone());
+         if chain {
+-            // Fold rtk's own PostToolUse entries into the chain.
++            // Take over rtk's own PostToolUse entries.
+             let mut keep = Vec::new();
+             for e in post.drain(..) {
+-                let m = e
+-                    .get("matcher")
+-                    .and_then(Value::as_str)
+-                    .unwrap_or("")
+-                    .to_string();
+-                let cmd = commands(&e).first().cloned();
+-                if is_only_rtk(&e) && (then_cmd.is_none() || then_cmd == cmd) {
+-                    then_cmd = cmd.clone();
+-                    notes.push(format!(
+-                        "folded the rtk PostToolUse hook (matcher {m}) into dtk's chain"
+-                    ));
+-                    folded.push((m, cmd.unwrap_or_default()));
++                if is_only_rtk(&e) {
++                    let m = e
++                        .get("matcher")
++                        .and_then(Value::as_str)
++                        .unwrap_or("")
++                        .to_string();
++                    let cmd = commands(&e).first().cloned().unwrap_or_default();
++                    notes.push(format!("took over the rtk PostToolUse hook (matcher {m})"));
++                    if !folded.iter().any(|f| f.0 == m && f.1 == cmd) {
++                        folded.push((m, cmd));
++                    }
+                 } else {
+                     keep.push(e);
+                 }
+             }
+             *post = keep;
+         }
+-        let use_chain = chain && (then_cmd.is_some() || rtk_on_path());
+-        let matchers: Vec<String> = folded.iter().map(|f| f.0.clone()).collect();
+-        let matcher = if use_chain {
+-            union_matchers(&matchers)
+-        } else {
+-            "Bash".to_string()
+-        };
++        let then_cmd = folded.first().map(|f| f.1.clone());
++        let use_chain = chain
++            && (then_cmd.is_some()
++                || (!own_matchers.is_empty() && had_placeholder)
++                || rtk_on_path());
+         let mut command = format!("{exe} hook claude");
+-        if use_chain {
++        let mut cmds = Vec::new();
++        let matcher = if use_chain {
+             command.push_str(" --then ");
+             command.push_str(then_cmd.as_deref().unwrap_or(DEFAULT_THEN));
+-            notes.push(
+-                "chained to rtk: dtk handles tables first, rtk gets every other event".to_string(),
+-            );
+-        }
+-        post.push(json!({"matcher": matcher, "hooks": [{"type": "command", "command": command}]}));
++            cmds.push(command);
++            match ensure_shim() {
++                Some(p) => {
++                    cmds.push(p);
++                    notes.push(
++                        "chained to rtk: dtk handles tables first, rtk gets every other event; rtk init sees its hook as installed".to_string(),
++                    );
++                }
++                None => notes.push(
++                    "could not create the placeholder; `rtk init` may add a second hook"
++                        .to_string(),
++                ),
++            }
++            let mut parts = vec![OWN_MATCHER.to_string()];
++            parts.extend(own_matchers);
++            parts.extend(folded.iter().map(|f| f.0.clone()));
++            union_tokens(&parts)
++        } else {
++            cmds.push(command);
++            OWN_MATCHER.to_string()
++        };
++        post.push(entry(&matcher, &cmds));
+     }
+     if post.is_empty() {
+         hooks.remove("PostToolUse");
+diff --git a/src/lean.rs b/src/lean.rs
+index 33e4407..3adbd74 100644
+--- a/src/lean.rs
++++ b/src/lean.rs
+@@ -113,6 +113,16 @@ fn top_values(distinct: &HashMap<&str, usize>, limit: usize) -> String {
+         .join(", ")
+ }
+ 
++/// " p50 X p95 Y" (nearest rank), or nothing when there are too few values to mean much.
++fn percentiles(nums: &mut [f64]) -> String {
++    if nums.len() < 20 {
++        return String::new();
++    }
++    nums.sort_by(|a, b| a.total_cmp(b));
++    let at = |p: f64| nums[((nums.len() - 1) as f64 * p).round() as usize];
++    format!(" p50 {} p95 {}", fnum(at(0.5)), fnum(at(0.95)))
++}
++
+ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
+     let mut nonempty = 0usize;
+     let mut nulls = 0usize;
+@@ -122,6 +132,7 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
+     let (mut tmin, mut tmax): (Option<&str>, Option<&str>) = (None, None);
+     let mut distinct: HashMap<&str, usize> = HashMap::new();
+     let mut overflow = false;
++    let mut nums: Vec<f64> = Vec::new();
+     for v in vals {
+         if v.is_empty() {
+             nulls += 1;
+@@ -144,8 +155,12 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
+                     fmin = fmin.min(f);
+                     fmax = fmax.max(f);
+                     fsum += f;
++                    nums.push(f);
++                }
++                _ => {
++                    all_float = false;
++                    nums = Vec::new();
+                 }
+-                _ => all_float = false,
+             }
+         }
+         if all_bool && !is_bool(v) {
+@@ -198,8 +213,20 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str>) -> ColInfo {
+         Kind::Int | Kind::Float if few_values => {
+             format!("{} distinct: {}", distinct.len(), top_values(&distinct, 8))
+         }
+-        Kind::Int => format!("{}..{} mean {}", imin, imax, fnum(mean)),
+-        Kind::Float => format!("{}..{} mean {}", fnum(fmin), fnum(fmax), fnum(mean)),
++        Kind::Int => format!(
++            "{}..{} mean {}{}",
++            imin,
++            imax,
++            fnum(mean),
++            percentiles(&mut nums)
++        ),
++        Kind::Float => format!(
++            "{}..{} mean {}{}",
++            fnum(fmin),
++            fnum(fmax),
++            fnum(mean),
++            percentiles(&mut nums)
++        ),
+         Kind::Time => format!("{}..{}", tmin.unwrap_or(""), tmax.unwrap_or("")),
+         Kind::Bool => top_values(&distinct, 2),
+         Kind::Str => {
+@@ -553,6 +580,21 @@ mod tests {
+         assert!(est_tokens(&r.text) * 20 < est_tokens(&text));
+     }
+ 
++    #[test]
++    fn numbers_get_percentiles() {
++        let mut s = String::from("name,ms\n");
++        for i in 0..200 {
++            s.push_str(&format!("row{},{}\n", i, i));
++        }
++        let t = detect(&s).unwrap();
++        let info = analyze(&t);
++        assert!(
++            info[1].summary.contains("p50 100 p95 189"),
++            "{}",
++            info[1].summary
++        );
++    }
++
+     #[test]
+     fn wide_table_shrinks_to_budget() {
+         let mut s = (0..60)
+diff --git a/src/main.rs b/src/main.rs
+index 7db6d2a..4c93812 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -28,7 +28,25 @@ environment:
+   DTK_MODE=shadow|live     override the mode file
+   DTK_CHAIN_TIMEOUT_MS     longest the chained command may run (default 10000)";
+ 
++/// `dtk view big.csv | head` closes the pipe early. That is not an error: stop quietly.
++fn quiet_on_broken_pipe() {
++    let default = std::panic::take_hook();
++    std::panic::set_hook(Box::new(move |info| {
++        let text = info
++            .payload()
++            .downcast_ref::<String>()
++            .cloned()
++            .or_else(|| info.payload().downcast_ref::<&str>().map(|s| s.to_string()))
++            .unwrap_or_default();
++        if text.contains("Broken pipe") {
++            std::process::exit(0);
++        }
++        default(info);
++    }));
++}
++
+ fn main() -> ExitCode {
++    quiet_on_broken_pipe();
+     let args: Vec<String> = std::env::args().skip(1).collect();
+     let code = match args.first().map(String::as_str) {
+         Some("hook") => hook::run(&args[1..]),
+diff --git a/src/table.rs b/src/table.rs
+index 386745f..11f8e4b 100644
+--- a/src/table.rs
++++ b/src/table.rs
+@@ -20,6 +20,8 @@ pub enum Format {
+     Csv,
+     Tsv,
+     Aligned,
++    /// Tables drawn with borders: polars, psql, MySQL, SQLite, Markdown.
++    Bordered,
+ }
+ 
+ impl Format {
+@@ -29,7 +31,7 @@ impl Format {
+             Format::JsonArray => "json-array",
+             Format::Csv => "csv",
+             Format::Tsv => "tsv",
+-            Format::Aligned => "table",
++            Format::Aligned | Format::Bordered => "table",
+         }
+     }
+ }
+@@ -62,7 +64,97 @@ pub fn detect(text: &str) -> Option<Table> {
+         b'{' => return parse_jsonl(text),
+         _ => {}
+     }
+-    parse_delimited(text).or_else(|| parse_aligned(text))
++    parse_bordered(text)
++        .or_else(|| parse_delimited(text))
++        .or_else(|| parse_aligned(text))
++}
++
++/// Characters that appear in table borders and rules.
++const BORDER_CHARS: &str = "+-=─━═┌┐└┘├┤┬┴┼╞╡╪╒╕╘╛╟╢╤╧╫╔╗╚╝╠╣╦╩╬┏┓┗┛┣┫┳┻╋ |│┃║┆┊:";
++/// Characters that separate cells.
++const CELL_SEPS: [char; 6] = ['|', '│', '┃', '║', '┆', '┊'];
++
++/// A rule line such as `+----+----+`, `|---|---|`, `----+----` or `┌────┬────┐`.
++fn is_border(line: &str) -> bool {
++    let t = line.trim();
++    t.chars().count() >= 3
++        && t.chars().all(|c| BORDER_CHARS.contains(c))
++        && t.chars().any(|c| "-─━═=".contains(c))
++}
++
++fn split_bordered(line: &str) -> Vec<String> {
++    let t = line.trim();
++    let mut cells: Vec<String> = t
++        .split(|c| CELL_SEPS.contains(&c))
++        .map(|s| s.trim().to_string())
++        .collect();
++    if t.starts_with(|c| CELL_SEPS.contains(&c)) {
++        cells.remove(0);
++    }
++    if t.ends_with(|c| CELL_SEPS.contains(&c)) {
++        cells.pop();
++    }
++    cells
++}
++
++/// Tables with borders. A rule line is required, which keeps shell pipelines and prose out.
++fn parse_bordered(text: &str) -> Option<Table> {
++    let lines: Vec<&str> = text.lines().collect();
++    if !lines.iter().any(|l| is_border(l)) {
++        return None;
++    }
++    let is_content = |l: &str| !l.trim().is_empty() && !is_border(l) && l.contains(CELL_SEPS);
++    let header_at = lines.iter().position(|l| is_content(l))?;
++    let headers = split_bordered(lines[header_at]);
++    if !valid_header(&headers) {
++        return None;
++    }
++    let mut notes: Vec<String> = Vec::new();
++    for l in &lines[..header_at] {
++        if !l.trim().is_empty() && !is_border(l) && notes.len() < 5 {
++            notes.push(l.trim().to_string());
++        }
++    }
++    let mut i = header_at + 1;
++    // polars prints a "---" row and a data-type row under the header, then a ═ rule.
++    // Everything up to that rule is metadata, not data.
++    let rule = (header_at + 1..lines.len().min(header_at + 5))
++        .find(|&k| is_border(lines[k]) && lines[k].contains(['═', '╪']));
++    if let Some(k) = rule {
++        i = k + 1;
++    }
++    let mut rows = Vec::new();
++    let mut bad = 0usize;
++    for l in &lines[i..] {
++        if l.trim().is_empty() || is_border(l) {
++            continue;
++        }
++        if !is_content(l) {
++            if notes.len() < 5 {
++                notes.push(l.trim().to_string());
++            }
++            continue;
++        }
++        let cells = split_bordered(l);
++        if cells.iter().all(|c| c == "…" || c == "...") {
++            if notes.len() < 5 {
++                notes.push("(the printer elided rows here)".to_string());
++            }
++        } else if cells.len() == headers.len() {
++            rows.push(cells);
++        } else {
++            bad += 1;
++        }
++    }
++    if rows.len() < MIN_ROWS || bad * 20 > rows.len() {
++        return None;
++    }
++    Some(Table {
++        format: Format::Bordered,
++        headers,
++        rows,
++        notes,
++    })
+ }
+ 
+ fn cell(v: &Value) -> String {
+@@ -288,6 +380,18 @@ fn split_cols(line: &str) -> Vec<String> {
+     out
+ }
+ 
++/// True when the first cell of every row is a whole number counting up by one from 0 or 1.
++fn first_column_is_an_index(rows: &[Vec<String>]) -> bool {
++    let nums: Vec<i64> = rows
++        .iter()
++        .filter_map(|r| r.first()?.parse().ok())
++        .collect();
++    nums.len() == rows.len()
++        && nums.len() >= 2
++        && (nums[0] == 0 || nums[0] == 1)
++        && nums.windows(2).all(|w| w[1] == w[0] + 1)
++}
++
+ /// Whitespace-aligned tables such as `DataFrame.to_string()`.
+ fn parse_aligned(text: &str) -> Option<Table> {
+     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+@@ -304,7 +408,9 @@ fn parse_aligned(text: &str) -> Option<Table> {
+     let mut headers = split[0].clone();
+     if h + 1 == m {
+         headers.insert(0, "idx".to_string());
+-    } else if h != m {
++    } else if h != m || first_column_is_an_index(&split[1..]) {
++        // Same count as the header, but the first column counts 0,1,2...: that is a pandas
++        // index plus two columns that a single space glued together. Labels would be wrong.
+         return None;
+     }
+     if !valid_header(&headers) {
+@@ -472,4 +578,125 @@ pub mod tests {
+         let s = "1,2,3\n".to_string() + &"4,5,6\n".repeat(40);
+         assert!(detect(&s).is_none());
+     }
++
++    #[test]
++    fn real_pandas_output_without_datetimes_is_labelled_correctly() {
++        let t = detect(include_str!("../tests/fixtures/pandas_plain.txt")).expect("pandas table");
++        assert_eq!(
++            t.headers,
++            [
++                "idx",
++                "order_id",
++                "customer",
++                "region",
++                "amount",
++                "latency_ms"
++            ]
++        );
++        assert_eq!(t.rows.len(), 30);
++        assert_eq!(t.rows[0][1], "100000");
++        assert!(t.rows[0][2].starts_with("cust_"));
++    }
++
++    #[test]
++    fn real_pandas_output_with_a_datetime_column_is_refused_not_mislabelled() {
++        // pandas can join a datetime column to its neighbour with one space, so the columns
++        // cannot be told apart safely. No summary is better than wrong labels.
++        assert!(detect(include_str!("../tests/fixtures/pandas_datetime.txt")).is_none());
++    }
++
++    pub fn polars_text(n: usize) -> String {
++        let mut s = String::from(
++            "shape: (500, 3)\n┌──────┬───────┬────────┐\n│ id   ┆ name  ┆ amount │\n│ ---  ┆ ---   ┆ ---    │\n│ i64  ┆ str   ┆ f64    │\n╞══════╪═══════╪════════╡\n",
++        );
++        for i in 0..n {
++            s.push_str(&format!(
++                "│ {:<4} ┆ user{} ┆ {:<6} │\n",
++                i,
++                i % 5,
++                i as f64 * 1.5
++            ));
++        }
++        s.push_str("│ …    ┆ …     ┆ …      │\n└──────┴───────┴────────┘\n");
++        s
++    }
++
++    #[test]
++    fn detects_polars_tables() {
++        let t = detect(&polars_text(30)).expect("polars");
++        assert_eq!(t.format, Format::Bordered);
++        assert_eq!(t.headers, ["id", "name", "amount"]);
++        assert_eq!(
++            t.rows.len(),
++            30,
++            "the --- row and the dtype row are not data"
++        );
++        assert_eq!(t.rows[0], ["0", "user0", "0"]);
++        assert!(
++            t.notes.iter().any(|n| n == "shape: (500, 3)"),
++            "{:?}",
++            t.notes
++        );
++        assert!(
++            t.notes.iter().any(|n| n.contains("elided")),
++            "{:?}",
++            t.notes
++        );
++    }
++
++    #[test]
++    fn detects_psql_mysql_sqlite_and_markdown_tables() {
++        let rows: Vec<(usize, &str, f64)> = (0..30)
++            .map(|i| (i, ["alice", "bob", "carol"][i % 3], i as f64 * 2.5))
++            .collect();
++        let mut psql = String::from(" id |  name  | amount\n----+--------+--------\n");
++        let mut mysql = String::from(
++            "+----+-------+--------+\n| id | name  | amount |\n+----+-------+--------+\n",
++        );
++        let mut sqlite = String::from(
++            "┌────┬───────┬────────┐\n│ id │ name  │ amount │\n├────┼───────┼────────┤\n",
++        );
++        let mut md = String::from("| id | name  | amount |\n|----|-------|--------|\n");
++        for (i, n, a) in &rows {
++            psql.push_str(&format!(" {:>2} | {:<6} | {:>6}\n", i, n, a));
++            mysql.push_str(&format!("| {:>2} | {:<5} | {:>6} |\n", i, n, a));
++            sqlite.push_str(&format!("│ {:<2} │ {:<5} │ {:<6} │\n", i, n, a));
++            md.push_str(&format!("| {} | {} | {} |\n", i, n, a));
++        }
++        psql.push_str("(30 rows)\n");
++        mysql.push_str("+----+-------+--------+\n");
++        sqlite.push_str("└────┴───────┴────────┘\n");
++        for (name, text) in [
++            ("psql", psql),
++            ("mysql", mysql),
++            ("sqlite", sqlite),
++            ("markdown", md),
++        ] {
++            let t = detect(&text).unwrap_or_else(|| panic!("{name} not detected"));
++            assert_eq!(t.format, Format::Bordered, "{name}");
++            assert_eq!(t.headers, ["id", "name", "amount"], "{name}");
++            assert_eq!(t.rows.len(), 30, "{name}");
++            assert_eq!(t.rows[1], ["1", "bob", "2.5"], "{name}");
++        }
++    }
++
++    #[test]
++    fn pipes_without_a_rule_line_are_not_a_table() {
++        let log = "cat access.log | grep error | sort | uniq -c | head\n".repeat(30);
++        assert!(detect(&log).is_none());
++        let rows = "| a | b |\n".to_string() + &"| 1 | 2 |\n".repeat(30);
++        assert!(
++            detect(&rows).is_none(),
++            "a Markdown-style table needs its rule line"
++        );
++    }
++
++    #[test]
++    fn ragged_bordered_text_is_not_a_table() {
++        let mut s = String::from("+---+---+\n| a | b |\n+---+---+\n");
++        for i in 0..40 {
++            s.push_str(&format!("| {} | x | y | z |\n", i));
++        }
++        assert!(detect(&s).is_none());
++    }
+ }
+diff --git a/tests/fixtures/pandas_datetime.txt b/tests/fixtures/pandas_datetime.txt
+new file mode 100644
+index 0000000..a7d8e4a
+--- /dev/null
++++ b/tests/fixtures/pandas_datetime.txt
+@@ -0,0 +1,31 @@
++    order_id                  ts   customer      region  amount  latency_ms
++0     100000 2026-10-01 00:00:00  cust_0243     us-east   43.47         835
++1     100001 2026-10-01 00:07:00  cust_0606  eu-central  165.56         524
++2     100002 2026-10-01 00:14:00  cust_0557     us-west   66.58         282
++3     100003 2026-10-01 00:21:00  cust_0133  eu-central   95.03         446
++4     100004 2026-10-01 00:28:00  cust_0378     us-east   64.46         654
++5     100005 2026-10-01 00:35:00  cust_0618  eu-central   54.09         742
++6     100006 2026-10-01 00:42:00  cust_0485     us-east   10.46         737
++7     100007 2026-10-01 00:49:00  cust_0640     us-east  102.53         248
++8     100008 2026-10-01 00:56:00  cust_0594  eu-central  129.98         313
++9     100009 2026-10-01 01:03:00  cust_0067     us-east   88.12         452
++10    100010 2026-10-01 01:10:00  cust_0620     us-west   23.08         269
++11    100011 2026-10-01 01:17:00  cust_0013     us-east  109.58         538
++12    100012 2026-10-01 01:24:00  cust_0857     us-west   44.67         315
++13    100013 2026-10-01 01:31:00  cust_0480     us-west   76.74         566
++14    100014 2026-10-01 01:38:00  cust_0265  eu-central   77.01         352
++15    100015 2026-10-01 01:45:00  cust_0564  eu-central   17.42          16
++16    100016 2026-10-01 01:52:00  cust_0239     us-west    8.49         812
++17    100017 2026-10-01 01:59:00  cust_0196  eu-central   65.65         430
++18    100018 2026-10-01 02:06:00  cust_0734     us-west  102.32         598
++19    100019 2026-10-01 02:13:00  cust_0481     us-west   59.98         327
++20    100020 2026-10-01 02:20:00  cust_0553  eu-central   90.01          25
++21    100021 2026-10-01 02:27:00  cust_0856  eu-central   46.25         390
++22    100022 2026-10-01 02:34:00  cust_0562     us-west   23.66         635
++23    100023 2026-10-01 02:41:00  cust_0487     us-east   47.92         608
++24    100024 2026-10-01 02:48:00  cust_0406     us-west  126.88         652
++25    100025 2026-10-01 02:55:00  cust_0654     us-east   54.52         141
++26    100026 2026-10-01 03:02:00  cust_0881     us-east   27.82          66
++27    100027 2026-10-01 03:09:00  cust_0154     us-east   59.82         653
++28    100028 2026-10-01 03:16:00  cust_0237     us-west   61.22         647
++29    100029 2026-10-01 03:23:00  cust_0650     us-east  123.94         345
+diff --git a/tests/fixtures/pandas_plain.txt b/tests/fixtures/pandas_plain.txt
+new file mode 100644
+index 0000000..9a39e3d
+--- /dev/null
++++ b/tests/fixtures/pandas_plain.txt
+@@ -0,0 +1,31 @@
++    order_id   customer      region  amount  latency_ms
++0     100000  cust_0243     us-east   43.47         835
++1     100001  cust_0606  eu-central  165.56         524
++2     100002  cust_0557     us-west   66.58         282
++3     100003  cust_0133  eu-central   95.03         446
++4     100004  cust_0378     us-east   64.46         654
++5     100005  cust_0618  eu-central   54.09         742
++6     100006  cust_0485     us-east   10.46         737
++7     100007  cust_0640     us-east  102.53         248
++8     100008  cust_0594  eu-central  129.98         313
++9     100009  cust_0067     us-east   88.12         452
++10    100010  cust_0620     us-west   23.08         269
++11    100011  cust_0013     us-east  109.58         538
++12    100012  cust_0857     us-west   44.67         315
++13    100013  cust_0480     us-west   76.74         566
++14    100014  cust_0265  eu-central   77.01         352
++15    100015  cust_0564  eu-central   17.42          16
++16    100016  cust_0239     us-west    8.49         812
++17    100017  cust_0196  eu-central   65.65         430
++18    100018  cust_0734     us-west  102.32         598
++19    100019  cust_0481     us-west   59.98         327
++20    100020  cust_0553  eu-central   90.01          25
++21    100021  cust_0856  eu-central   46.25         390
++22    100022  cust_0562     us-west   23.66         635
++23    100023  cust_0487     us-east   47.92         608
++24    100024  cust_0406     us-west  126.88         652
++25    100025  cust_0654     us-east   54.52         141
++26    100026  cust_0881     us-east   27.82          66
++27    100027  cust_0154     us-east   59.82         653
++28    100028  cust_0237     us-west   61.22         647
++29    100029  cust_0650     us-east  123.94         345
+diff --git a/tests/hook.rs b/tests/hook.rs
+index e258744..02e7edc 100644
+--- a/tests/hook.rs
++++ b/tests/hook.rs
+@@ -231,3 +231,156 @@ fn init_refuses_invalid_settings() {
+         "{ not json"
+     );
+ }
++
++#[test]
++fn a_closed_pipe_is_not_a_panic() {
++    let home = temp_home("pipe");
++    let mut child = Command::new(env!("CARGO_BIN_EXE_dtk"))
++        .arg("doctor")
++        .env("HOME", &home)
++        .env("PATH", "/usr/bin:/bin")
++        .stdin(Stdio::null())
++        .stdout(Stdio::piped())
++        .stderr(Stdio::piped())
++        .spawn()
++        .unwrap();
++    drop(child.stdout.take()); // the reader goes away before dtk prints
++    let out = child.wait_with_output().unwrap();
++    let err = String::from_utf8_lossy(&out.stderr);
++    assert!(!err.contains("panicked"), "{err}");
++}
++
++fn read_event(path: &str, content: &str, extra_input: Value) -> String {
++    let lines = content.lines().count();
++    let mut input = json!({"file_path": path});
++    if let (Some(o), Some(e)) = (input.as_object_mut(), extra_input.as_object()) {
++        for (k, v) in e {
++            o.insert(k.clone(), v.clone());
++        }
++    }
++    json!({
++        "hook_event_name": "PostToolUse",
++        "tool_name": "Read",
++        "tool_input": input,
++        "tool_response": {"type": "text", "file": {
++            "filePath": path, "content": content,
++            "numLines": lines, "startLine": 1, "totalLines": lines
++        }},
++    })
++    .to_string()
++}
++
++#[test]
++fn a_whole_data_file_read_with_the_read_tool_is_summarized() {
++    let home = temp_home("read");
++    let content = jsonl(300);
++    let ev = read_event("/work/data/events.jsonl", &content, json!({}));
++    let (code, out, _) = run(&home, &["hook", "claude"], &ev, &[]);
++    assert_eq!(code, 0);
++    let v: Value = serde_json::from_str(&out).unwrap();
++    let file = &v["hookSpecificOutput"]["updatedToolOutput"]["file"];
++    let text = file["content"].as_str().unwrap();
++    assert!(text.starts_with("[dtk] jsonl: 300 rows x 4 cols"), "{text}");
++    assert!(
++        text.contains("raw: /work/data/events.jsonl"),
++        "the hint points at the real file: {text}"
++    );
++    assert_eq!(file["filePath"], "/work/data/events.jsonl");
++    assert_eq!(file["numLines"], text.lines().count());
++    assert_eq!(v["hookSpecificOutput"]["updatedToolOutput"]["type"], "text");
++}
++
++#[test]
++fn reads_with_a_range_other_files_and_small_files_are_left_alone() {
++    let home = temp_home("readskip");
++    let big = jsonl(300);
++    let run_ev = |ev: String| run(&home, &["hook", "claude"], &ev, &[]).1;
++    assert_eq!(
++        run_ev(read_event("/w/e.jsonl", &big, json!({"offset": 10}))),
++        "",
++        "offset means exact lines"
++    );
++    assert_eq!(
++        run_ev(read_event("/w/e.jsonl", &big, json!({"limit": 50}))),
++        "",
++        "limit means exact lines"
++    );
++    assert_eq!(
++        run_ev(read_event("/w/main.rs", &big, json!({}))),
++        "",
++        "source files are never checked"
++    );
++    assert_eq!(
++        run_ev(read_event("/w/e.jsonl", &jsonl(15), json!({}))),
++        "",
++        "small files pass"
++    );
++    // A partial read: the tool returned fewer lines than the file has.
++    let mut partial: Value =
++        serde_json::from_str(&read_event("/w/e.jsonl", &big, json!({}))).unwrap();
++    partial["tool_response"]["file"]["totalLines"] = json!(9999);
++    assert_eq!(run_ev(partial.to_string()), "");
++}
++
++#[test]
++fn commands_that_ask_for_rows_get_rows() {
++    let home = temp_home("raw");
++    let resp = json!({"stdout": jsonl(300), "stderr": "", "interrupted": false, "isImage": false});
++    for cmd in [
++        "qsv slice -s 100 -l 200 /tmp/x.csv",
++        "DTK_RAW=1 cat data.jsonl",
++        "cat data.jsonl | head -300",
++        "tail -n 300 app.log",
++        "sed -n '1,300p' data.jsonl",
++        "rtk read app.log --tail-lines 300",
++    ] {
++        let ev = json!({
++            "hook_event_name": "PostToolUse", "tool_name": "Bash",
++            "tool_input": {"command": cmd}, "tool_response": resp,
++        })
++        .to_string();
++        let (code, out, _) = run(&home, &["hook", "claude"], &ev, &[]);
++        assert_eq!((code, out.as_str()), (0, ""), "{cmd}");
++    }
++    // The same output from a plain cat is summarized.
++    let ev = json!({
++        "hook_event_name": "PostToolUse", "tool_name": "Bash",
++        "tool_input": {"command": "cat data.jsonl"}, "tool_response": resp,
++    })
++    .to_string();
++    assert!(run(&home, &["hook", "claude"], &ev, &[])
++        .1
++        .contains("[dtk] jsonl"));
++}
++
++#[test]
++fn a_polars_table_from_a_python_command_is_summarized() {
++    let home = temp_home("polars");
++    let mut s = String::from("shape: (400, 3)\n┌──────┬───────┬────────┐\n│ id   ┆ name  ┆ amount │\n│ ---  ┆ ---   ┆ ---    │\n│ i64  ┆ str   ┆ f64    │\n╞══════╪═══════╪════════╡\n");
++    for i in 0..400 {
++        s.push_str(&format!(
++            "│ {:<4} ┆ user{} ┆ {:<6} │\n",
++            i,
++            i % 5,
++            i as f64 * 1.5
++        ));
++    }
++    s.push_str("└──────┴───────┴────────┘\n");
++    let resp = json!({"stdout": s, "stderr": "", "interrupted": false, "isImage": false});
++    let ev = json!({
++        "hook_event_name": "PostToolUse", "tool_name": "Bash",
++        "tool_input": {"command": "python3 report.py"}, "tool_response": resp,
++    })
++    .to_string();
++    let (_, out, _) = run(&home, &["hook", "claude"], &ev, &[]);
++    let v: Value = serde_json::from_str(&out).unwrap();
++    let text = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
++        .as_str()
++        .unwrap();
++    assert!(text.starts_with("[dtk] table: 400 rows x 3 cols"), "{text}");
++    assert!(text.contains("note: shape: (400, 3)"), "{text}");
++    assert!(
++        text.contains("cols: id:int name:str amount:float"),
++        "{text}"
++    );
++}
+diff --git a/tests/rtk_integration.rs b/tests/rtk_integration.rs
+index ca6e226..1dcc87c 100644
+--- a/tests/rtk_integration.rs
++++ b/tests/rtk_integration.rs
+@@ -241,7 +241,7 @@ fn init_folds_rtks_post_hook_into_the_chain_and_uninstall_restores_it() {
+     .unwrap();
+     let (code, out, _) = run(&home, Some(&bin), &["init", "--global"], "", &[]);
+     assert_eq!(code, 0);
+-    assert!(out.contains("folded the rtk PostToolUse hook"), "{out}");
++    assert!(out.contains("took over the rtk PostToolUse hook"), "{out}");
+     run(&home, Some(&bin), &["init", "--global"], "", &[]); // idempotent
+     let s = read_settings(&home);
+     let post = s["hooks"]["PostToolUse"].as_array().unwrap();
+@@ -251,7 +251,7 @@ fn init_folds_rtks_post_hook_into_the_chain_and_uninstall_restores_it() {
+         "other hook kept, rtk's entry folded, one dtk entry: {post:?}"
+     );
+     assert_eq!(post[0]["hooks"][0]["command"], "other-tool");
+-    assert_eq!(post[1]["matcher"], "Bash|Grep|WebFetch");
++    assert_eq!(post[1]["matcher"], "Bash|Read|Grep|WebFetch");
+     assert!(post[1]["hooks"][0]["command"]
+         .as_str()
+         .unwrap()
+@@ -272,7 +272,7 @@ fn init_chains_to_rtk_when_rtk_has_no_post_hook_yet() {
+     run(&home, Some(&bin), &["init", "--global"], "", &[]);
+     let s = read_settings(&home);
+     let e = &s["hooks"]["PostToolUse"][0];
+-    assert_eq!(e["matcher"], "Bash");
++    assert_eq!(e["matcher"], "Bash|Read");
+     assert!(e["hooks"][0]["command"]
+         .as_str()
+         .unwrap()
+diff --git a/tests/rtk_real.rs b/tests/rtk_real.rs
+new file mode 100644
+index 0000000..3105834
+--- /dev/null
++++ b/tests/rtk_real.rs
+@@ -0,0 +1,312 @@
++//! Gate G5: dtk against the REAL rtk binary, in a throwaway HOME.
++//!
++//! Skipped (with a message) when `rtk` is not on PATH. CI installs rtk, so it runs there.
++//! These tests exist because rtk re-writes `~/.claude/settings.json` on `rtk init -g`, and dtk
++//! must survive every order of install, re-install and uninstall.
++
++use serde_json::{json, Value};
++use std::fs;
++use std::io::Write;
++use std::path::{Path, PathBuf};
++use std::process::{Command, Stdio};
++
++fn rtk_available() -> bool {
++    Command::new("rtk")
++        .arg("--version")
++        .stdin(Stdio::null())
++        .stdout(Stdio::null())
++        .stderr(Stdio::null())
++        .status()
++        .map(|s| s.success())
++        .unwrap_or(false)
++}
++
++macro_rules! need_rtk {
++    () => {
++        if !rtk_available() {
++            eprintln!("SKIPPED: rtk is not installed");
++            return;
++        }
++    };
++}
++
++fn temp_home(name: &str) -> PathBuf {
++    let dir = std::env::temp_dir().join(format!("dtk-real-{}-{}", name, std::process::id()));
++    let _ = fs::remove_dir_all(&dir);
++    fs::create_dir_all(dir.join(".claude")).unwrap();
++    dir.canonicalize().unwrap()
++}
++
++fn dtk(home: &Path, args: &[&str]) -> String {
++    let out = Command::new(env!("CARGO_BIN_EXE_dtk"))
++        .args(args)
++        .env("HOME", home)
++        .stdin(Stdio::null())
++        .output()
++        .unwrap();
++    format!(
++        "{}{}",
++        String::from_utf8_lossy(&out.stdout),
++        String::from_utf8_lossy(&out.stderr)
++    )
++}
++
++fn rtk(home: &Path, args: &[&str]) -> String {
++    let out = Command::new("rtk")
++        .args(args)
++        .env("HOME", home)
++        .stdin(Stdio::null())
++        .output()
++        .unwrap();
++    format!(
++        "{}{}",
++        String::from_utf8_lossy(&out.stdout),
++        String::from_utf8_lossy(&out.stderr)
++    )
++}
++
++fn settings(home: &Path) -> Value {
++    serde_json::from_str(&fs::read_to_string(home.join(".claude/settings.json")).unwrap()).unwrap()
++}
++
++fn post(home: &Path) -> Vec<Value> {
++    settings(home)["hooks"]["PostToolUse"]
++        .as_array()
++        .cloned()
++        .unwrap_or_default()
++}
++
++fn commands(entry: &Value) -> Vec<String> {
++    entry["hooks"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|h| h["command"].as_str().unwrap().to_string())
++        .collect()
++}
++
++/// Turns on rtk's PostToolUse pipeline for this HOME (both platform paths).
++fn enable_posthook(home: &Path) {
++    let text = "schema_version = 1\n\n[pipeline]\nextends = \"rtk:posthook\"\n";
++    for dir in [
++        home.join("Library/Application Support/rtk"),
++        home.join(".config/rtk"),
++    ] {
++        fs::create_dir_all(&dir).unwrap();
++        fs::write(dir.join("pipeline.toml"), text).unwrap();
++    }
++}
++
++fn is_chain(c: &str) -> bool {
++    c.ends_with("dtk hook claude --then rtk hook claude")
++}
++
++fn is_placeholder(c: &str) -> bool {
++    c.contains("/dtk/shim/rtk") && c.ends_with("hook claude")
++}
++
++#[test]
++fn rtk_init_run_twice_after_dtk_adds_no_second_hook() {
++    need_rtk!();
++    let home = temp_home("twice");
++    dtk(&home, &["init", "--global"]);
++    for _ in 0..2 {
++        rtk(&home, &["init", "-g", "--auto-patch"]);
++    }
++    let p = post(&home);
++    assert_eq!(p.len(), 1, "one PostToolUse entry, not two: {p:?}");
++    let cmds = commands(&p[0]);
++    assert!(
++        is_chain(&cmds[0]) && cmds.iter().any(|c| is_placeholder(c)),
++        "{cmds:?}"
++    );
++    let pre = settings(&home)["hooks"]["PreToolUse"].clone();
++    assert!(
++        pre.to_string().contains("rtk hook claude"),
++        "rtk still gets its own PreToolUse hook: {pre}"
++    );
++}
++
++#[test]
++fn rtk_first_then_dtk_takes_over_and_rtk_init_stays_quiet() {
++    need_rtk!();
++    let home = temp_home("rtkfirst");
++    enable_posthook(&home);
++    rtk(&home, &["init", "-g", "--auto-patch"]);
++    assert_eq!(
++        post(&home).len(),
++        1,
++        "rtk registered its own PostToolUse hook"
++    );
++    let out = dtk(&home, &["init", "--global"]);
++    assert!(out.contains("took over the rtk PostToolUse hook"), "{out}");
++    assert_eq!(post(&home).len(), 1);
++    rtk(&home, &["init", "-g", "--auto-patch"]);
++    let p = post(&home);
++    assert_eq!(p.len(), 1, "rtk init must not add a second hook: {p:?}");
++    assert!(
++        p[0]["matcher"].as_str().unwrap().contains("Grep"),
++        "rtk's matcher is kept: {}",
++        p[0]["matcher"]
++    );
++    let show = rtk(&home, &["init", "--show"]);
++    assert!(
++        show.contains("PreToolUse + PostToolUse"),
++        "rtk is satisfied: {show}"
++    );
++    let validate = rtk(&home, &["pipeline", "validate"]);
++    assert!(!validate.contains("hook needed"), "{validate}");
++}
++
++#[test]
++fn rtk_uninstall_removes_only_the_placeholder() {
++    need_rtk!();
++    let home = temp_home("rtkuninstall");
++    dtk(&home, &["init", "--global"]);
++    rtk(&home, &["init", "-g", "--auto-patch"]);
++    rtk(&home, &["init", "-g", "--uninstall"]);
++    let p = post(&home);
++    assert_eq!(p.len(), 1, "dtk's entry survives: {p:?}");
++    let cmds = commands(&p[0]);
++    assert!(cmds.iter().any(|c| is_chain(c)), "{cmds:?}");
++    assert!(
++        !cmds.iter().any(|c| is_placeholder(c)),
++        "rtk removed the placeholder: {cmds:?}"
++    );
++    let doctor = dtk(&home, &["doctor"]);
++    assert!(
++        doctor.contains("[warn] dtk's placeholder for rtk is missing"),
++        "{doctor}"
++    );
++    dtk(&home, &["init", "--global"]);
++    assert!(
++        commands(&post(&home)[0]).iter().any(|c| is_placeholder(c)),
++        "init puts the placeholder back"
++    );
++}
++
++#[test]
++fn dtk_uninstall_gives_rtks_own_hook_back() {
++    need_rtk!();
++    let home = temp_home("restore");
++    enable_posthook(&home);
++    rtk(&home, &["init", "-g", "--auto-patch"]);
++    let original = post(&home);
++    dtk(&home, &["init", "--global"]);
++    let out = dtk(&home, &["init", "--uninstall"]);
++    assert!(out.contains("restored the rtk PostToolUse hook"), "{out}");
++    assert_eq!(
++        post(&home),
++        original,
++        "rtk's entry is back exactly as rtk wrote it"
++    );
++}
++
++#[test]
++fn dtk_uninstall_does_not_resurrect_a_hook_rtk_removed() {
++    need_rtk!();
++    let home = temp_home("noresurrect");
++    enable_posthook(&home);
++    rtk(&home, &["init", "-g", "--auto-patch"]);
++    dtk(&home, &["init", "--global"]);
++    rtk(&home, &["init", "-g", "--uninstall"]);
++    dtk(&home, &["init", "--uninstall"]);
++    assert!(
++        post(&home).is_empty(),
++        "nothing of rtk or dtk is left: {:?}",
++        post(&home)
++    );
++}
++
++#[test]
++fn enabling_the_posthook_pipeline_later_widens_dtks_matcher_through_rtk() {
++    need_rtk!();
++    let home = temp_home("widen");
++    dtk(&home, &["init", "--global"]);
++    assert_eq!(post(&home)[0]["matcher"], "Bash|Read");
++    enable_posthook(&home);
++    rtk(&home, &["init", "-g", "--auto-patch"]);
++    let p = post(&home);
++    assert_eq!(p.len(), 1);
++    let m = p[0]["matcher"].as_str().unwrap().to_string();
++    assert!(m.contains("Grep") && m.contains("WebFetch"), "{m}");
++    dtk(&home, &["init", "--global"]);
++    assert_eq!(
++        post(&home)[0]["matcher"],
++        m.as_str(),
++        "dtk keeps what rtk widened"
++    );
++    let out = dtk(&home, &["init", "--uninstall"]);
++    assert!(out.contains("restored the rtk PostToolUse hook"), "{out}");
++    assert_eq!(post(&home)[0]["matcher"], m.as_str());
++    assert_eq!(commands(&post(&home)[0]), ["rtk hook claude"]);
++}
++
++fn event(tool: &str, command: &str, response: Value) -> String {
++    json!({
++        "hook_event_name": "PostToolUse", "tool_name": tool, "cwd": "/tmp",
++        "tool_input": {"command": command}, "tool_response": response,
++    })
++    .to_string()
++}
++
++fn run_chain(home: &Path, ev: &str) -> String {
++    let mut child = Command::new(env!("CARGO_BIN_EXE_dtk"))
++        .args(["hook", "claude", "--then", "rtk", "hook", "claude"])
++        .env("HOME", home)
++        .stdin(Stdio::piped())
++        .stdout(Stdio::piped())
++        .stderr(Stdio::null())
++        .spawn()
++        .unwrap();
++    child
++        .stdin
++        .take()
++        .unwrap()
++        .write_all(ev.as_bytes())
++        .unwrap();
++    String::from_utf8_lossy(&child.wait_with_output().unwrap().stdout).to_string()
++}
++
++#[test]
++fn the_real_chain_gives_tables_to_dtk_and_everything_else_to_rtk() {
++    need_rtk!();
++    let home = temp_home("chain");
++    enable_posthook(&home);
++    // A table: dtk answers.
++    let rows: String = (0..300)
++        .map(|i| {
++            format!(
++                "{{\"id\":{i},\"level\":\"{}\",\"ms\":{}}}\n",
++                ["info", "warn"][i % 2],
++                i * 3
++            )
++        })
++        .collect();
++    let table = run_chain(
++        &home,
++        &event(
++            "Bash",
++            "cat events.jsonl",
++            json!({"stdout": rows, "stderr": ""}),
++        ),
++    );
++    assert!(table.contains("[dtk] jsonl: 300 rows"), "{table}");
++    // Not a table, from a command rtk does not rewrite: rtk's posthook pipeline answers.
++    let text: String = (0..800)
++        .map(|i| format!("line {i}: value={} status=ok\n", i * 7))
++        .collect();
++    let other = run_chain(
++        &home,
++        &event(
++            "Bash",
++            "/bin/cat notes.txt",
++            json!({"stdout": text, "stderr": ""}),
++        ),
++    );
++    assert!(
++        other.contains("[full output:"),
++        "rtk's recovery pointer is there: {other}"
++    );
++    assert!(!other.contains("[dtk]"), "{other}");
++}

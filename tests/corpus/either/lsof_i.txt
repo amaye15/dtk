@@ -1,0 +1,51 @@
+COMMAND     PID        USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+identitys   535 andrewmayes   15u  IPv4 0x90ae55871c28ef19      0t0  UDP *:*
+identitys   535 andrewmayes   20u  IPv4 0xc636a265c4b692fc      0t0  UDP *:*
+sharingd    564 andrewmayes    4u  IPv4 0x32b49e105eebdf54      0t0  UDP *:*
+Google      670 andrewmayes   24u  IPv6 0x717fdf2c4455b4f2      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:62202->[2404:6800:4008:c13::bc]:5228 (ESTABLISHED)
+Google      670 andrewmayes   27u  IPv6 0xf303e2c152ed6a90      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:55536->[2600:1415:11::1720:5f7]:443 (CLOSED)
+Google      670 andrewmayes   28u  IPv4 0xca7377aaa44cb08f      0t0  TCP 192.168.4.22:59949->140.82.114.26:443 (ESTABLISHED)
+Google      670 andrewmayes   29u  IPv6 0x9bbf4311008e09b4      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:60236->[2600:1415:11::6863:3b21]:443 (ESTABLISHED)
+Google      670 andrewmayes   30u  IPv4 0x72acea6d82493c2d      0t0  TCP 192.168.4.22:53162->140.82.112.25:443 (ESTABLISHED)
+Google      670 andrewmayes   34u  IPv6 0xd3897fbaf1f3f3f6      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:58473->[2607:6bc0::10]:443 (ESTABLISHED)
+Google      670 andrewmayes   35u  IPv6 0xf4351b9028931f1d      0t0  UDP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:55704->[2404:6800:4006:802::200e]:443
+Google      670 andrewmayes   46u  IPv4 0xb6ed96cb3fce7bc2      0t0  UDP *:5353
+Google      670 andrewmayes   50u  IPv6 0x12b000938fd7e2dd      0t0  UDP *:5353
+Google      670 andrewmayes   51u  IPv6 0xe0a79247e3ddba7a      0t0  UDP *:5353
+Google      670 andrewmayes   84u  IPv6  0x41aa5b2d9f95d3b      0t0  UDP *:5353
+Google      670 andrewmayes   86u  IPv6 0xb900d2fe9b63489a      0t0  UDP *:5353
+Google      670 andrewmayes   87u  IPv6 0xe6468c097233dc47      0t0  UDP *:5353
+Google      670 andrewmayes   88u  IPv6 0xebaf3d66bd645e72      0t0  UDP *:5353
+Google      670 andrewmayes   92u  IPv6  0x9c635f5a18311a6      0t0  UDP *:5353
+lean-ctx    937 andrewmayes   10u  IPv4 0xe72e0e9e4448e1e0      0t0  TCP 127.0.0.1:4444 (LISTEN)
+Code\x20H  7362 andrewmayes   23u  IPv4 0x5e1aecb166034029      0t0  TCP 192.168.4.22:53554->13.107.5.93:443 (ESTABLISHED)
+Code\x20H  7362 andrewmayes   24u  IPv4 0xca0a2d148de70fb1      0t0  TCP 192.168.4.22:53555->20.52.64.206:443 (ESTABLISHED)
+Code\x20H  7362 andrewmayes   31u  IPv4 0xc1a7f87a0dd6c865      0t0  TCP 192.168.4.22:53560->20.52.64.206:443 (ESTABLISHED)
+Code\x20H  7387 andrewmayes   31u  IPv4 0x50b4d6407cc14cda      0t0  TCP 127.0.0.1:51732 (LISTEN)
+Code\x20H  7388 andrewmayes   33u  IPv4 0x70d2c1337ac2d657      0t0  TCP 127.0.0.1:18769 (LISTEN)
+Code\x20H  7389 andrewmayes   32u  IPv4 0x7c5fcd05e7373f3e      0t0  TCP 127.0.0.1:37964 (LISTEN)
+Code\x20H  7391 andrewmayes   33u  IPv4 0x60ed43f49d97348f      0t0  TCP 127.0.0.1:45019 (LISTEN)
+Code\x20H  7402 andrewmayes   31u  IPv4 0x8a3ee8b63ffd9307      0t0  TCP 127.0.0.1:15696 (LISTEN)
+Code\x20H  8295 andrewmayes   22u  IPv4 0x1482b311e2e6382b      0t0  TCP 127.0.0.1:51305 (LISTEN)
+Code\x20H  8365 andrewmayes   22u  IPv4 0x61f465afc7cea68c      0t0  TCP 127.0.0.1:51311 (LISTEN)
+Code\x20H  8394 andrewmayes   22u  IPv4 0xb0920cf2e5bc61e4      0t0  TCP 127.0.0.1:51306 (LISTEN)
+Code\x20H  8453 andrewmayes   22u  IPv4 0x6a9e80fcfa081017      0t0  TCP 127.0.0.1:51304 (LISTEN)
+Code\x20H  8461 andrewmayes   22u  IPv4 0xe73aa69ee276ec7c      0t0  TCP 127.0.0.1:51307 (LISTEN)
+claude     9193 andrewmayes   11u  IPv6  0xbb16971c9ea1594      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:51262->[2607:6bc0::10]:443 (ESTABLISHED)
+Code\x20H 50233 andrewmayes   50u  IPv4 0x6df8e8556286c413      0t0  TCP 127.0.0.1:40175 (LISTEN)
+Code\x20H 50897 andrewmayes   42u  IPv4 0x8002e24524512745      0t0  TCP 127.0.0.1:47927 (LISTEN)
+Code\x20H 51074 andrewmayes   18u  IPv4 0xc2f1d176ccabe8f4      0t0  TCP 127.0.0.1:62146 (LISTEN)
+claude    51133 andrewmayes    8u  IPv6 0xbd408338c9219b29      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:51414->[2607:6bc0::10]:443 (ESTABLISHED)
+claude    51133 andrewmayes   12u  IPv6 0xeae73c4d535d24be      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:51274->[2607:6bc0::10]:443 (ESTABLISHED)
+claude    51133 andrewmayes   13u  IPv6 0xb6d213c42fcef7ef      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:51411->[2607:6bc0::10]:443 (ESTABLISHED)
+claude    51133 andrewmayes   14u  IPv6 0x51f1147234042d85      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:53546->[2607:6bc0::10]:443 (ESTABLISHED)
+claude    51133 andrewmayes   15u  IPv6 0xb006ebc7b3c1bb4f      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:53549->[2607:6bc0::10]:443 (ESTABLISHED)
+claude    51133 andrewmayes   17u  IPv6 0x1c9abc6c60a73a13      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:51420->[2607:6bc0::10]:443 (ESTABLISHED)
+claude    51133 andrewmayes   20u  IPv6 0x152026b75700f4c7      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:51425->[2600:1901:0:9e23::]:443 (ESTABLISHED)
+claude    51133 andrewmayes   22u  IPv6 0xfb1339e27c429d10      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:52270->[2607:6bc0::10]:443 (ESTABLISHED)
+adb       55004 andrewmayes    8u  IPv4 0x7de2ac8782ccfb14      0t0  TCP 127.0.0.1:5037 (LISTEN)
+adb       55004 andrewmayes    9u  IPv4 0xf6132c797377537b      0t0  UDP *:5353
+adb       55004 andrewmayes   10u  IPv6 0x8dc19d025a597183      0t0  UDP *:5353
+adb       55004 andrewmayes   11u  IPv6 0xf409bf7c40ac4326      0t0  UDP *:5353
+opencode- 94750 andrewmayes    7u  IPv4 0xd4c0550067e2ade3      0t0  TCP 127.0.0.1:49374 (LISTEN)
+opencode- 94750 andrewmayes   13u  IPv6 0xa936e33a82d881c3      0t0  TCP [2403:5813:d18e:0:fca2:b1c2:edf3:4cef]:53289->[2606:4700:20::681a:8b1]:443 (ESTABLISHED)

@@ -1,0 +1,530 @@
+commit 7dead954f455042c6a5575b282b8cc4cbbb67789
+Author: amaye15 <andrewmayes14@gmail.com>
+Date:   Wed Oct 7 09:59:46 2026 +1100
+
+    Apply audit fixes: stub sync, additive keys, cache safety, error helpers, guards, docs, CI, tests
+
+commit dca1217a5ac50e9570fe224524895b9a65b4dc98
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Sun Aug 9 08:52:16 2026 +0000
+
+    chore: append CI benchmark history for e385dac7 [skip ci]
+
+commit e385dac7d20bcc4f9bcec783c839086e8991b89b
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Sun Aug 9 18:47:41 2026 +1000
+
+    Bump version to 0.9.30
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 641ead62d610b19beaf7443eaec6fdf2caa1c411
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Sun Aug 9 18:46:14 2026 +1000
+
+    Avoid redundant thread-pool construction in nested parallelism
+    
+    Round 16 algorithmic audit: when num_threads(Some(n)) is set and a batch of
+    wide documents is processed, flatten_collecting_parallel independently
+    rebuilt an n-thread pool per qualifying document instead of reusing the
+    batch-level pool it was already running inside (O(batch_size) pool
+    constructions instead of one, and transient thread oversubscription).
+    Fixed by reusing the ambient pool when it already matches via
+    rayon::current_num_threads() (1.77x-2.09x faster). Also cache
+    available_parallelism() instead of re-querying it per document.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 8fee2f8c2ba5465868c9d9907e6f21a384002541
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Sat Aug 8 10:10:32 2026 +0000
+
+    chore: append CI benchmark history for 07ce8699 [skip ci]
+
+commit 07ce8699428f716e1b23d0f135decc1bb2f191eb
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Sat Aug 8 20:07:52 2026 +1000
+
+    Bump version to 0.9.29
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 57bc03638cd5b18899e6dc82f9175064ee047f3a
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Sat Aug 8 20:06:00 2026 +1000
+
+    Avoid per-key allocation in normal mode; pre-size unflatten array-conversion map
+    
+    Round 15 algorithmic audit: normal (non-flatten/unflatten) mode's key-transform
+    and collision-handling path allocated a new String for every object key even
+    when unchanged; switched to Cow<'a, str> and removed a redundant hashmap
+    lookup in collision serialization (1.4x-1.85x faster). Unflatten's rare
+    array-to-object conversion path (a digit-only key overflowing usize) now
+    pre-sizes the new map instead of growing from zero capacity (1.54x faster).
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 82862d1b55a772ebdf1e5954e0b99a48c718d328
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Thu Aug 6 23:56:23 2026 +0000
+
+    chore: append CI benchmark history for ff8ab0e8 [skip ci]
+
+commit ff8ab0e80acb5988a3d9e29a95fb2357cda97c3e
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Fri Aug 7 09:53:48 2026 +1000
+
+    Bump version to 0.9.28
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit e2fe8e5702a48e1149c08654c22f1670b94a4970
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Fri Aug 7 09:51:09 2026 +1000
+
+    Sample before full pandas column extraction; fuse splice+unnest passes
+    
+    Round 14 algorithmic audit, continuing round 13 into the parts it hadn't
+    covered (pandas fast path, general splice/unnest pipeline, arrow_columnar.rs,
+    cache.rs, config.rs):
+    
+    - check_pandas_fastpath_eligibility now samples the first ~20 non-null
+      values of an object-dtype column before deciding whether to fully extract
+      it, instead of extracting the whole column just to sample it afterward.
+      ~2.1x faster for a disqualifying (embedded-JSON) column at scale.
+    
+    - splice_row and splice_zerocopy_columns now un-nest object-valued fields
+      inline in their own reconstruction pass (via a new write_field_unnested
+      helper), instead of a separate unnest_object_valued_columns pass that
+      re-parsed the same row a second time. ~2x (pandas) / ~2.3x (Polars)
+      faster for a DataFrame with an embedded-JSON string column. Caught a real
+      double-unnesting regression in a second call site (normalise=True on
+      DataFrame input) via the existing TestJsonStringColumnExpansion suite --
+      fixed before shipping.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit ef04855c1ad00e34fec23d7d014cf09a40fc34e6
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Thu Aug 6 12:16:13 2026 +0000
+
+    chore: append CI benchmark history for b5e6ada4 [skip ci]
+
+commit b5e6ada49f1f959fd6a7ed526be18e91e9174e12
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Thu Aug 6 20:27:08 2026 +1000
+
+    Bump version to 0.9.27
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 0b2030177f097894d2ecc5e3f88937cad9ec89b1
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Thu Aug 6 20:24:50 2026 +1000
+
+    Eliminate duplicate Arrow string extraction; fix normalise() allocation count
+    
+    Round 13 algorithmic audit of the DataFrame/normalise layer (python.rs),
+    the newest and least-scrutinized part of the codebase after 10 prior
+    performance rounds exhausted the core Rust engine:
+    
+    - check_arrow_fastpath_eligibility now threads its already-extracted
+      string-column data through to detect_and_extract_json_columns_zerocopy
+      instead of letting it re-extract the same columns from scratch when the
+      flat-DataFrame fast path is disqualified by an embedded-JSON column.
+    
+    - build_normalise_table's column_slots is now one flat allocation
+      (n_rows * n_keys) instead of n_keys separate Vecs -- real allocator
+      overhead for batches with mostly-disjoint keys, the same pattern that
+      caused a real O(n^2) bug (already fixed) in unflatten.rs's ObjectMap.
+      ~30-35% faster median, and eliminates the wide run-to-run variance the
+      many-allocations version showed.
+    
+    - unflatten's Null-node serialization no longer recomputes a value-
+      exclusion check against the literal "null" per array-gap node.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit b5bf612f4077240cbca7d08e0e63f2dac9c66662
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Wed Aug 5 00:05:58 2026 +0000
+
+    chore: append CI benchmark history for 04c55253 [skip ci]
+
+commit 04c552539208d9eb6190d907ad1f7640241b47cb
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Wed Aug 5 10:02:26 2026 +1000
+
+    Fix RUSTSEC-2026-0233/0234/0235: bump transitive rkyv 0.8.15 -> 0.8.17
+    
+    CI's Security Audit job (cargo audit) caught this on the previous push --
+    pre-existing transitive dependency (sonic-rs -> faststr -> rkyv, unrelated
+    to this round's sonic-rs/indexmap pin changes) with three RUSTSEC advisories
+    (use-after-free and out-of-bounds read during archive deserialization).
+    Upgrading within faststr's existing semver range resolves all three;
+    verified clean with `cargo audit` locally.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 29908faacf0e2e4cb620f9782bca1cf430ab07a5
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Tue Aug 4 22:02:01 2026 +0000
+
+    chore: append CI benchmark history for 8e6fc3e4 [skip ci]
+
+commit 8e6fc3e4c4b5c53a9e2e5c3fdd5a5735691cc5e7
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Wed Aug 5 07:58:04 2026 +1000
+
+    Bump version to 0.9.26
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit fcf631fa6d314dfbb95aa5ab606f6d2c5a27c33b
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Wed Aug 5 07:56:05 2026 +1000
+
+    Lift stale sonic-rs/indexmap version pins now that MSRV is 1.85
+    
+    Round 11 perf-optimization pass: researched and A/B tested sonic-rs vs
+    simd-json, simdutf8, mimalloc vs jemalloc, and PyO3 free-threaded Python
+    support, but profiling confirmed the hot path is already at the ceiling
+    reached by the prior 10 rounds. Only concrete outcome is dependency
+    cleanup: both pins predate the 2026-07-30 MSRV bump to 1.85 and were left
+    stale rather than lifted as an incidental side effect of that change.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 58137ef5764c62a0e9b97fc20887998747a0d9c7
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Tue Aug 4 08:33:03 2026 +0000
+
+    chore: append CI benchmark history for dc37277a [skip ci]
+
+commit dc37277a9b5be3a2209e74cf23d2db7f3c0471bb
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Tue Aug 4 18:29:45 2026 +1000
+
+    Fix pandas None/NaN test: pandas 3.0 changed str-column dtype inference
+    
+    CI's Python 3.11-3.14 legs (not 3.9/3.10) still failed after the previous
+    dtype=object fix. Root cause, found by reproducing locally with a fresh
+    Python 3.11 venv matching CI's build steps exactly: pip resolves pandas
+    3.0.5 for Python 3.11+ (a new major version only available there) vs 2.3.3
+    for 3.10 and earlier -- pandas 3.0 changed pd.DataFrame(list_of_dicts)'s
+    default inference for string-ish columns from "object" to its own new "str"
+    dtype. classify_pandas_dtype only recognizes "object" as a String column
+    (correctly, by design), so on pandas 3.0 the test's input DataFrame was
+    silently disqualified from the fast path entirely and fell through to the
+    slow path -- the discrepancy being chased was actually the *slow* path's
+    pandas-3.0-dependent behavior, unrelated to this round's GIL-release code.
+    
+    Fixed the test at the root: build both the "note" input column and the
+    comparison explicitly with dtype=object, so the fast path actually
+    activates (and is what gets tested) regardless of pandas version, and
+    assert the fast path's own deterministic contract directly (it builds the
+    output via an explicit dtype=object Series in Rust, proven stable even on
+    pandas 3.0) rather than diffing against the slow path's own inference-based
+    reconstruction, which pandas 3.0 itself no longer keeps consistent.
+    
+    Verified green on both Python 3.10/pandas 2.3.3 and a fresh Python
+    3.11/pandas 3.0.5 venv built with CI's exact steps (326 passed, 0 failed on
+    both).
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 91aa867cca2722e1b161e21a0418933afdd08823
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Tue Aug 4 07:58:30 2026 +0000
+
+    chore: append CI benchmark history for 680250cd [skip ci]
+
+commit 680250cd7650d75353369076628c764b24d001bc
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Tue Aug 4 17:54:26 2026 +1000
+
+    Fix CI: clippy question_mark lint, black formatting, pandas dtype coercion
+    
+    CI's Rust toolchain (1.97.1) is newer than the local dev one (1.93.1) and
+    its clippy flagged extract_arrow_string_values_from_chunked's if/else-if/
+    else chain (question_mark, warn-by-default) -- rewrite the last arm with ?.
+    
+    black --check flagged bench_fastpath_gil.py and tests.py (never ran black
+    locally before pushing); reformatted both, no logic change.
+    
+    More substantively: CI's Python 3.11-3.14 legs (not 3.9/3.10) failed the new
+    pandas None/NaN differential test -- pd.DataFrame(dict_of_python_lists)'s
+    own type inference for a column mixing a genuine None with a float NaN
+    coerced the None to NaN on those legs, not reproducible with the local
+    pandas/numpy combo. Rather than depend on that inference being stable
+    across pandas/numpy versions, build the StringTransform column as an
+    explicit pd.Series(list, dtype="object") -- pandas' documented no-inference
+    construction path, where every element stays the exact object it already is.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 3ef12654fd3f709af2be0ab7614e2828ae2c124a
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Tue Aug 4 07:19:48 2026 +0000
+
+    chore: append CI benchmark history for d3fdf18a [skip ci]
+
+commit d3fdf18affc9cf5a2741fd7ab1df3a9e60559f74
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Tue Aug 4 17:12:56 2026 +1000
+
+    Bump version to 0.9.25
+    
+    GIL-release fix for the flat-DataFrame fast path (concurrency, not latency --
+    other Python threads no longer stall during a large execute(df) call), a
+    pandas None/NaN correctness fix the new test for that surfaced, and a minor
+    separator allocation cleanup. See CHANGELOG.md for details.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 8af38a98e86a45ff3d53b67a64faa271faf86de2
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Tue Aug 4 17:12:27 2026 +1000
+
+    Release GIL during the flat-DataFrame fast path; fix pandas None/NaN gap
+    
+    The flat-DataFrame fast path (execute_arrow_fastpath/execute_pandas_fastpath,
+    added last round) was the one execution path in python.rs that never called
+    py.detach() -- it held the GIL for its entire duration, including per-column
+    transform work that touches zero Python objects, stalling every other Python
+    thread in the process for the length of a large DataFrame call. Every other
+    path (single string, dict, batch list, the old DataFrame text-round-trip
+    path) already releases the GIL for its Rust computation; this closes the gap.
+    
+    Arrow (Polars/PyArrow): the whole per-column build loop is pure Rust/arrow-rs
+    until the final RecordBatch->PyTable conversion, so it wraps in one
+    py.detach() call outright. check_arrow_fastpath_eligibility's string-value
+    extraction was also O(rows) (not bounded by the JSON-text sample size as it
+    looked), or fetching each column a second time despite already holding it in
+    chunked_arrays -- split extract_arrow_string_values into a Bound-taking
+    wrapper plus a pure-Rust inner function, dropped the redundant re-fetch, and
+    detached that loop too.
+    
+    Pandas: PassThrough/PassThroughWrapped inherently touch Bound<PyAny> and
+    can't be detached, but StringTransform's per-cell transform_string_cell call
+    can -- split into a Pass 0 (one py.detach() call, pure Rust) that precomputes
+    every StringTransform column, then a GIL-held loop that only builds Python
+    objects from the precomputed results.
+    
+    A new differential test for this split (null + remove_empty_strings-filtered
+    cell in the same column) surfaced a real, pre-existing pandas-only bug: both
+    cases collapsed to a bare None, but the true slow/JSON-text path distinguishes
+    them (a genuine null keeps the row's dict key present -> None; a filtered
+    value omits the key entirely, and pandas fills a key missing from only some
+    rows with NaN, not None). Fixed alongside the split with a 3-state
+    PandasStringCell (Value/Null/Omitted) rather than shipping a known
+    regression. Polars/PyArrow were never affected (no NaN-vs-null distinction
+    for Arrow string arrays).
+    
+    Measured via a background pure-Python counting thread run concurrently with
+    execute(df) (ratio of concurrent to solo throughput, 20K x 20 DataFrame,
+    macOS aarch64): Polars 0.21 -> 1.00, PyArrow 0.14 -> 0.97, pandas 0.73 -> 0.76
+    (smaller -- pandas still builds one PyObject per cell with the GIL held).
+    No latency regression (confirmed, not assumed): detach/reacquire overhead is
+    negligible against a multi-millisecond DataFrame call. New benchmarks:
+    python/benchmarks/bench_fastpath_gil.py, bench_fastpath_latency.py.
+    
+    Also: JSONTools::default() no longer allocates a String for the default "."
+    separator, which SeparatorCache already special-cases into a borrowed
+    constant -- internal field is now Cow<'static, str>, no public API change.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 37709af6700fe5c3ddb685628a330f9d58294505
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Mon Aug 3 04:29:33 2026 +0000
+
+    chore: append CI benchmark history for 0dd2fdb3 [skip ci]
+
+commit 0dd2fdb343a9e70fa365d581c1b0bba277aab030
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Mon Aug 3 14:24:58 2026 +1000
+
+    Bump version to 0.9.24
+    
+    Performance-only release: flat-DataFrame fast path for plain
+    .flatten().execute(df) (Polars ~2.7-3.7x, PyArrow ~4.2-5.6x, pandas
+    ~1.5-2.2x faster, up to ~345x for pure column-rename), plus an unflatten()
+    fix (~9-10% faster). See CHANGELOG.md for details.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit f36134dc7aad1fa9d94c7a3ad6db31fd8ce6473f
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Mon Aug 3 03:26:07 2026 +0000
+
+    chore: append CI benchmark history for af568206 [skip ci]
+
+commit af568206d9ae7e678d6447556d6c7b0f9c374810
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Mon Aug 3 13:19:23 2026 +1000
+
+    Add flat-DataFrame fast path for plain .flatten().execute(df)
+    
+    execute(df) on a pandas/Polars/PyArrow DataFrame always round-tripped the
+    whole DataFrame through JSON text (serialize -> parse+flatten -> deserialize
+    -> reconstruct), even when there's nothing nested to flatten. Measured: for
+    a DataFrame with no nested/struct columns, that round trip cost ~90-99ms for
+    20K rows x 20 cols, of which this crate's own flatten logic (isolated) was
+    only ~6.5ms -- the round trip itself was the cost, not the flatten engine.
+    
+    When a DataFrame has no nested/struct/embedded-JSON-string columns, the new
+    fast path reads column values directly, applies the exact same per-cell
+    transform logic (convert_string_for_mode/apply_replacement_patterns,
+    unchanged) directly in Rust, and writes results back into columns/renames
+    columns natively -- never touching to_json/py_loads/DataFrame(list_of_dicts).
+    Eligibility is a whole-DataFrame decision with a strict fallback discipline:
+    any nested column, embedded-JSON-string column, remove_nulls/value_exclusions
+    configured, or a rename-induced key collision under handle_key_collision/
+    always_array_keys falls straight through to the existing, unmodified
+    pipeline. Scoped to plain .flatten().execute(df) -- normalise=True already
+    has its own, separately-optimized Arrow-native path (src/arrow_columnar.rs,
+    extracted from that engine and generalized for reuse here).
+    
+    Confirmed via interleaved A/B (2 rounds each): Polars ~2.7-3.7x faster,
+    PyArrow ~4.2-5.6x faster, pandas ~1.5-2.2x faster for real per-cell
+    transform work, up to ~345x faster for pandas' pure column-rename case
+    (reuses the source Series object directly, no reconstruction at all).
+    Differential-tested against the existing pipeline's actual output across
+    10-11 cases per backend -- caught and fixed 3 real correctness gaps before
+    shipping: remove_nulls/value_exclusions apply to genuine scalar nulls too,
+    not just string tokens; a column can vanish entirely if every row's value
+    gets filtered; a genuinely empty DataFrame reconstructs to zero columns.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 82ba3ed260e5395f1e26ff0be928ae43ab4dedf5
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Mon Aug 3 13:18:08 2026 +1000
+
+    Fix redundant array-vs-object classification lookup in unflatten()
+    
+    set_nested_value_recursive queried the precomputed path_types map
+    unconditionally on every recursive call, even though the result is only
+    needed once, at the moment a container is first created -- irrelevant on
+    every subsequent visit since the node's shape is already fixed by then.
+    Since flat keys sharing a nested prefix repeatedly revisit the same
+    intermediate container, most calls paid for a lookup whose result they
+    never used.
+    
+    Found via benches/history.csv (this project's own tracked CI benchmark
+    data): unflatten baseline medium has run ~4-5x slower than flatten baseline
+    medium on the same document, consistently across all 72 tracked commits.
+    Confirmed ~9-10% faster across 3 interleaved A/B rounds. No behavior change.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 6f81d0ae0be45db664e020a96026ea8660a8ebc5
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Sun Aug 2 05:01:07 2026 +0000
+
+    chore: append CI benchmark history for 0e183152 [skip ci]
+
+commit 0e183152a47fa7cf2451de77476b3bcc3f522492
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Sun Aug 2 14:57:41 2026 +1000
+
+    Bump version to 0.9.23
+    
+    Performance-only release: CompactString/ConvertedStr zero-copy audit
+    follow-up (~11-13% faster flatten with a key transform, ~3-9% faster
+    normal mode). See CHANGELOG.md for details.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit a0824f43e160d23c3a8b92cf831d79d403ae2305
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Sun Aug 2 04:00:34 2026 +0000
+
+    chore: append CI benchmark history for 7856ce26 [skip ci]
+
+commit 7856ce26e161dcbd70fb7d5db72593b02861a15a
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Sun Aug 2 13:51:49 2026 +1000
+
+    Zero-copy audit follow-up: CompactString for auto_convert_types and Arrow extraction
+    
+    Replaces Cow<str> with a new ConvertedStr (Borrowed/Owned(CompactString)) type
+    across convert.rs's auto_convert_types chain, and switches flatten.rs's/
+    unflatten.rs's collision-handling value storage from String to CompactString,
+    so short converted/stored values stay on the stack instead of heap-allocating.
+    Measured ~11-13% faster for flatten with a key transform configured, ~3-9%
+    faster for normal mode alone (3 interleaved rounds each).
+    
+    Also switched python.rs's zero-copy Arrow JSON-string-column extraction to
+    CompactString, on the same reasoning -- measured the same way and found no
+    consistent signal (within noise across 3 rounds), kept as correct but not
+    claimed as a win.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 37fec0b3aa0e90654088d92087f5e43d5cc3ac7e
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Sun Aug 2 01:47:20 2026 +0000
+
+    chore: append CI benchmark history for 195e9ab5 [skip ci]
+
+commit 195e9ab5f584612e926203877e539780361b84fd
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Sun Aug 2 11:41:10 2026 +1000
+
+    Bump version to 0.9.22
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 1212b8e27d4d46ebeff47e33a794d114b0ae272f
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Sun Aug 2 00:44:53 2026 +0000
+
+    chore: append CI benchmark history for 81d7870f [skip ci]
+
+commit 81d7870f9e6fc49c93644b501a03faefd756b152
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Sun Aug 2 10:41:08 2026 +1000
+
+    Add always_array_keys collision option; audit and fix real clone/copy overhead
+    
+    Add .always_array_keys([...]): flattened key names that must always render
+    as a JSON array, even with only one value present in a given document.
+    Solves a real consistency problem with .handle_key_collision(true) alone --
+    a key that collides in some documents of a batch but not others otherwise
+    ends up a plain value in some results and an array in others. Implemented
+    once in flatten.rs's resolve_and_write (both the sequential and
+    nested-parallel paths funnel through it), so normalise()/DataFrame output
+    gets the same guarantee for free: a column can now be forced to List<T>
+    even when a particular batch has zero collisions for it. Uses a SmallVec
+    with linear scan rather than a HashSet for the membership check -- measured
+    ~5.7% faster for the realistic small-list case via interleaved A/B,
+    consistent with this crate's existing small-collection convention.
+    
+    Also audited every .clone()/copy site in the codebase end to end (the core
+    engine already had zero .clone() calls). Found and fixed one real,
+    measured win: PyJsonOutput.get_single()/get_multiple()/__str__() cloned
+    the result before PyO3's own unavoidable Rust->Python copy at the FFI
+    boundary -- now builds the Python object directly from the borrowed value.
+    Measured ~25-27% faster via interleaved A/B, zero behavior change. Two
+    further changes made on the same reasoning (an unflatten.rs allocation
+    avoidance, a flatten.rs capacity hint) were measured the same rigorous way
+    and honestly did not hold up as real wins -- kept since they're correct
+    and harmless, reported plainly rather than claimed as performance gains.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+commit 5e7a0c12f478e43a6311e16c5d5a72a326004fb5
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Date:   Sat Aug 1 04:13:20 2026 +0000
+
+    chore: append CI benchmark history for e4e17995 [skip ci]
+
+commit e4e1799585b9a173ef5c6bf9a49efbcc754f9147
+Author: Andrew Mayes <andrewmayes@Andrews-MacBook-Air.local>
+Date:   Sat Aug 1 14:08:52 2026 +1000
+
+    Bump version to 0.9.21
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>

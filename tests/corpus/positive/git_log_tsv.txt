@@ -1,0 +1,81 @@
+hash	author	date	subject
+7dead95	amaye15	2026-10-07	Apply audit fixes: stub sync, additive keys, cache safety, error helpers, guards, docs, CI, tests
+dca1217	github-actions[bot]	2026-08-09	chore: append CI benchmark history for e385dac7 [skip ci]
+e385dac	Andrew Mayes	2026-08-09	Bump version to 0.9.30
+641ead6	Andrew Mayes	2026-08-09	Avoid redundant thread-pool construction in nested parallelism
+8fee2f8	github-actions[bot]	2026-08-08	chore: append CI benchmark history for 07ce8699 [skip ci]
+07ce869	Andrew Mayes	2026-08-08	Bump version to 0.9.29
+57bc036	Andrew Mayes	2026-08-08	Avoid per-key allocation in normal mode; pre-size unflatten array-conversion map
+82862d1	github-actions[bot]	2026-08-06	chore: append CI benchmark history for ff8ab0e8 [skip ci]
+ff8ab0e	Andrew Mayes	2026-08-07	Bump version to 0.9.28
+e2fe8e5	Andrew Mayes	2026-08-07	Sample before full pandas column extraction; fuse splice+unnest passes
+ef04855	github-actions[bot]	2026-08-06	chore: append CI benchmark history for b5e6ada4 [skip ci]
+b5e6ada	Andrew Mayes	2026-08-06	Bump version to 0.9.27
+0b20301	Andrew Mayes	2026-08-06	Eliminate duplicate Arrow string extraction; fix normalise() allocation count
+b5bf612	github-actions[bot]	2026-08-05	chore: append CI benchmark history for 04c55253 [skip ci]
+04c5525	Andrew Mayes	2026-08-05	Fix RUSTSEC-2026-0233/0234/0235: bump transitive rkyv 0.8.15 -> 0.8.17
+29908fa	github-actions[bot]	2026-08-04	chore: append CI benchmark history for 8e6fc3e4 [skip ci]
+8e6fc3e	Andrew Mayes	2026-08-05	Bump version to 0.9.26
+fcf631f	Andrew Mayes	2026-08-05	Lift stale sonic-rs/indexmap version pins now that MSRV is 1.85
+58137ef	github-actions[bot]	2026-08-04	chore: append CI benchmark history for dc37277a [skip ci]
+dc37277	Andrew Mayes	2026-08-04	Fix pandas None/NaN test: pandas 3.0 changed str-column dtype inference
+91aa867	github-actions[bot]	2026-08-04	chore: append CI benchmark history for 680250cd [skip ci]
+680250c	Andrew Mayes	2026-08-04	Fix CI: clippy question_mark lint, black formatting, pandas dtype coercion
+3ef1265	github-actions[bot]	2026-08-04	chore: append CI benchmark history for d3fdf18a [skip ci]
+d3fdf18	Andrew Mayes	2026-08-04	Bump version to 0.9.25
+8af38a9	Andrew Mayes	2026-08-04	Release GIL during the flat-DataFrame fast path; fix pandas None/NaN gap
+37709af	github-actions[bot]	2026-08-03	chore: append CI benchmark history for 0dd2fdb3 [skip ci]
+0dd2fdb	Andrew Mayes	2026-08-03	Bump version to 0.9.24
+f36134d	github-actions[bot]	2026-08-03	chore: append CI benchmark history for af568206 [skip ci]
+af56820	Andrew Mayes	2026-08-03	Add flat-DataFrame fast path for plain .flatten().execute(df)
+82ba3ed	Andrew Mayes	2026-08-03	Fix redundant array-vs-object classification lookup in unflatten()
+6f81d0a	github-actions[bot]	2026-08-02	chore: append CI benchmark history for 0e183152 [skip ci]
+0e18315	Andrew Mayes	2026-08-02	Bump version to 0.9.23
+a0824f4	github-actions[bot]	2026-08-02	chore: append CI benchmark history for 7856ce26 [skip ci]
+7856ce2	Andrew Mayes	2026-08-02	Zero-copy audit follow-up: CompactString for auto_convert_types and Arrow extraction
+37fec0b	github-actions[bot]	2026-08-02	chore: append CI benchmark history for 195e9ab5 [skip ci]
+195e9ab	Andrew Mayes	2026-08-02	Bump version to 0.9.22
+1212b8e	github-actions[bot]	2026-08-02	chore: append CI benchmark history for 81d7870f [skip ci]
+81d7870	Andrew Mayes	2026-08-02	Add always_array_keys collision option; audit and fix real clone/copy overhead
+5e7a0c1	github-actions[bot]	2026-08-01	chore: append CI benchmark history for e4e17995 [skip ci]
+e4e1799	Andrew Mayes	2026-08-01	Bump version to 0.9.21
+6b61f3e	github-actions[bot]	2026-08-01	chore: append CI benchmark history for e4375031 [skip ci]
+e437503	Andrew Mayes	2026-08-01	Performance round 3: stop re-cloning already-seen keys in normalise()'s row union
+4ac680a	github-actions[bot]	2026-07-31	chore: append CI benchmark history for b378f175 [skip ci]
+b378f17	Andrew Mayes	2026-08-01	Performance round 2: avoid per-key allocation in DataFrame extraction hot paths
+33d0b7e	Andrew Mayes	2026-08-01	Performance round: avoid re-parsing in hot date-format, unflatten, and normalise paths
+295e48b	github-actions[bot]	2026-07-31	chore: append CI benchmark history for aeb96a1a [skip ci]
+aeb96a1	Andrew Mayes	2026-07-31	Bump version to 0.9.20
+59bf387	github-actions[bot]	2026-07-31	chore: append CI benchmark history for d2e7316a [skip ci]
+d2e7316	Andrew Mayes	2026-07-31	Fix black formatting in tests.py
+c2fdc4b	github-actions[bot]	2026-07-31	chore: append CI benchmark history for f8e65fbc [skip ci]
+f8e65fb	Andrew Mayes	2026-07-31	DataFrame column naming fix + Arrow-native normalise() reconstruction
+2b39885	github-actions[bot]	2026-07-30	chore: append CI benchmark history for f503c0e6 [skip ci]
+f503c0e	Andrew Mayes	2026-07-31	Remove the JVM/Java/Scala binding entirely
+89862cd	github-actions[bot]	2026-07-30	chore: append CI benchmark history for 10eb93ff [skip ci]
+10eb93f	Andrew Mayes	2026-07-30	Allow CC0-1.0 license for tiny-keccak (transitive via pyo3-arrow)
+ed30ed6	github-actions[bot]	2026-07-30	chore: append CI benchmark history for dbed6309 [skip ci]
+dbed630	Andrew Mayes	2026-07-30	Bump version to 0.9.19
+98233f2	Andrew Mayes	2026-07-30	Speed up Polars/PyArrow execute() ~41-48% via zero-copy Arrow extraction
+2165b7f	github-actions[bot]	2026-07-30	chore: append CI benchmark history for 0e266942 [skip ci]
+0e26694	Andrew Mayes	2026-07-30	Bump version to 0.9.18
+0e8a758	Andrew Mayes	2026-07-30	Speed up PyArrow extraction ~2x; reuse key escaper in splice_row
+e23d20c	github-actions[bot]	2026-07-30	chore: append CI benchmark history for ee5824b9 [skip ci]
+ee5824b	Andrew Mayes	2026-07-30	Bump version to 0.9.17
+21c1009	Andrew Mayes	2026-07-30	Fix redundant hashmap lookups in collision handling; measure mimalloc
+94f3da1	github-actions[bot]	2026-07-29	chore: append CI benchmark history for 6a50afa3 [skip ci]
+6a50afa	Andrew Mayes	2026-07-30	Fix black formatting in the new benchmark script
+b31abfe	github-actions[bot]	2026-07-29	chore: append CI benchmark history for 67075c1e [skip ci]
+67075c1	Andrew Mayes	2026-07-30	Bump version to 0.9.16
+cc477db	Andrew Mayes	2026-07-30	Speed up normalise()/PySpark DataFrame reconstruction 13-18%
+cc657cc	github-actions[bot]	2026-07-29	chore: append CI benchmark history for 4499889e [skip ci]
+4499889	Andrew Mayes	2026-07-29	Bump version to 0.9.15
+7a24bc2	Andrew Mayes	2026-07-29	Fix PySpark mixed-type list-element crash in execute()/normalise()
+9ef3df1	github-actions[bot]	2026-07-29	chore: append CI benchmark history for 495c6205 [skip ci]
+495c620	Andrew Mayes	2026-07-29	Fix new PySpark mixed-type tests to not require pyarrow
+30cb487	github-actions[bot]	2026-07-29	chore: append CI benchmark history for 5a113313 [skip ci]
+5a11331	Andrew Mayes	2026-07-29	Bump version to 0.9.14
+8d00cea	Andrew Mayes	2026-07-29	Fix PySpark mixed-type column crash in execute()/normalise()
+9c0552f	github-actions[bot]	2026-07-29	chore: append CI benchmark history for ca0c31c0 [skip ci]
+ca0c31c	Andrew Mayes	2026-07-29	Bump version to 0.9.13
+b5adfb1	Andrew Mayes	2026-07-29	PySpark execute() returns a real DataFrame + faster JSON-string-column splice (fixes #31)

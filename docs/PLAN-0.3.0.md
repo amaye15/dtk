@@ -77,3 +77,21 @@ Run G1 to G6, record the real-tokenizer results, publish 0.3.0.
   everything else to rtk.
 - Real Claude Code session on the real settings: summary received, answer correct (23 = 23).
 
+
+### Harness (G2, G3, G4): DONE
+- `tests/corpus/`: 33 positive, 19 negative and 5 ambiguous real outputs from pandas, polars,
+  sqlite3 (6 modes), tabulate (10 formats), rich, jq, git, gh and others. The first run found
+  5 real defects: a header rule row counted as data (sqlite `-column`, tabulate `simple`),
+  ANSI colour codes in headers and failed JSON detection (rich, `jq -C`), and an overly crude
+  pandas check that also rejected honest tables whose `id` column counts up.
+- `tests/properties.rs` (G3): 4,000 random texts, 800 random byte blobs, and every fixture
+  mutated 40 times. Detection never panics, tables are always well formed, views are never much
+  bigger than input, and every big fixture gets a summary under half its size. A teeth check
+  requires at least a quarter of the mutated inputs to still be tables.
+- `tests/oracle.rs` (G4): types, null counts, min, max, mean, distinct counts, medians and
+  category counts equal `qsv stats`, `qsv frequency` and `jaq` on the CSV, JSONL and JSON files.
+  qsv reports ISO timestamps as strings unless told otherwise; the test passes `--infer-dates`.
+
+### S2. Cleaner input: DONE
+ANSI colour codes, a byte-order mark, `#` comment headers, header rule rows and the full
+box-drawing range are handled. Checks: the new fixtures above pass (G2), all gates green (G1).

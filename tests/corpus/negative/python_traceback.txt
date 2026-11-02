@@ -1,0 +1,82 @@
+Traceback (most recent call last):
+  File "/app/mod0.py", line 0, in handler_0
+    result = process(item, 0)
+  File "/app/mod1.py", line 3, in handler_1
+    result = process(item, 1)
+  File "/app/mod2.py", line 6, in handler_2
+    result = process(item, 2)
+  File "/app/mod3.py", line 9, in handler_3
+    result = process(item, 3)
+  File "/app/mod4.py", line 12, in handler_4
+    result = process(item, 4)
+  File "/app/mod5.py", line 15, in handler_5
+    result = process(item, 5)
+  File "/app/mod6.py", line 18, in handler_6
+    result = process(item, 6)
+  File "/app/mod7.py", line 21, in handler_7
+    result = process(item, 7)
+  File "/app/mod8.py", line 24, in handler_8
+    result = process(item, 8)
+  File "/app/mod9.py", line 27, in handler_9
+    result = process(item, 9)
+  File "/app/mod10.py", line 30, in handler_10
+    result = process(item, 10)
+  File "/app/mod11.py", line 33, in handler_11
+    result = process(item, 11)
+  File "/app/mod12.py", line 36, in handler_12
+    result = process(item, 12)
+  File "/app/mod13.py", line 39, in handler_13
+    result = process(item, 13)
+  File "/app/mod14.py", line 42, in handler_14
+    result = process(item, 14)
+  File "/app/mod15.py", line 45, in handler_15
+    result = process(item, 15)
+  File "/app/mod16.py", line 48, in handler_16
+    result = process(item, 16)
+  File "/app/mod17.py", line 51, in handler_17
+    result = process(item, 17)
+  File "/app/mod18.py", line 54, in handler_18
+    result = process(item, 18)
+  File "/app/mod19.py", line 57, in handler_19
+    result = process(item, 19)
+  File "/app/mod20.py", line 60, in handler_20
+    result = process(item, 20)
+  File "/app/mod21.py", line 63, in handler_21
+    result = process(item, 21)
+  File "/app/mod22.py", line 66, in handler_22
+    result = process(item, 22)
+  File "/app/mod23.py", line 69, in handler_23
+    result = process(item, 23)
+  File "/app/mod24.py", line 72, in handler_24
+    result = process(item, 24)
+  File "/app/mod25.py", line 75, in handler_25
+    result = process(item, 25)
+  File "/app/mod26.py", line 78, in handler_26
+    result = process(item, 26)
+  File "/app/mod27.py", line 81, in handler_27
+    result = process(item, 27)
+  File "/app/mod28.py", line 84, in handler_28
+    result = process(item, 28)
+  File "/app/mod29.py", line 87, in handler_29
+    result = process(item, 29)
+  File "/app/mod30.py", line 90, in handler_30
+    result = process(item, 30)
+  File "/app/mod31.py", line 93, in handler_31
+    result = process(item, 31)
+  File "/app/mod32.py", line 96, in handler_32
+    result = process(item, 32)
+  File "/app/mod33.py", line 99, in handler_33
+    result = process(item, 33)
+  File "/app/mod34.py", line 102, in handler_34
+    result = process(item, 34)
+  File "/app/mod35.py", line 105, in handler_35
+    result = process(item, 35)
+  File "/app/mod36.py", line 108, in handler_36
+    result = process(item, 36)
+  File "/app/mod37.py", line 111, in handler_37
+    result = process(item, 37)
+  File "/app/mod38.py", line 114, in handler_38
+    result = process(item, 38)
+  File "/app/mod39.py", line 117, in handler_39
+    result = process(item, 39)
+ValueError: bad input

@@ -51,7 +51,8 @@ pub fn detect(text: &str) -> Option<Table> {
     if text.len() > MAX_INPUT {
         return None;
     }
-    let text = text.trim_start_matches('\u{feff}').trim();
+    let cleaned = clean(text);
+    let text = skip_comment_lines(cleaned.trim());
     if text.len() < 200 {
         return None;
     }
@@ -69,8 +70,82 @@ pub fn detect(text: &str) -> Option<Table> {
         .or_else(|| parse_aligned(text))
 }
 
-/// Characters that appear in table borders and rules.
-const BORDER_CHARS: &str = "+-=─━═┌┐└┘├┤┬┴┼╞╡╪╒╕╘╛╟╢╤╧╫╔╗╚╝╠╣╦╩╬┏┓┗┛┣┫┳┻╋ |│┃║┆┊:";
+/// Removes what makes a table unreadable to a parser but invisible to a person: a byte-order mark
+/// and terminal colour codes (`jq -C`, `rich`, `ls --color`).
+fn clean(text: &str) -> std::borrow::Cow<'_, str> {
+    let text = text.trim_start_matches('\u{feff}');
+    if !text.contains('\u{1b}') {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        match chars.peek() {
+            // CSI: ESC [ parameters, then one final byte in @..~
+            Some('[') => {
+                chars.next();
+                for f in chars.by_ref() {
+                    if ('@'..='~').contains(&f) {
+                        break;
+                    }
+                }
+            }
+            // OSC: ESC ] ... BEL, or ESC \
+            Some(']') => {
+                chars.next();
+                while let Some(f) = chars.next() {
+                    if f == '\u{7}' || (f == '\u{1b}' && chars.next_if_eq(&'\\').is_some()) {
+                        break;
+                    }
+                }
+            }
+            // Any other two-byte escape.
+            Some(_) => {
+                chars.next();
+            }
+            None => {}
+        }
+    }
+    std::borrow::Cow::Owned(out)
+}
+
+/// Leading `#` lines are a comment header (some CSV and TSV exports have one). Skip them.
+fn skip_comment_lines(text: &str) -> &str {
+    let mut rest = text;
+    let mut skipped = false;
+    while rest.starts_with('#') {
+        match rest.split_once('\n') {
+            Some((_, tail)) => {
+                rest = tail.trim_start_matches(['\r', '\n']);
+                skipped = true;
+            }
+            None => return text,
+        }
+    }
+    if skipped {
+        rest
+    } else {
+        text
+    }
+}
+
+/// A character that belongs to a table border or rule.
+fn is_border_char(c: char) -> bool {
+    "+-=|: ".contains(c) || ('\u{2500}'..='\u{257F}').contains(&c)
+}
+
+/// A line of only dashes or equals signs and spaces, such as the rule under a header
+/// (`--  -----`). It is not data.
+fn is_rule_line(line: &str) -> bool {
+    let t = line.trim();
+    t.chars().filter(|c| *c == '-' || *c == '=').count() >= 2
+        && t.chars().all(|c| c == '-' || c == '=' || c == ' ')
+}
+
 /// Characters that separate cells.
 const CELL_SEPS: [char; 6] = ['|', '│', '┃', '║', '┆', '┊'];
 
@@ -78,8 +153,9 @@ const CELL_SEPS: [char; 6] = ['|', '│', '┃', '║', '┆', '┊'];
 fn is_border(line: &str) -> bool {
     let t = line.trim();
     t.chars().count() >= 3
-        && t.chars().all(|c| BORDER_CHARS.contains(c))
-        && t.chars().any(|c| "-─━═=".contains(c))
+        && t.chars().all(is_border_char)
+        && t.chars()
+            .any(|c| "-─━═=".contains(c) || ('\u{2500}'..='\u{257F}').contains(&c))
 }
 
 fn split_bordered(line: &str) -> Vec<String> {
@@ -380,21 +456,36 @@ fn split_cols(line: &str) -> Vec<String> {
     out
 }
 
-/// True when the first cell of every row is a whole number counting up by one from 0 or 1.
-fn first_column_is_an_index(rows: &[Vec<String>]) -> bool {
-    let nums: Vec<i64> = rows
-        .iter()
-        .filter_map(|r| r.first()?.parse().ok())
-        .collect();
-    nums.len() == rows.len()
-        && nums.len() >= 2
-        && (nums[0] == 0 || nums[0] == 1)
-        && nums.windows(2).all(|w| w[1] == w[0] + 1)
+/// True when some column holds, in every row, one token glued by a single space to a date
+/// (`100000 2026-10-01 00:00:00`). That is how pandas can print a datetime column, and the cells
+/// of the two columns can no longer be told apart, so the labels would be wrong.
+fn glued_datetime_column(rows: &[Vec<String>]) -> bool {
+    let after_space_is_date = |cell: &str| {
+        let Some((first, rest)) = cell.split_once(' ') else {
+            return false;
+        };
+        let b = rest.as_bytes();
+        !first.is_empty()
+            && b.len() >= 10
+            && b[..4].iter().all(u8::is_ascii_digit)
+            && b[4] == b'-'
+            && b[5..7].iter().all(u8::is_ascii_digit)
+            && b[7] == b'-'
+            && b[8..10].iter().all(u8::is_ascii_digit)
+    };
+    let cols = rows.first().map_or(0, Vec::len);
+    (0..cols).any(|c| {
+        rows.iter()
+            .all(|r| r.get(c).is_some_and(|x| after_space_is_date(x)))
+    })
 }
 
 /// Whitespace-aligned tables such as `DataFrame.to_string()`.
 fn parse_aligned(text: &str) -> Option<Table> {
-    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    let lines: Vec<&str> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !is_rule_line(l))
+        .collect();
     if lines.len() < MIN_ROWS + 1 {
         return None;
     }
@@ -408,9 +499,9 @@ fn parse_aligned(text: &str) -> Option<Table> {
     let mut headers = split[0].clone();
     if h + 1 == m {
         headers.insert(0, "idx".to_string());
-    } else if h != m || first_column_is_an_index(&split[1..]) {
-        // Same count as the header, but the first column counts 0,1,2...: that is a pandas
-        // index plus two columns that a single space glued together. Labels would be wrong.
+    } else if h != m || glued_datetime_column(&split[1..]) {
+        // Same count as the header, but a column is glued to a datetime: with a pandas index
+        // that adds up to the right count by accident, and the labels would be wrong.
         return None;
     }
     if !valid_header(&headers) {

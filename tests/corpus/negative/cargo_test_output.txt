@@ -1,0 +1,33 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/lib.rs (target/debug/deps/dtk-a2045b8140e1bc54)
+
+running 26 tests
+test table::tests::detects_aligned_table_with_index ... ok
+test table::tests::detects_csv ... ok
+test lean::tests::few_valued_numbers_show_counts ... ok
+test lean::tests::small_table_is_lossless_csv ... ok
+test table::tests::detects_json_array ... ok
+test lean::tests::leading_zero_ids_stay_strings ... ok
+test table::tests::keeps_footer_lines_as_notes ... ok
+test table::tests::detects_jsonl ... ok
+test table::tests::detects_tsv ... ok
+test table::tests::detects_polars_tables ... ok
+test table::tests::pipes_without_a_rule_line_are_not_a_table ... ok
+test table::tests::real_pandas_output_with_a_datetime_column_is_refused_not_mislabelled ... ok
+test table::tests::real_pandas_output_without_datetimes_is_labelled_correctly ... ok
+test table::tests::ragged_bordered_text_is_not_a_table ... ok
+test table::tests::rejects_short_input ... ok
+test table::tests::rejects_cargo_output ... ok
+test lean::tests::numbers_get_percentiles ... ok
+test table::tests::rejects_numeric_header ... ok
+test table::tests::rejects_single_json_object ... ok
+test table::tests::rejects_prose ... ok
+test table::tests::detects_psql_mysql_sqlite_and_markdown_tables ... ok
+test table::tests::rejects_source_code ... ok
+test lean::tests::big_table_gets_summary_with_types_and_drill ... ok
+test lean::tests::warn_and_error_rows_are_kept ... ok
+test lean::tests::wide_table_shrinks_to_budget ... ok
+test lean::tests::summary_is_much_smaller_than_input ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
