@@ -18,6 +18,8 @@ How the files were made (tool and version on 2026-11-02):
 - `rich_table*.txt`: rich, plain and with ANSI colour codes
 - `json_array_ansi.json`: `jq -C .` (ANSI colours)
 - `git_log_tsv.txt`: `git log --pretty=format:'%h%x09%an%x09%ad%x09%s'` on a real repository
+- `ps_aux.txt`, `ps_ef.txt`, `df_h.txt`: synthetic, in the layout of macOS `ps aux`, `ps -ef` and `df -h` (a free-text
+  last column; the real outputs on the author's machine were checked by hand and are not committed)
 - `csv_comment_header.csv`, `csv_bom.csv`: a `#` comment header, and a byte-order mark
 - `negative/`: this repository's README, source and changelog; real `cargo test`, `git diff`,
   `git log`, `env`, `brew list`, `ls -l`; a Python traceback; a shell script; YAML; prose

@@ -466,7 +466,7 @@ fn add_extremes(t: &Table, info: &mut [ColInfo]) {
             let (first, count) = at(target);
             first.map(|r| {
                 if count > 1 {
-                    format!("{} (+{} more)", name(r), count - 1)
+                    format!("{} (+{} tied)", name(r), count - 1)
                 } else {
                     name(r)
                 }

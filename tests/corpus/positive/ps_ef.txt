@@ -1,0 +1,61 @@
+  UID   PID  PPID   C STIME   TTY           TIME CMD
+    0     1     1   0 19Oct26 ??         88:34.42 /usr/libexec/launchd
+  501    91    13   1  7:50AM ??         71:30.19 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --lang=en-US
+    0   181    25   2  1:54PM ??        264:57.92 /usr/bin/ssh-agent -l
+   89   271    38   0 Sun08PM ??        265:53.86 python3 -m http.server 8000
+    0   361    51   1  5:59PM ??        225:56.63 /Applications/Safari.app/Contents/MacOS/Safari
+  501   451    64   2 19Oct26 ??        296:44.11 -zsh
+    0   541    77   0  7:50AM ??        113:28.67 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+   89   631    90   1  1:54PM ??        286:18.93 /usr/sbin/cfprefsd agent
+    0   721   103   2 Sun08PM ??        287:40.21 /usr/sbin/distnoted agent
+  501   811   115   0  5:59PM ??        267:32.71 node /usr/local/lib/node_modules/typescript/lib/tsserver.js --useInferredProjectPerProjectRoot
+    0   901   128   1 19Oct26 ??        131:19.85 /usr/libexec/launchd
+   89   991   141   2  7:50AM ??        195:54.78 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --lang=en-US
+    0  1081   154   0  1:54PM ??        106:19.18 /usr/bin/ssh-agent -l
+  501  1171   167   1 Sun08PM ??        278:33.34 python3 -m http.server 8000
+    0  1261   180   2  5:59PM ??        293:31.25 /Applications/Safari.app/Contents/MacOS/Safari
+   89  1351   193   0 19Oct26 ??        210:34.14 -zsh
+    0  1441   205   1  7:50AM ??        257:00.77 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+  501  1531   218   2  1:54PM ??        193:01.68 /usr/sbin/cfprefsd agent
+    0  1621   231   0 Sun08PM ??         22:33.51 /usr/sbin/distnoted agent
+   89  1711   244   1  5:59PM ??        278:51.72 node /usr/local/lib/node_modules/typescript/lib/tsserver.js --useInferredProjectPerProjectRoot
+    0  1801   257   2 19Oct26 ??         62:31.11 /usr/libexec/launchd
+  501  1891   270   0  7:50AM ??         85:04.68 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --lang=en-US
+    0  1981   283   1  1:54PM ??        234:26.51 /usr/bin/ssh-agent -l
+   89  2071   295   2 Sun08PM ??        137:15.60 python3 -m http.server 8000
+    0  2161   308   0  5:59PM ??        252:08.43 /Applications/Safari.app/Contents/MacOS/Safari
+  501  2251   321   1 19Oct26 ??        222:57.60 -zsh
+    0  2341   334   2  7:50AM ??        268:20.13 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+   89  2431   347   0  1:54PM ??         98:26.79 /usr/sbin/cfprefsd agent
+    0  2521   360   1 Sun08PM ??         15:59.33 /usr/sbin/distnoted agent
+  501  2611   373   2  5:59PM ??         66:44.99 node /usr/local/lib/node_modules/typescript/lib/tsserver.js --useInferredProjectPerProjectRoot
+    0  2701   385   0 19Oct26 ??         11:02.24 /usr/libexec/launchd
+   89  2791   398   1  7:50AM ??         79:14.01 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --lang=en-US
+    0  2881   411   2  1:54PM ??        145:20.92 /usr/bin/ssh-agent -l
+  501  2971   424   0 Sun08PM ??        181:15.79 python3 -m http.server 8000
+    0  3061   437   1  5:59PM ??        255:06.63 /Applications/Safari.app/Contents/MacOS/Safari
+   89  3151   450   2 19Oct26 ??        298:07.65 -zsh
+    0  3241   463   0  7:50AM ??        128:45.25 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+  501  3331   475   1  1:54PM ??        271:56.55 /usr/sbin/cfprefsd agent
+    0  3421   488   2 Sun08PM ??         11:24.81 /usr/sbin/distnoted agent
+   89  3511   501   0  5:59PM ??        211:52.67 node /usr/local/lib/node_modules/typescript/lib/tsserver.js --useInferredProjectPerProjectRoot
+    0  3601   514   1 19Oct26 ??         81:34.26 /usr/libexec/launchd
+  501  3691   527   2  7:50AM ??        273:40.27 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --lang=en-US
+    0  3781   540   0  1:54PM ??        271:13.69 /usr/bin/ssh-agent -l
+   89  3871   553   1 Sun08PM ??         69:14.94 python3 -m http.server 8000
+    0  3961   565   2  5:59PM ??        177:57.23 /Applications/Safari.app/Contents/MacOS/Safari
+  501  4051   578   0 19Oct26 ??        161:38.40 -zsh
+    0  4141   591   1  7:50AM ??         99:13.99 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+   89  4231   604   2  1:54PM ??         99:56.12 /usr/sbin/cfprefsd agent
+    0  4321   617   0 Sun08PM ??         68:56.30 /usr/sbin/distnoted agent
+  501  4411   630   1  5:59PM ??         67:46.11 node /usr/local/lib/node_modules/typescript/lib/tsserver.js --useInferredProjectPerProjectRoot
+    0  4501   643   2 19Oct26 ??        132:24.12 /usr/libexec/launchd
+   89  4591   655   0  7:50AM ??        222:53.53 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --lang=en-US
+    0  4681   668   1  1:54PM ??        278:50.90 /usr/bin/ssh-agent -l
+  501  4771   681   2 Sun08PM ??         64:12.51 python3 -m http.server 8000
+    0  4861   694   0  5:59PM ??          9:06.25 /Applications/Safari.app/Contents/MacOS/Safari
+   89  4951   707   1 19Oct26 ??        291:43.45 -zsh
+    0  5041   720   2  7:50AM ??        184:07.90 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+  501  5131   733   0  1:54PM ??        258:40.97 /usr/sbin/cfprefsd agent
+    0  5221   745   1 Sun08PM ??        175:32.87 /usr/sbin/distnoted agent
+   89  5311   758   2  5:59PM ??         96:51.09 node /usr/local/lib/node_modules/typescript/lib/tsserver.js --useInferredProjectPerProjectRoot

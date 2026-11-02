@@ -1,0 +1,61 @@
+USER               PID  %CPU %MEM      VSZ    RSS   TT  STAT STARTED      TIME COMMAND
+root                 1   1.4  1.1 1399975904  246890   ??  S     19Oct26 260:54.75 /usr/libexec/launchd
+dev                 99   0.6  1.6 1421693763  340239   ??  Ss     7:50AM  95:06.57 /usr/sbin/cfprefsd agent
+_windowserver      197   0.9  0.2 1889147795  342635   ??  R      1:54PM  21:38.50 /Applications/Safari.app/Contents/MacOS/Safari
+_mdnsresponder     295   2.9  1.3 1721910847  350824   ??  Ss+   Sun08PM  80:39.01 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --lang=en-US
+root               393   2.5  0.1  476563762  109723   ??  S      5:59PM 123:38.03 /usr/sbin/distnoted agent
+dev                491   2.3  0.7 1669075729  112404   ??  Ss    19Oct26 265:14.81 -zsh
+_windowserver      589   0.9  0.0  582511983  249772   ??  R      7:50AM 142:26.70 /usr/bin/ssh-agent -l
+_mdnsresponder     687   3.0  1.7  945449555  175296   ??  Ss+    1:54PM 117:32.36 node /usr/local/lib/node_modules/typescript/lib/tsserver.js --useInferredProjectPerProjectRoot
+root               785   0.1  1.1  631771287  219924   ??  S     Sun08PM  55:54.37 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+dev                883   1.2  1.9 1870806135   10285   ??  Ss     5:59PM 109:13.06 python3 -m http.server 8000
+_windowserver      981   1.4  2.0 1253462373  230091   ??  R     19Oct26  37:36.80 /usr/libexec/launchd
+_mdnsresponder    1079   0.6  1.3 1123471862   55688   ??  Ss+    7:50AM 159:21.01 /usr/sbin/cfprefsd agent
+root              1177   2.9  1.5  653385208   80567   ??  S      1:54PM 126:45.12 /Applications/Safari.app/Contents/MacOS/Safari
+dev               1275   0.0  0.9 1445445059  103154   ??  Ss    Sun08PM 286:12.57 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --lang=en-US
+_windowserver     1373   1.5  2.0  681249669  229797   ??  R      5:59PM 196:07.50 /usr/sbin/distnoted agent
+_mdnsresponder    1471   1.3  0.4  979380292  320766   ??  Ss+   19Oct26 155:56.02 -zsh
+root              1569   0.6  0.8 1692824871  346506   ??  S      7:50AM 295:06.05 /usr/bin/ssh-agent -l
+dev               1667  59.4  0.4  954646832   15020   ??  Ss     1:54PM 168:53.37 node /usr/local/lib/node_modules/typescript/lib/tsserver.js --useInferredProjectPerProjectRoot
+_windowserver     1765   1.2  0.1  848251368  315520   ??  R     Sun08PM 124:00.76 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+_mdnsresponder    1863   1.1  1.2  673205203  317899   ??  Ss+    5:59PM 247:53.73 python3 -m http.server 8000
+root              1961   0.4  0.8 1746998122   90811   ??  S     19Oct26 159:58.29 /usr/libexec/launchd
+dev               2059   2.5  0.5  807593828   93086   ??  Ss     7:50AM 283:12.87 /usr/sbin/cfprefsd agent
+_windowserver     2157   2.9  1.8 1696079860   51155   ??  R      1:54PM 215:03.13 /Applications/Safari.app/Contents/MacOS/Safari
+_mdnsresponder    2255   0.3  1.0  947991985  134994   ??  Ss+   Sun08PM 200:16.53 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --lang=en-US
+root              2353   2.5  1.2 1030147615  282668   ??  S      5:59PM  89:59.92 /usr/sbin/distnoted agent
+dev               2451   2.9  0.3 1429288705  303269   ??  Ss    19Oct26  37:17.27 -zsh
+_windowserver     2549   2.8  0.4  435594106   46256   ??  R      7:50AM 137:26.57 /usr/bin/ssh-agent -l
+_mdnsresponder    2647   0.7  0.1 1005508528  203349   ??  Ss+    1:54PM 271:36.16 node /usr/local/lib/node_modules/typescript/lib/tsserver.js --useInferredProjectPerProjectRoot
+root              2745   0.3  0.3 1367110114  183520   ??  S     Sun08PM 267:37.17 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+dev               2843   1.8  1.8 1419609983  197418   ??  Ss     5:59PM 159:02.02 python3 -m http.server 8000
+_windowserver     2941   1.8  0.1  544462450  392991   ??  R     19Oct26 159:20.17 /usr/libexec/launchd
+_mdnsresponder    3039   3.0  0.2 1572730854  202820   ??  Ss+    7:50AM  22:57.94 /usr/sbin/cfprefsd agent
+root              3137   2.2  0.3 1133610632  194462   ??  S      1:54PM  43:43.60 /Applications/Safari.app/Contents/MacOS/Safari
+dev               3235   2.7  1.7 1295829541   25870   ??  Ss    Sun08PM 255:36.01 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --lang=en-US
+_windowserver     3333   1.9  0.8 1651293401   16525   ??  R      5:59PM  36:05.11 /usr/sbin/distnoted agent
+_mdnsresponder    3431   1.9  2.0 1293882090  391790   ??  Ss+   19Oct26 169:24.94 -zsh
+root              3529   2.1  0.9 1393473664  293771   ??  S      7:50AM  42:33.96 /usr/bin/ssh-agent -l
+dev               3627   1.5  0.6  588403557  262159   ??  Ss     1:54PM  11:14.89 node /usr/local/lib/node_modules/typescript/lib/tsserver.js --useInferredProjectPerProjectRoot
+_windowserver     3725   0.3  1.6 1817621781  264959   ??  R     Sun08PM 130:57.01 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+_mdnsresponder    3823   1.1  0.3 1713740488  116207   ??  Ss+    5:59PM 265:10.96 python3 -m http.server 8000
+root              3921   2.7  1.3 1349042777  271258   ??  S     19Oct26 123:20.51 /usr/libexec/launchd
+dev               4019   2.0  0.4 1325340562  405643   ??  Ss     7:50AM 102:56.27 /usr/sbin/cfprefsd agent
+_windowserver     4117   1.2  1.2 1079650332  120044   ??  R      1:54PM  69:08.63 /Applications/Safari.app/Contents/MacOS/Safari
+_mdnsresponder    4215   1.1  1.8  487128643  382882   ??  Ss+   Sun08PM  32:17.21 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --lang=en-US
+root              4313   0.3  0.9  859734096  227047   ??  S      5:59PM 195:40.66 /usr/sbin/distnoted agent
+dev               4411   1.5  0.6 1741696988  247228   ??  Ss    19Oct26 164:04.04 -zsh
+_windowserver     4509   0.8  1.2 1856540899  381526   ??  R      7:50AM 143:36.45 /usr/bin/ssh-agent -l
+_mdnsresponder    4607   0.9  1.6  441047037  346061   ??  Ss+    1:54PM  69:25.58 node /usr/local/lib/node_modules/typescript/lib/tsserver.js --useInferredProjectPerProjectRoot
+root              4705   0.6  1.5  972116488  134470   ??  S     Sun08PM  72:50.06 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+dev               4803   3.0  0.2  634119102  340282   ??  Ss     5:59PM 274:41.81 python3 -m http.server 8000
+_windowserver     4901   2.4  1.9 1869936977  113835   ??  R     19Oct26 102:52.60 /usr/libexec/launchd
+_mdnsresponder    4999   0.8  1.4 1414040705  290414   ??  Ss+    7:50AM  18:11.28 /usr/sbin/cfprefsd agent
+root              5097   0.8  0.7 1897465184  282851   ??  S      1:54PM 256:39.96 /Applications/Safari.app/Contents/MacOS/Safari
+dev               5195   0.5  1.7  880870580   55722   ??  Ss    Sun08PM 210:59.92 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --lang=en-US
+_windowserver     5293   1.2  0.9  822789563  337967   ??  R      5:59PM   3:24.70 /usr/sbin/distnoted agent
+_mdnsresponder    5391   1.7  1.8 1136796449  253116   ??  Ss+   19Oct26 167:41.26 -zsh
+root              5489   0.3  1.7 1777860514  386261   ??  S      7:50AM  63:13.31 /usr/bin/ssh-agent -l
+dev               5587   2.7  2.0 1065414143  291519   ??  Ss     1:54PM 164:16.91 node /usr/local/lib/node_modules/typescript/lib/tsserver.js --useInferredProjectPerProjectRoot
+_windowserver     5685   2.6  0.7  577752781   29469   ??  R     Sun08PM 225:21.70 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+_mdnsresponder    5783   1.3  0.6  461010791  124449   ??  Ss+    5:59PM  32:27.04 python3 -m http.server 8000

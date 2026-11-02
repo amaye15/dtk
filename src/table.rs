@@ -30,6 +30,8 @@ pub enum Format {
     AccessLog,
     /// JSON lines with a prefix such as `web-1  | ` in front of each object.
     PrefixedJsonl,
+    /// Whitespace table with a free-text last column: `ps aux`, `df -h`, `netstat`.
+    TailText,
 }
 
 impl Format {
@@ -39,7 +41,7 @@ impl Format {
             Format::JsonArray => "json-array",
             Format::Csv => "csv",
             Format::Tsv => "tsv",
-            Format::Aligned | Format::Bordered => "table",
+            Format::Aligned | Format::Bordered | Format::TailText => "table",
             Format::JsonObject => "json-object",
             Format::Logfmt => "logfmt",
             Format::AccessLog => "access-log",
@@ -83,6 +85,7 @@ pub fn detect(text: &str) -> Option<Table> {
         .or_else(|| parse_bordered(text))
         .or_else(|| parse_delimited(text))
         .or_else(|| parse_aligned(text))
+        .or_else(|| crate::textcols::parse_tail_text(text))
 }
 
 /// The objects of a JSON array, or the entries of a JSON object whose values are objects.
@@ -263,7 +266,7 @@ fn is_border_char(c: char) -> bool {
 
 /// A line of only dashes or equals signs and spaces, such as the rule under a header
 /// (`--  -----`). It is not data.
-fn is_rule_line(line: &str) -> bool {
+pub(crate) fn is_rule_line(line: &str) -> bool {
     let t = line.trim();
     t.chars().filter(|c| *c == '-' || *c == '=').count() >= 2
         && t.chars().all(|c| c == '-' || c == '=' || c == ' ')
@@ -453,7 +456,7 @@ fn parse_json_array(text: &str) -> Option<Table> {
     from_objects(Format::JsonArray, objects.into_iter(), Vec::new())
 }
 
-fn valid_header(h: &[String]) -> bool {
+pub(crate) fn valid_header(h: &[String]) -> bool {
     if h.len() < 2 || h.len() > MAX_COLS {
         return false;
     }
@@ -475,7 +478,7 @@ fn valid_header(h: &[String]) -> bool {
 }
 
 /// Most common value of `counts` with how many times it occurs.
-fn mode(counts: &[usize]) -> Option<(usize, usize)> {
+pub(crate) fn mode(counts: &[usize]) -> Option<(usize, usize)> {
     let mut freq: HashMap<usize, usize> = HashMap::new();
     for c in counts {
         *freq.entry(*c).or_default() += 1;

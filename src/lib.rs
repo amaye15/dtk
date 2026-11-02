@@ -11,6 +11,7 @@
 pub mod lean;
 mod logs;
 pub mod table;
+mod textcols;
 
 /// Finds a table in `text` and renders its lean view. `None` means `text` is not a table.
 pub fn summarize(
