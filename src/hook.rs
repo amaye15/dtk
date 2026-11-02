@@ -382,12 +382,14 @@ fn handle(input: &str) -> Option<String> {
 
 /// Commands that ask for specific rows must get them, not a summary of them.
 pub fn wants_raw(cmd: &str) -> bool {
-    const MARKERS: [&str; 6] = [
+    // `--head-lines` and `--tail-lines` are how rtk rewrites `head` and `tail`.
+    const MARKERS: [&str; 7] = [
         "DTK_RAW",
         "qsv slice",
         "qsv sample",
         "sed -n",
         "--max-lines",
+        "--head-lines",
         "--tail-lines",
     ];
     if MARKERS.iter().any(|m| cmd.contains(m)) {
@@ -446,13 +448,23 @@ pub fn evaluate(inp: &Input, cfg: &Config, write: bool) -> Verdict {
         v.reason = "DTK_DISABLED=1 is set".into();
         return v;
     }
-    if inp.tool == "Bash" && wants_raw(inp.subject) {
+    // rtk's PreToolUse hook may have rewritten the command (`head -n 5 f` is now
+    // `rtk read f --head-lines 5`). The user's intent and config refer to what they typed.
+    let typed = crate::rtk::plain_command(inp.subject);
+    if inp.tool == "Bash" && (wants_raw(inp.subject) || wants_raw(&typed)) {
         v.reason =
             "the command asks for exact rows (DTK_RAW, head, tail, sed -n, qsv slice, ...)".into();
         return v;
     }
-    if cfg.is_excluded(inp.subject) {
+    if cfg.is_excluded(inp.subject) || cfg.is_excluded(&typed) {
         v.reason = "excluded by exclude_commands in config.toml".into();
+        return v;
+    }
+    if let Some(marker) = crate::rtk::truncation_marker(inp.text) {
+        let marker: String = marker.chars().take(60).collect();
+        v.reason = format!(
+            "rtk already cut this output (\"{marker}\"); a summary would claim to cover rows that are missing, and would hide rtk's pointer to the rest"
+        );
         return v;
     }
     let Some(table) = table::detect(inp.text) else {

@@ -4,6 +4,7 @@ mod doctor;
 mod explain;
 mod hook;
 mod init;
+mod rtk;
 
 use std::process::ExitCode;
 
