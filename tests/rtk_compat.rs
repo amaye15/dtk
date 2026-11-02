@@ -180,3 +180,73 @@ fn output_that_rtk_cut_is_left_alone() {
         "dtk summarized a document that rtk had cut:\n{out}"
     );
 }
+
+/// rtk's post-command pipeline, which cuts a long output to a few hundred lines.
+fn enable_posthook(home: &Path) {
+    let text = "schema_version = 1\n\n[pipeline]\nextends = \"rtk:posthook\"\n";
+    for dir in [
+        home.join("Library/Application Support/rtk"),
+        home.join(".config/rtk"),
+    ] {
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("pipeline.toml"), text).unwrap();
+    }
+}
+
+/// Runs `dtk hook claude --then rtk hook claude` on a Bash result and returns what it printed.
+fn chain(home: &Path, command: &str, stdout: &str) -> String {
+    use std::io::Write;
+    let event = serde_json::json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+        "tool_response": {"stdout": stdout, "stderr": "", "interrupted": false, "isImage": false},
+    })
+    .to_string();
+    let mut c = Command::new(env!("CARGO_BIN_EXE_dtk"));
+    c.args(["hook", "claude", "--then", "rtk", "hook", "claude"]);
+    with_home(&mut c, home);
+    let mut child = c
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(event.as_bytes())
+        .unwrap();
+    String::from_utf8_lossy(&child.wait_with_output().unwrap().stdout).to_string()
+}
+
+#[test]
+fn rtks_pipeline_never_touches_the_output_of_a_dtk_command() {
+    need_rtk!();
+    let home = workdir("pipeline");
+    enable_posthook(&home);
+    // 850 plain lines: rtk's pipeline cuts these, which proves that the pipeline is on.
+    let long: String = (0..850)
+        .map(|i| format!("line {i} of a long plain text output\n"))
+        .collect();
+    let cut = chain(&home, "mytool --dump", &long);
+    assert!(
+        cut.contains("updatedToolOutput"),
+        "the pipeline is not on, so the test proves nothing:\n{cut}"
+    );
+    // The same output from dtk's own commands is left exactly as it was.
+    for cmd in [
+        "dtk where abcdef012345 region = us 900",
+        "/usr/local/bin/dtk rows abcdef012345 0 900",
+        "cd d && dtk group abcdef012345 region amount",
+        "rtk dtk top abcdef012345 amount 900",
+    ] {
+        let out = chain(&home, cmd, &long);
+        assert!(
+            out.trim().is_empty(),
+            "`{cmd}` was changed:\n{}",
+            &out[..out.len().min(300)]
+        );
+    }
+}
