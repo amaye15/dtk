@@ -171,12 +171,31 @@ pub fn run() -> i32 {
         Some(_) => {}
         None => line("warn", "HOME is not set"),
     }
-    for (name, why) in [("qsv", "CSV queries"), ("jaq", "JSON queries")] {
+    // dtk answers its own drill-down commands (`dtk top`, `dtk where`, ...). qsv and jaq are
+    // extras for queries dtk does not do.
+    for (name, why) in [
+        ("qsv", "SQL on the data files"),
+        ("jaq", "jq programs on JSON"),
+    ] {
         if on_path(name) {
-            line("ok", &format!("{name} found ({why} in summaries)"));
+            line("ok", &format!("{name} found ({why})"));
         } else {
-            line("warn", &format!("{name} not found. Summaries point at it for {why}. Install: brew install {name}"));
+            line(
+                "--",
+                &format!("{name} not found (optional: {why}). Install: brew install {name}"),
+            );
         }
+    }
+    if crate::hook::dtk_on_path() {
+        line(
+            "ok",
+            "dtk is on the PATH: summaries tell the model to run `dtk top`, `dtk where`, ...",
+        );
+    } else {
+        line(
+            "--",
+            "dtk is not on the PATH of this shell: summaries use its full path in the commands they suggest",
+        );
     }
     let (cfg, error) = crate::config::Config::load();
     let cfg_path = crate::config::path();

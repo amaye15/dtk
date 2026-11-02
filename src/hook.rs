@@ -162,6 +162,21 @@ pub fn is_live() -> bool {
     }
 }
 
+/// Is `dtk` on the PATH, and is it this program? Summaries tell the model to run `dtk ...`.
+pub fn dtk_on_path() -> bool {
+    let Ok(me) = std::env::current_exe().and_then(|p| p.canonicalize()) else {
+        return false;
+    };
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path).any(|dir| {
+        ["dtk", "dtk.exe"]
+            .iter()
+            .any(|n| dir.join(n).canonicalize().is_ok_and(|c| c == me))
+    })
+}
+
 /// Only read files that Claude Code itself saved.
 fn under_claude_dir(p: &Path) -> bool {
     let Some(h) = home() else { return false };
@@ -382,6 +397,18 @@ fn handle(input: &str) -> Option<String> {
 }
 
 /// Commands that ask for specific rows must get them, not a summary of them.
+/// `dtk top FILE amount`, `/path/to/dtk where ...`: the model reading more of the data.
+fn runs_dtk_query(cmd: &str) -> bool {
+    let words: Vec<&str> = cmd
+        .split(|c: char| c.is_whitespace() || matches!(c, '|' | ';' | '&' | '(' | '\'' | '"'))
+        .filter(|w| !w.is_empty())
+        .collect();
+    words.windows(2).any(|w| {
+        let base = w[0].rsplit(['/', '\\']).next().unwrap_or("");
+        (base == "dtk" || base == "dtk.exe") && crate::query::COMMANDS.contains(&w[1])
+    })
+}
+
 pub fn wants_raw(cmd: &str) -> bool {
     // `--head-lines` and `--tail-lines` are how rtk rewrites `head` and `tail`.
     const MARKERS: [&str; 7] = [
@@ -471,7 +498,9 @@ pub fn evaluate(inp: &Input, cfg: &Config, write: bool) -> Verdict {
         return v;
     }
     // The model is drilling into a file that dtk saved: it asked for exactly these rows or values.
-    if inp.tool == "Bash" && inp.subject.replace('\\', "/").contains("/dtk/store/") {
+    if inp.tool == "Bash"
+        && (inp.subject.replace('\\', "/").contains("/dtk/store/") || runs_dtk_query(&typed))
+    {
         v.reason = "the command reads a file that dtk saved (a drill-down): shown as is".into();
         return v;
     }

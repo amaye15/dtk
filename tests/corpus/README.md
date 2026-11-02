@@ -20,6 +20,8 @@ How the files were made (tool and version on 2026-11-02):
 - `git_log_tsv.txt`: `git log --pretty=format:'%h%x09%an%x09%ad%x09%s'` on a real repository
 - `gha_job_failed.log`, `gha_job_long.log`: real GitHub Actions job logs of this repository
   (`gh api repos/amaye15/dtk/actions/jobs/<id>/logs`), one with a failed step
+- `messy_orders.csv`: synthetic orders with what real data has: `N/A`, `-` and `?` in a number column, `$1,234.56`, `45.3%` and `1,234` formatted numbers, `MM/DD/YYYY` dates, two outliers and three repeated rows
+- `wide_features.csv`: 60 numeric feature columns, as in a machine-learning data set
 - `ps_aux.txt`, `ps_ef.txt`, `df_h.txt`: synthetic, in the layout of macOS `ps aux`, `ps -ef` and `df -h` (a free-text
   last column; the real outputs on the author's machine were checked by hand and are not committed)
 - `csv_comment_header.csv`, `csv_bom.csv`: a `#` comment header, and a byte-order mark

@@ -185,4 +185,4 @@ cargo build --release --locked      # target/release/dtk
 cargo test --locked                 # the full test suite
 ```
 
-For the drill-down commands in the summaries, also install `qsv` and `jaq` (for example `brew install qsv jaq`).
+The drill-down commands that summaries suggest (`dtk top`, `dtk where`, ...) are part of dtk. `qsv` and `jaq` are optional extras (`brew install qsv jaq`).

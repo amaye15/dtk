@@ -46,6 +46,10 @@ pub struct ColStats {
     /// For text with many distinct values: the shapes the values share (digits and ids replaced
     /// by `#` and `<hex>`), with how many rows have each shape. Most common first (at most 8).
     pub templates: Vec<(String, usize)>,
+    /// Cells such as `N/A` or `-` in a column of numbers, dates or flags: how many.
+    pub placeholders: usize,
+    /// How numbers are written, when not plainly: currency, percent, thousands separators.
+    pub written_as: Option<&'static str>,
 }
 
 pub struct ColInfo {
@@ -249,7 +253,121 @@ fn top_pairs(distinct: &HashMap<&str, usize>, limit: usize) -> Vec<(String, usiz
         .collect()
 }
 
+/// How a number is written.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NumFmt {
+    Plain,
+    Thousands,
+    Currency,
+    Percent,
+}
+
+/// Reads a number as it is written in real data: `12.5`, `1,234`, `$1,234.56`, `45.3%`, `(12.5)`
+/// (accounting negative). A value with a leading zero (`007`, a zip code) is not a number.
+/// The thousands separator must be exact (`1,234`, not `1,23` or `12,34`), so that a European
+/// decimal comma is not read as one.
+pub fn parse_number(s: &str) -> Option<(f64, NumFmt)> {
+    let t = s.trim();
+    if t.is_empty() || has_leading_zero(t) {
+        return None;
+    }
+    if let Ok(f) = t.parse::<f64>() {
+        return f.is_finite().then_some((f, NumFmt::Plain));
+    }
+    let (paren, t) = match t.strip_prefix('(').and_then(|r| r.strip_suffix(')')) {
+        Some(r) => (true, r),
+        None => (false, t),
+    };
+    let (neg, t) = match t.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, t.strip_prefix('+').unwrap_or(t)),
+    };
+    let (cur, t) = match t.chars().next() {
+        Some(c) if "$€£¥".contains(c) => (true, &t[c.len_utf8()..]),
+        _ => (false, t),
+    };
+    let (neg2, t) = match t.strip_prefix('-') {
+        Some(r) if cur => (true, r),
+        _ => (false, t),
+    };
+    let (pct, t) = match t.strip_suffix('%') {
+        Some(r) => (true, r),
+        None => (false, t),
+    };
+    if cur && pct {
+        return None;
+    }
+    let (int_part, frac) = match t.split_once('.') {
+        Some((a, b)) => (a, Some(b)),
+        None => (t, None),
+    };
+    if int_part.is_empty()
+        || frac.is_some_and(|f| f.is_empty() || !f.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return None;
+    }
+    let thousands = int_part.contains(',');
+    if thousands {
+        let mut groups = int_part.split(',');
+        let first = groups.next()?;
+        if !(1..=3).contains(&first.len()) || !first.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        if !groups.all(|g| g.len() == 3 && g.bytes().all(|b| b.is_ascii_digit())) {
+            return None;
+        }
+    } else if !int_part.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    if has_leading_zero(&int_part.replace(',', "")) {
+        return None;
+    }
+    let digits = match frac {
+        Some(f) => format!("{}.{f}", int_part.replace(',', "")),
+        None => int_part.replace(',', ""),
+    };
+    let mut f: f64 = digits.parse().ok()?;
+    if neg ^ neg2 ^ paren {
+        f = -f;
+    }
+    let fmt = if cur {
+        NumFmt::Currency
+    } else if pct {
+        NumFmt::Percent
+    } else if thousands {
+        NumFmt::Thousands
+    } else {
+        // Only a sign or parentheses made it differ from a plain number.
+        NumFmt::Plain
+    };
+    Some((f, fmt))
+}
+
+/// Spellings that mean "no value" in a column that is otherwise numbers, times or flags.
+const PLACEHOLDERS: [&str; 13] = [
+    "n/a", "na", "nan", "null", "none", "nil", "-", "--", "?", "#n/a", "<na>", "(null)", "missing",
+];
+
+pub fn is_placeholder(v: &str) -> bool {
+    let t = v.trim();
+    !t.is_empty() && PLACEHOLDERS.iter().any(|p| t.eq_ignore_ascii_case(p))
+}
+
+/// A column of numbers with `N/A` in some cells is a column of numbers. Placeholders are counted
+/// and set aside when the rest of the column is numbers, times or flags, and more than half of
+/// the cells hold real values. Otherwise they are ordinary values.
 fn analyze_col<'a>(vals: impl Iterator<Item = &'a str> + Clone) -> ColInfo {
+    if vals.clone().any(is_placeholder) {
+        let c = analyze_col_impl(vals.clone(), true);
+        let typed = matches!(c.kind, Kind::Int | Kind::Float | Kind::Bool | Kind::Time);
+        if typed && c.stats.placeholders < c.stats.nonempty {
+            return c;
+        }
+    }
+    analyze_col_impl(vals, false)
+}
+
+fn analyze_col_impl<'a>(vals: impl Iterator<Item = &'a str> + Clone, skip: bool) -> ColInfo {
     let second_pass = vals.clone();
     let mut nonempty = 0usize;
     let mut nulls = 0usize;
@@ -260,32 +378,45 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str> + Clone) -> ColInfo {
     let mut distinct: HashMap<&str, usize> = HashMap::new();
     let mut overflow = false;
     let mut nums: Vec<f64> = Vec::new();
+    let mut placeholders: HashMap<&str, usize> = HashMap::new();
+    let mut fmt_seen = [0usize; 4];
     for v in vals {
         if v.is_empty() {
             nulls += 1;
             continue;
         }
-        nonempty += 1;
-        let zero = has_leading_zero(v);
-        if all_int {
-            match v.parse::<i64>() {
-                Ok(i) if !zero => {
-                    imin = imin.min(i);
-                    imax = imax.max(i);
-                }
-                _ => all_int = false,
-            }
+        if skip && is_placeholder(v) {
+            *placeholders.entry(v).or_default() += 1;
+            continue;
         }
+        nonempty += 1;
         if all_float {
-            match v.parse::<f64>() {
-                Ok(f) if f.is_finite() && !zero => {
+            match parse_number(v) {
+                Some((f, fmt)) => {
+                    fmt_seen[fmt as usize] += 1;
                     fmin = fmin.min(f);
                     fmax = fmax.max(f);
                     fsum += f;
                     nums.push(f);
+                    if all_int {
+                        let integral = f.fract() == 0.0 && !v.contains('.');
+                        match (fmt, v.parse::<i64>()) {
+                            (NumFmt::Plain, Ok(i)) => {
+                                imin = imin.min(i);
+                                imax = imax.max(i);
+                            }
+                            (NumFmt::Plain, Err(_)) => all_int = false,
+                            _ if integral => {
+                                imin = imin.min(f as i64);
+                                imax = imax.max(f as i64);
+                            }
+                            _ => all_int = false,
+                        }
+                    }
                 }
-                _ => {
+                None => {
                     all_float = false;
+                    all_int = false;
                     nums = Vec::new();
                 }
             }
@@ -315,6 +446,30 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str> + Clone) -> ColInfo {
             }
         }
     }
+    // A column mixes at most one way of writing numbers, and a percent column is all percents.
+    let non_plain = [NumFmt::Thousands, NumFmt::Currency, NumFmt::Percent]
+        .iter()
+        .filter(|f| fmt_seen[**f as usize] > 0)
+        .count();
+    if non_plain > 1
+        || (fmt_seen[NumFmt::Percent as usize] > 0 && fmt_seen[NumFmt::Plain as usize] > 0)
+    {
+        all_float = false;
+        all_int = false;
+    }
+    let written_as = if all_float && nonempty > 0 {
+        if fmt_seen[NumFmt::Currency as usize] > 0 {
+            Some("currency")
+        } else if fmt_seen[NumFmt::Percent as usize] > 0 {
+            Some("percent")
+        } else if fmt_seen[NumFmt::Thousands as usize] > 0 {
+            Some("thousands separators")
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     let kind = if nonempty == 0 {
         Kind::Empty
     } else if all_int {
@@ -422,8 +577,25 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str> + Clone) -> ColInfo {
             }
         }
     };
+    if let (Some(w), true) = (written_as, matches!(kind, Kind::Int | Kind::Float)) {
+        summary.push_str(&format!(" | written with {w}"));
+    }
     if nulls > 0 {
         summary.push_str(&format!(" | nulls {}", nulls));
+    }
+    let placeholder_total: usize = placeholders.values().sum();
+    if placeholder_total > 0 {
+        let mut forms: Vec<(&&str, &usize)> = placeholders.iter().collect();
+        forms.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+        let shown: Vec<String> = forms
+            .iter()
+            .take(4)
+            .map(|(f, n)| format!("{f} {n}"))
+            .collect();
+        summary.push_str(&format!(
+            " | {placeholder_total} placeholders excluded ({})",
+            shown.join(", ")
+        ));
     }
     let numeric = matches!(kind, Kind::Int | Kind::Float);
     let stats = ColStats {
@@ -436,6 +608,8 @@ fn analyze_col<'a>(vals: impl Iterator<Item = &'a str> + Clone) -> ColInfo {
         p95: pcts.map(|p| p.1),
         top: top_pairs(&distinct, 12),
         templates: templates.into_iter().take(8).collect(),
+        placeholders: placeholder_total,
+        written_as: if numeric { written_as } else { None },
     };
     ColInfo {
         kind,
@@ -451,11 +625,28 @@ pub fn analyze(t: &Table) -> Vec<ColInfo> {
         .map(|c| analyze_col(t.rows.iter().map(|r| r[c].as_str())))
         .collect();
     add_extremes(t, &mut info);
+    // A wide table has dozens of statistics lines. Keep each short: the quantiles can be had
+    // for any column with `dtk stats`.
+    if t.headers.len() > WIDE_COLS {
+        for i in info.iter_mut() {
+            if let (Some(p50), Some(p95)) = (i.stats.p50, i.stats.p95) {
+                i.summary = i.summary.replacen(&pct_text(Some((p50, p95))), "", 1);
+            }
+        }
+    }
     info
 }
 
+/// Above this many columns a table gets statistics for only a dozen of them.
+const VERY_WIDE_COLS: usize = 40;
+
+/// A table with more columns than this is "wide": its statistics lines drop p50 and p95.
+const WIDE_COLS: usize = 24;
+
 /// Most columns that get a "which row?" note. More would cost more than they are worth.
 const EXTREME_COLS: usize = 5;
+/// Most columns that get an outlier note (only columns that have outliers cost anything).
+const OUTLIER_COLS: usize = 5;
 /// An id longer than this is a blob, not a name for a row.
 const ID_MAX_CHARS: usize = 40;
 
@@ -470,17 +661,59 @@ pub fn id_column(t: &Table, info: &[ColInfo]) -> Option<usize> {
     })
 }
 
+/// Does a column name say "identifier"? `id`, `order_id`, `userId`, `uuid`, `index`.
+pub(crate) fn id_like_name(name: &str) -> bool {
+    let n = name.to_lowercase();
+    matches!(
+        n.as_str(),
+        "id" | "uuid" | "guid" | "index" | "idx" | "key" | "pk" | "rowid" | "#" | "no" | "num"
+    ) || n.ends_with("_id")
+        || n.ends_with("-id")
+        || n.ends_with("id") && n.len() > 2 && !n.ends_with("paid") && !n.ends_with("valid")
+}
+
+/// The numbers of a column, in row order, with the row each came from.
+fn numbers_of(t: &Table, c: usize) -> Vec<(usize, f64)> {
+    t.rows
+        .iter()
+        .enumerate()
+        .filter_map(|(r, row)| parse_number(&row[c]).map(|(f, _)| (r, f)))
+        .collect()
+}
+
+/// A column that numbers or names rows, not one that measures them: the largest id is not
+/// news. Its name says so, or it rises (or falls) at every row.
+fn identifier_like(t: &Table, info: &[ColInfo], c: usize, vals: &[(usize, f64)]) -> bool {
+    if id_like_name(&t.headers[c]) && info[c].kind == Kind::Int {
+        return true;
+    }
+    let n = vals.len();
+    n >= 20
+        && info[c].distinct == Some(n)
+        && (vals.windows(2).all(|w| w[0].1 < w[1].1) || vals.windows(2).all(|w| w[0].1 > w[1].1))
+}
+
+/// Adds a note to a column's summary after its statistics and before the ` | ...` flags
+/// (nulls, placeholders, how the numbers are written).
+fn put_note(summary: &mut String, note: &str) {
+    match summary.find(" | ") {
+        Some(i) => summary.insert_str(i, &format!(" | {note}")),
+        None => summary.push_str(&format!(" | {note}")),
+    }
+}
+
 /// "Which order was the slowest?" is the first question about a table of numbers, and the min
-/// and the max alone do not answer it. Add the row that holds each, named by its id.
+/// and the max alone do not answer it. Add the row that holds each, named by its id. Add the
+/// outliers too: a mean and a p95 hide the two values that are a hundred times the rest.
 fn add_extremes(t: &Table, info: &mut [ColInfo]) {
     let id = id_column(t, info);
     let name = |r: usize| match id {
         Some(c) => format!("{}={}", t.headers[c], trunc(&t.rows[r][c], ID_MAX_CHARS)),
         None => format!("row {r}"),
     };
-    let mut done = 0;
+    let (mut extremes, mut outliers) = (0, 0);
     for c in 0..t.headers.len() {
-        if done == EXTREME_COLS {
+        if extremes == EXTREME_COLS && outliers == OUTLIER_COLS {
             break;
         }
         let numeric = matches!(info[c].kind, Kind::Int | Kind::Float);
@@ -488,44 +721,87 @@ fn add_extremes(t: &Table, info: &mut [ColInfo]) {
         if !numeric || info[c].few_values || Some(c) == id {
             continue;
         }
-        let (Some(lo), Some(hi)) = (info[c].stats.min, info[c].stats.max) else {
+        let vals = numbers_of(t, c);
+        if vals.is_empty() || identifier_like(t, info, c, &vals) {
             continue;
-        };
+        }
+        let (lo, hi) = vals
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), (_, v)| {
+                (l.min(*v), h.max(*v))
+            });
         if hi <= lo {
             continue;
         }
-        let at = |target: f64| -> (Option<usize>, usize) {
-            let mut first = None;
-            let mut count = 0;
-            for (r, row) in t.rows.iter().enumerate() {
-                let v = &row[c];
-                if !has_leading_zero(v) && v.parse::<f64>().ok() == Some(target) {
-                    first.get_or_insert(r);
-                    count += 1;
-                }
-            }
-            (first, count)
-        };
         let label = |target: f64| {
-            let (first, count) = at(target);
-            first.map(|r| {
-                if count > 1 {
-                    format!("{} (+{} tied)", name(r), count - 1)
+            let mut hits = vals.iter().filter(|(_, v)| *v == target);
+            hits.next().map(|(r, _)| {
+                let more = hits.count();
+                if more > 0 {
+                    format!("{} (+{more} tied)", name(*r))
                 } else {
-                    name(r)
+                    name(*r)
                 }
             })
         };
-        if let (Some(max_at), Some(min_at)) = (label(hi), label(lo)) {
-            let note = format!(" | max at {max_at}, min at {min_at}");
-            // The note goes before the null count that analyze_col may have added.
-            match info[c].summary.find(" | nulls ") {
-                Some(i) => info[c].summary.insert_str(i, &note),
-                None => info[c].summary.push_str(&note),
+        let mut notes: Vec<String> = Vec::new();
+        if extremes < EXTREME_COLS {
+            if let (Some(max_at), Some(min_at)) = (label(hi), label(lo)) {
+                notes.push(format!("max at {max_at}, min at {min_at}"));
+                extremes += 1;
             }
-            done += 1;
+        }
+        if outliers < OUTLIER_COLS {
+            if let Some(note) = outlier_note(&vals) {
+                notes.push(note);
+                outliers += 1;
+            }
+        }
+        if !notes.is_empty() {
+            put_note(&mut info[c].summary, &notes.join(" | "));
         }
     }
+}
+
+/// Values far outside the rest: beyond three interquartile ranges from the quartiles. A few
+/// of them (up to 5% of the rows) are outliers; more than that is a heavy tail, not outliers.
+fn outlier_note(vals: &[(usize, f64)]) -> Option<String> {
+    let n = vals.len();
+    if n < 20 {
+        return None;
+    }
+    let mut sorted: Vec<f64> = vals.iter().map(|(_, v)| *v).collect();
+    sorted.sort_by(|a, b| a.total_cmp(b));
+    let (q1, q3) = (sorted[(n - 1) / 4], sorted[(3 * (n - 1)) / 4]);
+    let iqr = q3 - q1;
+    if iqr <= 0.0 {
+        return None;
+    }
+    let (hi_fence, lo_fence) = (q3 + 3.0 * iqr, q1 - 3.0 * iqr);
+    let high: Vec<f64> = sorted.iter().copied().filter(|v| *v > hi_fence).collect();
+    let low: Vec<f64> = sorted.iter().copied().filter(|v| *v < lo_fence).collect();
+    let total = high.len() + low.len();
+    if total == 0 || total > (n / 20).max(3) {
+        return None;
+    }
+    let mut parts = Vec::new();
+    if let Some(top) = high.last() {
+        parts.push(format!(
+            "{} above {} (most extreme {})",
+            high.len(),
+            fnum(hi_fence),
+            fnum(*top)
+        ));
+    }
+    if let Some(bottom) = low.first() {
+        parts.push(format!(
+            "{} below {} (most extreme {})",
+            low.len(),
+            fnum(lo_fence),
+            fnum(*bottom)
+        ));
+    }
+    Some(format!("outliers beyond 3xIQR: {}", parts.join(", ")))
 }
 
 fn trunc(s: &str, max: usize) -> String {
@@ -565,7 +841,7 @@ pub fn to_csv(t: &Table) -> String {
     s
 }
 
-pub(crate) fn shell_quote(p: &str) -> String {
+pub fn shell_quote(p: &str) -> String {
     // Windows accepts forward slashes everywhere, and a backslash path would need quoting.
     let p = if cfg!(windows) {
         p.replace('\\', "/")
@@ -603,7 +879,7 @@ const PROFILES: [Profile; 3] = [
         tail: 4,
         important: 20,
         max_cell: 60,
-        stat_cols: 40,
+        stat_cols: 30,
     },
     Profile {
         head: 4,
@@ -673,6 +949,79 @@ pub fn render(t: &Table, ctx: &Ctx, budget: usize) -> Rendered {
     }
 }
 
+/// `name:type` for every column. A run of columns that differ only by a counter and share a type
+/// (`feat_0`, `feat_1`, ... `feat_119`) is written once: `feat_0..feat_119:float`.
+fn compact_cols(headers: &[String], info: &[ColInfo]) -> String {
+    // "feat_12" -> ("feat_", 12)
+    fn split(name: &str) -> Option<(&str, u64)> {
+        let digits = name.len() - name.trim_end_matches(|c: char| c.is_ascii_digit()).len();
+        if digits == 0 || digits > 9 {
+            return None;
+        }
+        let (prefix, num) = name.split_at(name.len() - digits);
+        Some((prefix, num.parse().ok()?))
+    }
+    let mut out: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < headers.len() {
+        let kind = info[i].kind.name();
+        let mut j = i;
+        if let Some((prefix, mut last)) = split(&headers[i]) {
+            while j + 1 < headers.len() {
+                match split(&headers[j + 1]) {
+                    Some((p2, n2))
+                        if p2 == prefix && n2 == last + 1 && info[j + 1].kind.name() == kind =>
+                    {
+                        last = n2;
+                        j += 1;
+                    }
+                    _ => break,
+                }
+            }
+        }
+        if j - i >= 2 {
+            out.push(format!("{}..{}:{kind}", headers[i], headers[j]));
+        } else {
+            out.push(format!("{}:{kind}", headers[i]));
+            j = i;
+        }
+        i = j + 1;
+    }
+    out.join(" ")
+}
+
+/// The data file as a command names it.
+fn data_ref(ctx: &Ctx) -> String {
+    ctx.csv_path
+        .as_deref()
+        .map_or_else(|| "<data file>".to_string(), file_ref)
+}
+
+/// Rows that repeat an earlier row, which most data sets do not mean to have.
+fn duplicate_note(t: &Table) -> Option<String> {
+    let mut first: HashMap<&Vec<String>, usize> = HashMap::with_capacity(t.rows.len());
+    let mut repeats = 0usize;
+    let mut example: Option<(usize, usize)> = None;
+    for (r, row) in t.rows.iter().enumerate() {
+        match first.get(row) {
+            Some(&q) => {
+                repeats += 1;
+                example.get_or_insert((r, q));
+            }
+            None => {
+                first.insert(row, r);
+            }
+        }
+    }
+    example.map(|(r, q)| {
+        format!(
+            "duplicates: {repeats} row{} repeat{} an earlier row (first: row {r} = row {q})",
+            if repeats == 1 { "" } else { "s" },
+            if repeats == 1 { "s" } else { "" }
+        )
+    })
+}
+
 fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
     let n = t.rows.len();
     let cols = t.headers.len();
@@ -690,30 +1039,31 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
     if let Some(p) = &ctx.raw_path {
         out.push_str(&format!("raw: {} ({})\n", shell_quote(p), t.format.name()));
     }
-    // A wide table shows its first columns only; the rest is in the data file.
-    let k = p.stat_cols.min(cols);
-    out.push_str("cols: ");
-    out.push_str(
-        &t.headers
-            .iter()
-            .zip(info)
-            .take(k)
-            .map(|(h, i)| format!("{}:{}", h, i.kind.name()))
-            .collect::<Vec<_>>()
-            .join(" "),
-    );
-    if cols > k {
-        out.push_str(&format!(" (+{} more columns in the data file)", cols - k));
-    }
-    out.push('\n');
-    for (h, i) in t.headers.iter().zip(info).take(p.stat_cols) {
+    // Every column is named. A wide table gets statistics for its first columns only.
+    // A very wide table (dozens of features) gets statistics for a dozen columns; the model asks
+    // for the others with `dtk stats`, and every column is named above.
+    let k = if cols > VERY_WIDE_COLS {
+        p.stat_cols.min(12)
+    } else {
+        p.stat_cols.min(cols)
+    };
+    out.push_str(&format!("cols: {}\n", compact_cols(&t.headers, info)));
+    for (h, i) in t.headers.iter().zip(info).take(k) {
         out.push_str(&format!("{}: {}\n", h, i.summary));
     }
-    if cols > p.stat_cols {
+    if cols > k {
         out.push_str(&format!(
-            "... {} more columns not summarized\n",
-            cols - p.stat_cols
+            "no statistics shown for the other {} columns ({}..{}): {} stats {} NAME...\n",
+            cols - k,
+            t.headers[k],
+            t.headers[cols - 1],
+            command_name(),
+            data_ref(ctx)
         ));
+    }
+    if let Some(note) = duplicate_note(t) {
+        out.push_str(&note);
+        out.push('\n');
     }
     let clip = |rows: &[&Vec<String>]| -> Vec<Vec<String>> {
         rows.iter().map(|r| r[..k].to_vec()).collect()
@@ -827,38 +1177,79 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
     out.trim_end().to_string()
 }
 
+/// How the summaries call dtk. `dtk` when that works in the model's shell; the full path when
+/// the folder dtk is installed in is not on the PATH.
+static COMMAND: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+pub fn set_command_name(name: &str) {
+    let _ = COMMAND.set(name.to_string());
+}
+
+pub fn command_name() -> &'static str {
+    COMMAND.get().map_or("dtk", String::as_str)
+}
+
+/// How to name a data file in a command: the short id when it is one of dtk's own files
+/// (`5fa6aeae75bd` for `.../dtk/store/5fa6aeae75bd.csv`), else the quoted path.
+pub(crate) fn file_ref(path: &str) -> String {
+    let p = std::path::Path::new(path);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let in_store = p
+        .parent()
+        .and_then(|d| d.file_name())
+        .is_some_and(|n| n == "store");
+    if in_store && stem.len() == 12 && stem.bytes().all(|b| b.is_ascii_hexdigit()) {
+        stem.to_string()
+    } else {
+        shell_quote(path)
+    }
+}
+
+/// The commands that read more of the data behind a summary, with real column names and values
+/// as examples so that the model can copy them.
 fn drill(t: &Table, info: &[ColInfo], ctx: &Ctx) -> String {
-    let mut s = String::new();
-    let col = info
+    let Some(csv) = &ctx.csv_path else {
+        return String::new();
+    };
+    let (dtk, f) = (command_name(), file_ref(csv));
+    let word = |x: &str| {
+        if !x.is_empty()
+            && x.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+        {
+            x.to_string()
+        } else {
+            format!("'{}'", x.replace('\'', "'\\''"))
+        }
+    };
+    let label = info
         .iter()
         .position(|i| i.kind == Kind::Str && i.distinct.is_some_and(|d| d > 1 && d <= 50))
-        .unwrap_or(0);
-    let name = t.headers[col].replace('"', "");
-    if let Some(p) = &ctx.csv_path {
-        let p = shell_quote(p);
-        s.push_str(&format!(
-            "drill: qsv sqlp {p} 'select \"{name}\", count(*) n from _t_1 group by \"{name}\" order by n desc'\n"
-        ));
-        s.push_str(&format!(
-            "rows: qsv slice -s <start> -l <count> {p}   (start counts from 0)\n"
+        .or_else(|| info.iter().position(|i| i.kind == Kind::Str));
+    let id = id_column(t, info);
+    let measure = (0..t.headers.len()).find(|&c| {
+        matches!(info[c].kind, Kind::Int | Kind::Float)
+            && !info[c].few_values
+            && Some(c) != id
+            && !id_like_name(&t.headers[c])
+    });
+    let mut cmds: Vec<String> = Vec::new();
+    if let Some(l) = label {
+        cmds.push(format!("{dtk} count {f} {}", word(&t.headers[l])));
+    }
+    if let Some(m) = measure {
+        cmds.push(format!("{dtk} top {f} {} 10", word(&t.headers[m])));
+    }
+    if let Some((l, top)) = label.and_then(|l| Some((l, info[l].stats.top.first()?))) {
+        cmds.push(format!(
+            "{dtk} where {f} {} = {}",
+            word(&t.headers[l]),
+            word(&top.0)
         ));
     }
-    if let Some(p) = &ctx.raw_path {
-        if matches!(
-            t.format,
-            crate::table::Format::Jsonl | crate::table::Format::JsonArray
-        ) {
-            let q = shell_quote(p);
-            let pick = format!("select(.[\"{name}\"]==\"<value>\")");
-            let filter = if t.format == crate::table::Format::Jsonl {
-                pick
-            } else {
-                format!(".[] | {pick}")
-            };
-            s.push_str(&format!("json: jaq -c '{filter}' {q}\n"));
-        }
-    }
-    s
+    cmds.push(format!("{dtk} rows {f} 100 20"));
+    cmds.push(format!("{dtk} stats {f} NAME..."));
+    format!("drill: {}\n", cmds.join("  |  "))
 }
 
 #[cfg(test)]
@@ -895,7 +1286,17 @@ mod tests {
             .contains("cols: id:int name:str region:str amount:float ok:bool"));
         assert!(r.text.contains("id: 1000..1499"));
         assert!(r.text.contains("region: 3 distinct: "));
-        assert!(r.text.contains("qsv sqlp /tmp/x.csv"));
+        assert!(
+            r.text.contains("drill: dtk count /tmp/x.csv name  |  dtk top /tmp/x.csv amount 10  |  dtk where /tmp/x.csv name = user_0"),
+            "{}",
+            r.text
+        );
+        assert!(
+            r.text
+                .contains("dtk rows /tmp/x.csv 100 20  |  dtk stats /tmp/x.csv NAME..."),
+            "{}",
+            r.text
+        );
         assert!(est_tokens(&r.text) <= 2500);
     }
 
@@ -906,9 +1307,11 @@ mod tests {
         assert!(r
             .text
             .contains("rows with level=warn/error: showing 20 of 200"));
-        assert!(r
-            .text
-            .contains("jaq -c 'select(.[\"level\"]==\"<value>\")'"));
+        assert!(
+            r.text.contains("dtk where /tmp/x.csv level = info"),
+            "{}",
+            r.text
+        );
     }
 
     #[test]
@@ -1053,6 +1456,235 @@ mod tests {
     }
 
     #[test]
+    fn reads_numbers_as_people_write_them() {
+        for (text, value, fmt) in [
+            ("12.5", 12.5, NumFmt::Plain),
+            ("-7", -7.0, NumFmt::Plain),
+            ("1e3", 1000.0, NumFmt::Plain),
+            ("1,234", 1234.0, NumFmt::Thousands),
+            ("1,234,567.89", 1234567.89, NumFmt::Thousands),
+            ("$1,234.56", 1234.56, NumFmt::Currency),
+            ("€5", 5.0, NumFmt::Currency),
+            ("-$5.25", -5.25, NumFmt::Currency),
+            ("$-5.25", -5.25, NumFmt::Currency),
+            ("45.3%", 45.3, NumFmt::Percent),
+            ("(12.50)", -12.5, NumFmt::Plain),
+            ("(1,200)", -1200.0, NumFmt::Thousands),
+        ] {
+            assert_eq!(parse_number(text), Some((value, fmt)), "{text}");
+        }
+        for text in [
+            "", "abc", "007", "02134", "1,23", "12,34", "1,2345", ",123", "1,", "$", "%", "$5%",
+            "1.2.3", "1,5", "12abc", "NaN", "inf", "5 %", "1,234,56", "--5", "$$5", "0123.5",
+        ] {
+            assert_eq!(parse_number(text), None, "{text:?} is not a number");
+        }
+    }
+
+    #[test]
+    fn a_column_of_numbers_with_placeholders_is_a_column_of_numbers() {
+        let mut s = String::from("id,age,city\n");
+        for i in 0..60 {
+            let age = match i % 10 {
+                3 => "N/A".to_string(),
+                7 => "-".to_string(),
+                _ => (20 + i % 40).to_string(),
+            };
+            s.push_str(&format!("{i},{age},c{}\n", i % 5));
+        }
+        let t = detect(&s).unwrap();
+        let info = analyze(&t);
+        let age = &info[1];
+        assert_eq!(age.kind, Kind::Int);
+        assert_eq!(age.stats.placeholders, 12);
+        assert!(age.summary.starts_with("20..59 mean "), "{}", age.summary);
+        assert!(
+            age.summary
+                .contains("12 placeholders excluded (- 6, N/A 6)"),
+            "{}",
+            age.summary
+        );
+        assert_eq!(age.stats.nonempty, 48);
+    }
+
+    #[test]
+    fn placeholders_in_a_column_of_words_are_just_words() {
+        let mut s = String::from("id,status\n");
+        for i in 0..60 {
+            s.push_str(&format!("{i},{}\n", ["ok", "fail", "-", "ok"][i % 4]));
+        }
+        let t = detect(&s).unwrap();
+        let st = &analyze(&t)[1];
+        assert_eq!(st.kind, Kind::Str);
+        assert_eq!(st.stats.placeholders, 0);
+        assert!(st.summary.contains("- 15"), "{}", st.summary);
+    }
+
+    #[test]
+    fn a_column_that_is_mostly_placeholders_is_not_numbers() {
+        let mut s = String::from("id,score\n");
+        for i in 0..60 {
+            s.push_str(&format!("{i},{}\n", if i % 5 == 0 { "7" } else { "N/A" }));
+        }
+        let t = detect(&s).unwrap();
+        assert_eq!(analyze(&t)[1].kind, Kind::Str);
+    }
+
+    #[test]
+    fn formatted_numbers_get_statistics_and_say_how_they_are_written() {
+        let mut s = String::from("id,price,share,qty\n");
+        for i in 0..40 {
+            s.push_str(&format!(
+                "{i},\"${},{:03}.50\",{}.5%,\"{},000\"\n",
+                1 + i % 3,
+                i * 7 % 1000,
+                i % 100,
+                1 + i % 9
+            ));
+        }
+        let t = detect(&s).unwrap();
+        let info = analyze(&t);
+        assert_eq!(info[1].kind, Kind::Float);
+        assert_eq!(info[1].stats.written_as, Some("currency"));
+        assert!(
+            info[1].summary.contains("written with currency"),
+            "{}",
+            info[1].summary
+        );
+        assert_eq!(info[2].stats.written_as, Some("percent"));
+        assert_eq!(info[3].kind, Kind::Int);
+        assert_eq!(info[3].stats.written_as, Some("thousands separators"));
+        assert_eq!(info[3].stats.min, Some(1000.0));
+        assert_eq!(info[3].stats.max, Some(9000.0));
+    }
+
+    #[test]
+    fn two_ways_of_writing_numbers_in_one_column_are_not_numbers() {
+        let mut s = String::from("id,v\n");
+        for i in 0..40 {
+            s.push_str(&format!(
+                "{i},{}\n",
+                if i % 2 == 0 { "$5.00" } else { "45%" }
+            ));
+        }
+        let t = detect(&s).unwrap();
+        assert_eq!(analyze(&t)[1].kind, Kind::Str);
+        // a percent column is all percents: 0.45 and 45% would mean different things
+        let mut s = String::from("id,v\n");
+        for i in 0..40 {
+            s.push_str(&format!(
+                "{i},{}\n",
+                if i % 2 == 0 { "0.45" } else { "45%" }
+            ));
+        }
+        let t = detect(&s).unwrap();
+        assert_eq!(analyze(&t)[1].kind, Kind::Str);
+    }
+
+    #[test]
+    fn outliers_are_named_but_a_heavy_tail_is_not() {
+        let mut s = String::from("id,amount,wait\n");
+        for i in 0..200 {
+            let amount = if i == 17 || i == 120 {
+                9000.0
+            } else {
+                100.0 + (i % 21) as f64
+            };
+            // an exponential-looking tail: many large values
+            let wait = 1.0 + ((i % 50) as f64).powi(2);
+            s.push_str(&format!("{i},{amount},{wait}\n"));
+        }
+        let t = detect(&s).unwrap();
+        let info = analyze(&t);
+        assert!(
+            info[1].summary.contains("outliers beyond 3xIQR: 2 above"),
+            "{}",
+            info[1].summary
+        );
+        assert!(
+            info[1].summary.contains("most extreme 9000"),
+            "{}",
+            info[1].summary
+        );
+        assert!(!info[2].summary.contains("outliers"), "{}", info[2].summary);
+    }
+
+    #[test]
+    fn identifier_columns_get_no_largest_and_smallest() {
+        let mut s = String::from("row,user_id,seq,score\n");
+        for i in 0..60 {
+            s.push_str(&format!(
+                "{},{},{},{}\n",
+                i % 7,
+                (i * 37) % 59 + 1000,
+                i * 3,
+                (i * 13) % 97
+            ));
+        }
+        let t = detect(&s).unwrap();
+        let info = analyze(&t);
+        assert!(
+            !info[1].summary.contains("max at"),
+            "user_id is named like an id: {}",
+            info[1].summary
+        );
+        assert!(
+            !info[2].summary.contains("max at"),
+            "seq rises at every row: {}",
+            info[2].summary
+        );
+        assert!(info[3].summary.contains("max at"), "{}", info[3].summary);
+    }
+
+    #[test]
+    fn repeated_rows_are_counted() {
+        let mut s = String::from("id,v\n");
+        for i in 0..80 {
+            s.push_str(&format!("{i},{}\n", i % 9));
+        }
+        s.push_str("5,5\n5,5\n12,3\n");
+        let t = detect(&s).unwrap();
+        let note = duplicate_note(&t).unwrap();
+        assert_eq!(
+            note,
+            "duplicates: 3 rows repeat an earlier row (first: row 80 = row 5)"
+        );
+        let t = detect(&s.replace("5,5\n5,5\n12,3\n", "")).unwrap();
+        assert!(duplicate_note(&t).is_none());
+    }
+
+    #[test]
+    fn counter_columns_are_written_as_a_range() {
+        let h: Vec<String> = [
+            "id", "feat_0", "feat_1", "feat_2", "feat_3", "x", "y1", "y2", "z",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let rows = vec![
+            (0..9)
+                .map(|i| if i == 5 || i == 8 {
+                    "a".into()
+                } else {
+                    i.to_string()
+                })
+                .collect::<Vec<String>>();
+            3
+        ];
+        let t = Table {
+            format: crate::table::Format::Csv,
+            headers: h.clone(),
+            rows,
+            notes: vec![],
+        };
+        let info = analyze(&t);
+        assert_eq!(
+            compact_cols(&h, &info),
+            "id:int feat_0..feat_3:int x:str y1:int y2:int z:str"
+        );
+    }
+
+    #[test]
     fn messages_that_really_differ_are_not_forced_into_templates() {
         let mut s = String::from("id,note\n");
         for i in 0..100 {
@@ -1105,6 +1737,16 @@ mod tests {
         }
         let t = detect(&s).unwrap();
         let r = render(&t, &ctx(), 2500);
-        assert!(r.text.contains("more columns not summarized"));
+        assert!(
+            r.text.contains("no statistics shown for the other"),
+            "{}",
+            r.text
+        );
+        // every column is still named, the counter columns as one range
+        assert!(
+            r.text.contains("column_name_0..column_name_59:str"),
+            "{}",
+            r.text
+        );
     }
 }

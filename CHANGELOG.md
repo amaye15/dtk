@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0
+
+Made for data work: real-world columns, data-quality notes, wide tables, and a drill-down that needs no other program.
+
+- **Placeholders.** `N/A`, `NA`, `NaN`, `null`, `none`, `-`, `?` and a few more in a column of numbers, dates or flags are counted and set aside (`31 placeholders excluded (- 11, N/A 10, ...)`). The column keeps its range, mean and quantiles. Before, one `N/A` made the whole column text.
+- **Numbers as people write them.** `$1,234.56`, `€5`, `45.3%`, `1,234` and `(12.50)` are numbers, with one way of writing per column, and the summary says how. A leading zero is never a number (`02134`), and `1,5` is not read as a thousands separator.
+- **Data-quality notes.** Outliers beyond three interquartile ranges are named (a few values; a heavy tail is not outliers). Rows that repeat an earlier row are counted. Identifier columns (`order_id`, `uuid`, a column that rises at every row) no longer get a largest and a smallest.
+- **Wide tables.** Every column is named, and a run of counter columns is one range (`feat_0..feat_119:float`). Statistics cover the first 30 columns, or a dozen for a table of more than 40 columns, without p50 and p95. A 62-column table went from 1,771 tokens to 572.
+- **Drill-down without `qsv` or `jaq`.** `dtk rows`, `top`, `count`, `where`, `stats` and `get` read the data behind a summary. The `drill:` line uses them, with real column names and the short id of the data file (`dtk top 5fa6aeae75bd amount 10`). `dtk top` and `where` read `$1,200` and `1200` as the same number, and `> 5` is false for `N/A`. `dtk get` reads `.a.b[0]`, `.items[]`, `| length` and `| keys` from a JSON document. `qsv` and `jaq` are optional extras now, and `dtk doctor` no longer warns when they are missing. If `dtk` is not on the PATH of the shell, summaries use its full path.
+- dtk's own drill-down commands are never summarized again.
+- **Correction to the 0.5.0 notes.** They said that Haiku sometimes wrote about the tool and did not give the answer, that a longer summary header made this worse, and that Sonnet gave 19 of 20 right answers with dtk. All of that came from a mistake in `scripts/ab-test.sh`: it read only the last line of the model's answer, and with dtk the model often adds a note about the summary on a new line after the answer. With the whole answer read, **Sonnet is 26 of 26 right with dtk and 26 of 26 without (13 questions, 2 runs), and Haiku is 39 of 39 and 39 of 39 (3 runs)**. The shorter summary header stays because it is shorter, not because of that test.
+- Checked by: the retention harness (1018 of 1018 facts, now including placeholders, formatted ranges, outliers and repeated rows, computed by the test itself), an `awk`/`qsv` oracle on a messy fixture (count, min, max, mean and placeholder count of four columns, and the repeated rows), nine end-to-end tests of the drill-down commands against sorting and counting done in the test, and three new questions in the real-model test (`scripts/ab-test.sh`).
+
 ## 0.5.0
 
 Compatibility with rtk (found by running the real rtk 1.1.0; `tests/rtk_compat.rs`):
