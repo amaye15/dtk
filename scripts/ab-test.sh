@@ -91,11 +91,14 @@ truth_uv=$(python3 "$UVS" | awk -F, 'NR>1 {n[$3]++} END {for (r in n) print n[r]
 # tuples from `cursor.fetchall()`, and a Spark log. The truths come from the CSV that pandas wrote
 # next to each fixture, or from Python on the raw text; dtk is not used.
 F="$HERE/tests/corpus/frames"
+# qsv writes a cache next to its input, so it reads copies.
+mkdir -p "$WORK/frames" && cp "$F"/*.expected.csv "$WORK/frames/"
+Q="$WORK/frames"
 # The row with the largest amount has its columns in both blocks of the printed frame: the answer
 # needs them joined. (A lookup of one other row needs the drill-down, which Sonnet runs and Haiku
 # often does not: see the changelog for 0.18.0.)
-truth_block=$(qsv sort -s amount -N -R "$F/wide_frame_wrapped.expected.csv" | qsv select order_id,f07 | sed -n 2p | tr ',' ' ')
-truth_hidden=$(qsv frequency -s region -l 1 "$F/columns_hidden_by_pandas.expected.csv" | sed -n 2p | awk -F, '{print $2" "$3}')
+truth_block=$(qsv sort -s amount -N -R "$Q/wide_frame_wrapped.expected.csv" | qsv select order_id,f07 | sed -n 2p | tr ',' ' ')
+truth_hidden=$(qsv frequency -s region -l 1 "$Q/columns_hidden_by_pandas.expected.csv" | sed -n 2p | awk -F, '{print $2" "$3}')
 truth_corr=$(python3 - "$F/corr_wrapped.expected.csv" <<'PY'
 import csv, sys
 rows = list(csv.reader(open(sys.argv[1])))
