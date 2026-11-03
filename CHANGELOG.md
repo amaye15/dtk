@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.16.0
+
+Web pages from the two other places they come from: MCP tools and files that are read.
+
+- **MCP tools.** A page returned by a fetch or browser MCP server (`mcp__fetch__fetch`, a "page HTML" tool) becomes its text in the shape it came in (content blocks stay blocks, a string stays a string). An MCP tool that reads files from the disk (`read_file`, `read_text_file`, `get_file_contents`, a `filesystem` server) is left alone, because for an HTML file that may be source being edited. Live pages are not checked for template syntax, because they often hold `{{` in a script or a code sample. `exclude_commands = ["^mcp__fetch__"]` skips a server. Checked with real Claude Code and a test MCP server: a 4,920-token page became 391, with the same answer.
+- **Files read with `Read`.** A whole `.html` file that is a page is shown as its text, with a line that says what it is and how to see the markup (read it with `offset` and `limit`, or use `cat`). Left alone: a range, a file under about 10 KB (2,400 tokens, source being worked on), a file with template syntax (`{{`, `{%`, `<%`, `<?php`, Vue and Angular directives, Alpine's `x-data`), and any name that is not `.html`, `.htm` or `.xhtml`. Setting: `html_reads` (it also governs MCP). A 5,144-token file became 467 with the same answer.
+- **Edits still work.** The case that could go wrong is a model that reads a big HTML file in order to change it. With real Claude Code on Sonnet, asked to change the `<title>` of a 20 KB page after reading it, the edit was correct and minimal in all four runs (two with dtk, two without). With dtk the model either made the edit directly or looked at the markup first with `Grep` or `Bash`, as the note says, and each run cost about 30% less because the raw page never entered the conversation.
+- Checked by: tests for each path and each guard through the real binary (Read, a range, a small file, five kinds of template, another extension, the setting off; MCP in both shapes, three file-reading tool names, a live page with `{{`, a small page, an exclusion); `scripts/mcp-test.sh` and `scripts/tools-test.sh` have a page case each; 252 tests.
+
 ## 0.15.0
 
 Two kinds of output that are long and mostly noise: build and test logs, and web pages.

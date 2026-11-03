@@ -35,11 +35,13 @@ CASES=(
 "pytest ids|emit $C/logs/pytest_verbose_7_failures.log|Which tests failed? List the numbers in brackets.|13 77 150 233 301 412 555"
 "rustc errors|emit $C/logs/rustc_80_errors.log|How many errors are there in total, and which error codes occur?|106 E0425 E0308 E0277"
 "web page|curl -sL https://docs.rs/dtk/latest/dtk/|Which modules does the dtk crate list on this page? Name them all.|ghcli lean outline table"
+"html file|READ:$C/pages/docs_rs_dtk.html|Which modules does the dtk crate list on this page? Name them all.|ghcli lean outline table"
 )
 
 run_one() { # command question disabled -> tokens|turns|answer
   local cmd="$1" q="$2" off="$3" out="$WORK/run.$$.jsonl"
   local prompt="Run exactly this bash command, with no pipes and no filters: $cmd   Then answer: $q"
+  case "$cmd" in READ:*) prompt="Use the Read tool on the file ${cmd#READ:}, the whole file, with no offset and no limit. Then answer: $q";; esac
   for _ in 1 2; do
     ( cd "$WORK/proj" && PATH="$WORK/bin:$PATH" DTK_DISABLED="$off" "$CLAUDE_BIN" -p "$prompt" --model "$MODEL" \
         --allowedTools "Bash,Read,Grep,Glob" --setting-sources project --output-format stream-json --verbose < /dev/null > "$out" 2>/dev/null )
