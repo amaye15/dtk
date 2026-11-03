@@ -1,0 +1,37 @@
+amaye15/dtk	Data token killer: a Claude Code hook that turns big tables, CSV, JSON and JSONL output into lean summaries. Works with rtk.	public	2026-11-03T06:36:24Z
+amaye15/scoop-bucket	Scoop bucket for dtk, the data token killer	public	2026-11-03T06:34:35Z
+amaye15/homebrew-tap	Homebrew tap for dtk (data token killer). brew install amaye15/tap/dtk	public	2026-11-03T06:34:35Z
+amaye15/winget-pkgs	The Microsoft community Windows Package Manager manifest repository	public, fork	2026-11-02T07:10:59Z
+amaye15/ocrgen	Rust generator of synthetic training data for the whole OCR pipeline	private	2026-11-01T21:14:47Z
+amaye15/JSON-Tools-rs	A high performance python~rust library for typical JSON operations in data science and engineering.	public	2026-10-24T08:12:47Z
+amaye15/zsfm-rs	Zero-shot time series forecasting models converted to GGUF format for fast CPU/GPU inference	public	2026-10-13T18:52:52Z
+amaye15/sniff-rs	Rust CLI that profiles CSV/TSV/JSON/Parquet/Avro/Excel/SQLite files and produces a data dictionary of observed (not declared) column types	public	2026-10-10T19:53:14Z
+amaye15/flash-attention-cpu	Pure-Rust, CPU-optimized Flash Attention: v1/v2/v3 variants, AVX-512/AVX2/NEON/WASM-SIMD128	public	2026-09-29T07:05:38Z
+amaye15/rcam	Cross-platform Rust camera capture and video recording for iOS, macOS, Android, Linux, Windows, and WASM	public	2026-03-21T22:50:36Z
+amaye15/SAM-2.1-onnx-rs	A repo for exporting and deploying Segment Anything (SAM) 2.1 via onnx and ort-rs with a UI and API.	public	2025-09-10T09:27:16Z
+amaye15/cJSON-Tools	A rust implimentation of AIMv2 by Apple.	private	2025-07-16T23:19:30Z
+amaye15/cJSON-Toolkit	cJSON-Toolkit	public	2025-06-24T10:56:28Z
+amaye15/Resume	Automating Resumes	private	2025-06-16T19:42:27Z
+amaye15/CodeCrafters-Hub	A hub for all your coding creations!	public	2025-05-23T21:12:55Z
+amaye15/polar-spark-df		public	2025-05-23T13:03:52Z
+amaye15/AuthenticationApp		public	2025-04-03T23:13:10Z
+amaye15/Stanford-RNA-3D-Folding	Kaggle Competition - Solve RNA structure prediction, one of biology's remaining grand challenges	private	2025-02-28T22:56:46Z
+amaye15/Terraform-Backend	A repo for understanding cloud deployment with Teraform	private	2025-02-19T23:50:33Z
+amaye15/terraform-mslearn-bike-rental	A project for learning terraform and deploy machine learning models with Azure.	private	2025-02-19T03:07:34Z
+amaye15/Rugby		public	2025-02-18T09:41:24Z
+amaye15/mongodb		public	2024-12-02T10:35:07Z
+amaye15/huggingface-github-actions		public	2024-10-19T21:45:06Z
+amaye15/CanineNet	CanineNet: A CNN-based tool for classifying dog breeds in images, aiding 'Le Refuge' animal association. Utilizes the Stanford Dogs Dataset for accuracy and efficiency. Ideal for streamlining animal data management. Open for collaboration.	public	2024-06-10T07:40:34Z
+amaye15/CocoCafe	A comprehensive analytical and developmental initiative aimed at optimizing the client's operations in the cocoa and coffee industries	public	2024-03-04T14:32:55Z
+amaye15/InvoiceAI	A project aimed at automating invoice information extraction using AI.	public	2024-02-25T17:43:56Z
+amaye15/stackoverflow-question-classifier		public	2024-02-24T11:48:28Z
+amaye15/Crab-Exchange	Crab Exchange: A High-Performance Stock Data Collector in Rust	public	2024-02-13T06:03:56Z
+amaye15/rust		public	2024-02-12T13:27:09Z
+amaye15/BurnBabyBurn	Welcome to "BurnBabyBurn," an exploratory deep learning project leveraging the power and efficiency of Rust and the Burn framework.	public	2024-01-27T20:28:42Z
+amaye15/container-hdllbgw	Created using https://container-hosting.anotherwebservice.com/#start	public	2023-12-30T16:01:08Z
+amaye15/OpenClassroom--Machine-Learning-Engineer		public	2023-11-20T21:14:00Z
+amaye15/andrew-mayes--portfolio		public	2023-11-13T17:28:22Z
+amaye15/chatbot		public	2023-10-20T14:42:49Z
+amaye15/OscarNet		public	2023-05-29T16:47:31Z
+amaye15/kangajo		public	2023-03-29T06:16:33Z
+amaye15/Open_Classroom	The following repository contains a collection of projects related to data analysis and data science.	public	2023-01-30T13:51:44Z

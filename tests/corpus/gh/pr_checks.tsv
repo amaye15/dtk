@@ -1,0 +1,16 @@
+build (aarch64-apple-darwin, macos-latest)	pass	51s	https://github.com/amaye15/dtk/actions/runs/41589835400/job/125763795948	
+build (aarch64-unknown-linux-musl, ubuntu-24.04-arm)	pass	48s	https://github.com/amaye15/dtk/actions/runs/41589835400/job/125763795923	
+build (x86_64-apple-darwin, macos-latest)	pass	1m9s	https://github.com/amaye15/dtk/actions/runs/41589835400/job/125763795918	
+build (x86_64-pc-windows-msvc, windows-latest)	pass	1m28s	https://github.com/amaye15/dtk/actions/runs/41589835400/job/125763795898	
+build (x86_64-unknown-linux-musl, ubuntu-latest)	pass	52s	https://github.com/amaye15/dtk/actions/runs/41589835400/job/125763796030	
+create-release	pass	3s	https://github.com/amaye15/dtk/actions/runs/41589835400/job/125763768380	
+packages (aarch64-unknown-linux-musl, ubuntu-24.04-arm, arm64, aarch64)	pass	2m42s	https://github.com/amaye15/dtk/actions/runs/41589835400/job/125763795969	
+packages (x86_64-unknown-linux-musl, ubuntu-latest, amd64, x86_64)	pass	2m40s	https://github.com/amaye15/dtk/actions/runs/41589835400/job/125763796029	
+test (macos-latest)	pass	1m33s	https://github.com/amaye15/dtk/actions/runs/41589828529/job/125763746229	
+test (macos-latest)	pass	1m4s	https://github.com/amaye15/dtk/actions/runs/41589835413/job/125763769335	
+test (ubuntu-latest)	pass	53s	https://github.com/amaye15/dtk/actions/runs/41589835413/job/125763769466	
+test (windows-latest)	pass	1m14s	https://github.com/amaye15/dtk/actions/runs/41589835413/job/125763769436	
+checksums	skipping	0	https://github.com/amaye15/dtk/actions/runs/41589835400/job/125764773170	
+publish-crate	skipping	0	https://github.com/amaye15/dtk/actions/runs/41589835400/job/125763770497	
+test (ubuntu-latest)	pass	34s	https://github.com/amaye15/dtk/actions/runs/41589828529/job/125763745897	
+test (windows-latest)	pass	1m43s	https://github.com/amaye15/dtk/actions/runs/41589828529/job/125763746314	

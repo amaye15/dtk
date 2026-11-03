@@ -9,6 +9,7 @@
 //! ```
 
 mod foreign;
+pub mod ghcli;
 pub mod lean;
 mod logs;
 mod multiindex;

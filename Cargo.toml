@@ -1,6 +1,6 @@
 [package]
 name = "dtk"
-version = "0.13.1"
+version = "0.14.0"
 edition = "2021"
 rust-version = "1.80"
 description = "Data token killer: a Claude Code hook that turns big tables, CSV, JSON and JSONL tool output into lean summaries. Works with rtk."
