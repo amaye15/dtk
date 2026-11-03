@@ -8,11 +8,13 @@
 use dtk::table::detect;
 
 fn fixture(name: &str) -> String {
+    // On Windows, git may have checked the file out with CRLF line endings.
     std::fs::read_to_string(format!(
         "{}/tests/corpus/frames/{name}",
         env!("CARGO_MANIFEST_DIR")
     ))
     .unwrap()
+    .replace("\r\n", "\n")
 }
 
 fn expected(name: &str) -> Vec<Vec<String>> {
