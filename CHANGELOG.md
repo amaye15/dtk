@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.17.0
+
+The log digest now works without a saved file, and with rtk's cut output. It is on by default.
+
+- **A long log that was not saved gets a digest.** Claude Code saves only an output of more than 30,000 characters. A `pytest -v` run of 5,900 tokens, or a compiler run of 4,900 tokens, went to the model whole. Now a log of about 3,000 tokens or more gets the digest, and the whole log is kept in dtk's store (the digest says where). Setting: `min_digest_tokens` (default 3000; 0 means never).
+- **A log that rtk cut gets a digest of all of it.** `rtk uv run pytest -v` keeps about fifty lines and saves the rest. dtk reads rtk's saved copy (the tee file or `rtk recall --full`), as it does for tables, and digests all of it. A run of 260 tests: rtk showed 778 tokens (the first 25 passes and the end); the digest is 690 tokens, covers all 325 lines, and gives the assertion and the line number of each failure. rtk's own pytest filter already keeps the names of the failures, so the gain is larger for a log that rtk cuts without knowing the tool.
+- **Same limits as before.** Never for `cat`, `grep`, `find`, `git diff`, `curl` and their kind, and never for an output that has a table. A digest from rtk's cut output is used if it is at most 30% (and 400 tokens) larger than what rtk showed; a digest of a log that rtk did not cut must be at least 50% smaller than the log.
+- **No false log in real history.** Of the 1,745 outputs in a 60-day history, 2 outputs of 3,000 tokens or more that are not tables were digested. Both are `cargo build` and `cargo test` logs. The test that no file of this repository that is not a log is digested still passes.
+- **Measured with real Claude Code** on three real logs (3,000, 5,900 and 4,900 tokens): every answer was right with the digest and without it, and the cost fell by about 30% to 40%.
+- **README:** the safety section said that dtk does not touch MCP tool output. That was wrong since 0.13.0. It now says what dtk reads.
+- **`docs/PRINCIPLES.md`** says what dtk is for and the rules for a change: automatic first, full integration with rtk, no silent loss, no model inside dtk, evidence not opinion.
+- Checked by: a real log of 260 tests as a fixture; hook tests for a long log that was not saved (the store copy, the commands that must not get a digest, the threshold, the setting off) and for a log that rtk cut; a test with the real rtk binary that cuts a log through `rtk uv run` and checks the digest of all of it; a fresh-home install with and without rtk (`dtk doctor` and `dtk verify` pass in both).
+
 ## 0.16.0
 
 Web pages from the two other places they come from: MCP tools and files that are read.
