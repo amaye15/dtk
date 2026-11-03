@@ -1053,9 +1053,7 @@ fn a_list_of_tuples_is_read_whole_with_its_dates_and_decimals() {
             "{name}:\n{s}"
         );
         // Nothing is lost: the stored copy has every row.
-        let path = s.lines().find_map(|l| l.strip_prefix("data: ")).unwrap();
-        let path = path.split(' ').next().unwrap();
-        let csv = std::fs::read_to_string(path).unwrap();
+        let csv = std::fs::read_to_string(data_path(s)).unwrap();
         assert_eq!(csv.lines().count(), 241, "{name}: header and 240 rows");
     }
 }
@@ -1122,8 +1120,7 @@ fn a_spark_log_is_a_table_of_records_with_its_stack_traces_kept() {
         assert!(s.contains(fact), "`{fact}` is not in\n{s}");
     }
     // Nothing is lost: the stored copy has the stack trace and the Maven results.
-    let path = s.lines().find_map(|l| l.strip_prefix("data: ")).unwrap();
-    let csv = std::fs::read_to_string(path.split(' ').next().unwrap()).unwrap();
+    let csv = std::fs::read_to_string(data_path(s)).unwrap();
     for kept in [
         "Task.run(Task.scala:147)",
         "Tests run: 4, Failures: 0",
@@ -1160,11 +1157,11 @@ fn a_small_table_that_gets_a_summary_has_its_full_data_saved() {
         s.contains("statistics over all rows"),
         "this fixture is meant to get the summary:\n{s}"
     );
-    let path = s
-        .lines()
-        .find_map(|l| l.strip_prefix("data: "))
-        .unwrap_or_else(|| panic!("the summary does not say where the data is:\n{s}"));
-    let csv = std::fs::read_to_string(path.split(' ').next().unwrap()).unwrap();
+    assert!(
+        s.lines().any(|l| l.starts_with("data: ")),
+        "the summary does not say where the data is:\n{s}"
+    );
+    let csv = std::fs::read_to_string(data_path(s)).unwrap();
     assert_eq!(csv.lines().count(), 61, "the header and all 60 rows");
     assert!(
         csv.contains(",5042,"),
@@ -1172,4 +1169,15 @@ fn a_small_table_that_gets_a_summary_has_its_full_data_saved() {
     );
     // The drill-down commands in the summary can reach it.
     assert!(s.contains("drill:"), "{s}");
+}
+
+/// The file named on the `data:` line of a summary. The path is in single quotes when it holds a
+/// character that a shell would not take as it is (a Windows temporary folder does).
+fn data_path(summary: &str) -> String {
+    let line = summary
+        .lines()
+        .find_map(|l| l.strip_prefix("data: "))
+        .unwrap_or_else(|| panic!("no data line in\n{summary}"));
+    let path = line.strip_suffix(" (csv, header row)").unwrap_or(line);
+    path.trim_matches('\'').to_string()
 }
