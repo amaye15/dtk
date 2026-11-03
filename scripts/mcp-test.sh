@@ -40,6 +40,7 @@ CASES=(
 "mcp rows|rows|Which id has the highest amount? Give the id.|$truth_max"
 "mcp structured|rows_structured|How many rows have status fail? Give the number.|$truth_fail"
 "mcp wrapped|rows_wrapped|What is the largest amount, and which id has it? Give both.|$truth_max_amount $truth_max"
+"mcp page|page|Which modules does the dtk crate list on this page? Name them all.|ghcli lean outline table"
 "mcp document|doc|What is the value of settings.secret_code? Give the value.|$truth_secret"
 )
 

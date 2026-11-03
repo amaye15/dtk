@@ -26,6 +26,8 @@ pub struct Config {
     pub digest_logs: bool,
     /// Replace a web page that was fetched (`curl`) with its text.
     pub html_pages: bool,
+    /// Also convert a whole HTML file that is read with the Read tool, when it is a page.
+    pub html_reads: bool,
     pub min_tokens: usize,
     pub budget: usize,
     pub min_persisted_rows: usize,
@@ -38,6 +40,7 @@ impl Default for Config {
             exclude_commands: Vec::new(),
             digest_logs: true,
             html_pages: true,
+            html_reads: true,
             min_tokens: 1200,
             budget: 2500,
             min_persisted_rows: 30,
@@ -54,7 +57,7 @@ pub fn path() -> Option<PathBuf> {
 pub fn default_file() -> String {
     let d = Config::default();
     format!(
-        "# dtk configuration. Delete a line to get its default back.\n\n[hooks]\n# Leave these alone. \"^text\" matches the start of a command (a file path for Read, a tool name such as mcp__db__query for MCP);\n# any other text matches anywhere in it.\nexclude_commands = []\n# A log that Claude Code saved to a file (build and test output) becomes a digest of the whole.\ndigest_logs = true\n# A web page that was fetched (curl, wget) becomes its text; the page is saved for `dtk html`.\nhtml_pages = true\n\n[thresholds]\nmin_tokens = {}        # smallest output worth replacing (estimated tokens)\nbudget = {}            # largest summary\nmin_persisted_rows = {}  # fewest rows for output that Claude Code saved to a file\nmin_outline_tokens = {}  # smallest JSON document (not a table) worth an outline\n",
+        "# dtk configuration. Delete a line to get its default back.\n\n[hooks]\n# Leave these alone. \"^text\" matches the start of a command (a file path for Read, a tool name such as mcp__db__query for MCP);\n# any other text matches anywhere in it.\nexclude_commands = []\n# A log that Claude Code saved to a file (build and test output) becomes a digest of the whole.\ndigest_logs = true\n# A web page that was fetched (curl, wget) becomes its text; the page is saved for `dtk html`.\nhtml_pages = true\n# A big HTML page that is read with Read, or returned by an MCP tool, becomes its text too.\nhtml_reads = true\n\n[thresholds]\nmin_tokens = {}        # smallest output worth replacing (estimated tokens)\nbudget = {}            # largest summary\nmin_persisted_rows = {}  # fewest rows for output that Claude Code saved to a file\nmin_outline_tokens = {}  # smallest JSON document (not a table) worth an outline\n",
         d.min_tokens, d.budget, d.min_persisted_rows, d.min_outline_tokens
     )
 }
@@ -78,6 +81,11 @@ impl Config {
                             .ok_or("hooks.exclude_commands must be a list of strings")
                     })
                     .collect::<Result<_, _>>()?;
+            }
+            if let Some(d) = h.get("html_reads") {
+                c.html_reads = d
+                    .as_bool()
+                    .ok_or("hooks.html_reads must be true or false")?;
             }
             if let Some(d) = h.get("html_pages") {
                 c.html_pages = d

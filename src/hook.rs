@@ -634,12 +634,21 @@ pub fn evaluate(shown: &Input, cfg: &Config, write: bool) -> Verdict {
                 return evaluate_outline(inp, cfg, write, v, &doc);
             }
         }
-        // A web page that was fetched to be read.
-        if inp.tool == "Bash"
-            && cfg.html_pages
-            && dtk::html::looks_like_html(inp.text)
-            && dtk::html::fetches_page(&typed_cmd)
-        {
+        // A web page: fetched to be read, returned by an MCP tool, or a big HTML file that was
+        // read. Source being edited (a template, a component, a small file) is not a page.
+        let page_wanted = match inp.tool {
+            "Bash" => cfg.html_pages && dtk::html::fetches_page(&typed_cmd),
+            // A fetch tool returns a live page, which may hold `{{` in a script or a code sample.
+            "MCP" => cfg.html_reads && !dtk::html::reads_local_files(inp.subject),
+            "Read" => {
+                cfg.html_reads
+                    && dtk::html::is_html_path(inp.subject)
+                    && v.tokens_full >= cfg.min_tokens * 2
+                    && !dtk::html::template_syntax(inp.text)
+            }
+            _ => false,
+        };
+        if page_wanted && dtk::html::looks_like_html(inp.text) {
             return evaluate_html(inp, cfg, write, v);
         }
         // A log that Claude Code saved to a file: the model would see its first lines only.
@@ -759,7 +768,20 @@ fn evaluate_html(inp: &Input, cfg: &Config, write: bool, mut v: Verdict) -> Verd
     } else {
         "<id>".into()
     };
-    let text = dtk::html::summary(&page, body, &id, status, cfg.budget.min(HTML_BUDGET));
+    let note = (inp.tool == "Read").then(|| {
+        format!(
+            "this is the text of the file {}, without its markup. To see or edit the markup, read it with offset and limit, or use cat.",
+            inp.subject
+        )
+    });
+    let text = dtk::html::summary_with(
+        &page,
+        body,
+        &id,
+        status,
+        cfg.budget.min(HTML_BUDGET),
+        note.as_deref(),
+    );
     v.after = est_tokens(&text);
     v.detected = Some(Detected {
         name: "web-page",
@@ -778,7 +800,7 @@ fn evaluate_html(inp: &Input, cfg: &Config, write: bool, mut v: Verdict) -> Verd
     v.applies = enough;
     v.reason = if enough {
         format!(
-            "a fetched web page: {} tokens of HTML are {} tokens of text",
+            "a web page: {} tokens of HTML are {} tokens of text",
             v.tokens_full, v.after
         )
     } else {
@@ -943,7 +965,7 @@ fn handle_read(ev: &Value) -> Option<String> {
     let file = resp.get("file")?.as_object()?;
     let path = file.get("filePath")?.as_str()?;
     let ext = Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
-    if !DATA_EXTS.contains(&ext.as_str()) {
+    if !DATA_EXTS.contains(&ext.as_str()) && !dtk::html::is_html_path(path) {
         return None;
     }
     // A range is a request for exact lines: leave it alone.

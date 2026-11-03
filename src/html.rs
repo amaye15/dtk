@@ -885,9 +885,69 @@ pub fn parse(html: &str) -> Page {
     page
 }
 
+/// Markers of a template or a component: HTML that a program fills in, which a person edits as
+/// source. A file that holds one is never read as a page.
+pub fn template_syntax(text: &str) -> bool {
+    const MARKS: [&str; 17] = [
+        "{{",
+        "{%",
+        "{#",
+        "<%",
+        "<?php",
+        "<?=",
+        " v-if=",
+        " v-for=",
+        " v-bind",
+        " v-model",
+        " ng-if",
+        " ng-repeat",
+        "*ngIf",
+        "*ngFor",
+        " x-data=",
+        " @click=",
+        "<ng-",
+    ];
+    MARKS.iter().any(|m| text.contains(m))
+}
+
+/// An MCP tool that reads a file from the disk: its result is the file as it is, and for an HTML
+/// file that may be source being edited.
+pub fn reads_local_files(tool: &str) -> bool {
+    let t = tool.to_ascii_lowercase();
+    [
+        "read_file",
+        "read_text_file",
+        "read_multiple",
+        "get_file",
+        "filesystem",
+        "__fs__",
+        "read_resource",
+    ]
+    .iter()
+    .any(|m| t.contains(m))
+}
+
+/// Does the path name an HTML file?
+pub fn is_html_path(path: &str) -> bool {
+    let p = path.to_ascii_lowercase();
+    p.ends_with(".html") || p.ends_with(".htm") || p.ends_with(".xhtml")
+}
+
 /// The view of a page: what it is, then its text, up to `budget` tokens. `id` names the stored
 /// raw HTML for `dtk html`.
 pub fn summary(page: &Page, raw: &str, id: &str, status: Option<&str>, budget: usize) -> String {
+    summary_with(page, raw, id, status, budget, None)
+}
+
+/// The same, with a line of explanation under the first line (for a file that was read).
+pub fn summary_with(
+    page: &Page,
+    raw: &str,
+    id: &str,
+    status: Option<&str>,
+    budget: usize,
+    note: Option<&str>,
+) -> String {
     let text_tokens: usize = page.text.iter().map(|l| l.len() / 4 + 1).sum();
     let c = &page.counts;
     let external = page
@@ -901,6 +961,9 @@ pub fn summary(page: &Page, raw: &str, id: &str, status: Option<&str>, budget: u
         est_tokens(raw),
         text_tokens
     );
+    if let Some(n) = note {
+        head.push_str(&format!("{n}\n"));
+    }
     if let Some(s) = status {
         head.push_str(&format!("response: {s}\n"));
     }

@@ -282,3 +282,150 @@ fn the_saved_page_can_be_read_again_part_by_part() {
     );
     assert_eq!(out, "");
 }
+
+// ---- the Read tool and MCP tools --------------------------------------------------------------
+
+fn read_event(path: &str, content: &str, ranged: bool) -> String {
+    let lines = content.lines().count();
+    let mut input = json!({"file_path": path});
+    if ranged {
+        input["offset"] = json!(1);
+        input["limit"] = json!(500);
+    }
+    json!({"hook_event_name": "PostToolUse", "tool_name": "Read", "tool_input": input,
+           "tool_response": {"type": "text", "file": {"filePath": path, "content": content,
+               "numLines": lines, "startLine": 1, "totalLines": lines}}})
+    .to_string()
+}
+
+fn mcp_event(tool: &str, response: Value) -> String {
+    json!({"hook_event_name": "PostToolUse", "tool_name": tool, "tool_input": {},
+           "tool_response": response, "mcp_server": {"name": "x", "source": "dynamic"}})
+    .to_string()
+}
+
+#[test]
+fn a_big_html_file_that_is_read_becomes_its_text_and_says_how_to_see_the_markup() {
+    let home = temp_home("read");
+    let page = big_page();
+    let (out, _) = dtk(
+        &home,
+        &["hook", "claude"],
+        &read_event("/work/report.html", &page, false),
+    );
+    let v: Value = serde_json::from_str(&out).expect("a big HTML file is converted");
+    let file = &v["hookSpecificOutput"]["updatedToolOutput"]["file"];
+    let s = file["content"].as_str().unwrap();
+    assert!(s.starts_with("[dtk] web page \"dtk"), "{s}");
+    assert!(
+        s.contains("this is the text of the file /work/report.html, without its markup. To see or edit the markup, read it with offset and limit, or use cat."),
+        "{s}"
+    );
+    assert_eq!(
+        file["numLines"], file["totalLines"],
+        "the counts describe what is shown"
+    );
+    assert!(est_tokens(s) * 3 < est_tokens(&page));
+}
+
+#[test]
+fn an_html_file_that_is_read_for_its_markup_is_left_alone() {
+    let home = temp_home("read-skip");
+    let page = big_page();
+    let quiet = |ev: String| {
+        let (out, _) = dtk(&home, &["hook", "claude"], &ev);
+        out
+    };
+    // A range is a request for exact lines.
+    assert_eq!(quiet(read_event("/work/report.html", &page, true)), "");
+    // A small file is source being worked on.
+    let small = "<!doctype html><html><head><title>t</title></head><body><h1>Hello</h1><p>text</p></body></html>";
+    assert_eq!(quiet(read_event("/work/index.html", small, false)), "");
+    // A template: a program fills it in and a person edits it.
+    for marker in [
+        "{{ title }}",
+        "{% block x %}",
+        "<div v-if=\"a\">",
+        "<?php echo 1; ?>",
+        "<li *ngFor=\"let x of xs\">",
+    ] {
+        let templ = page.replacen("<body", &format!("<body data-x=\"{marker}\""), 1);
+        assert_eq!(
+            quiet(read_event("/work/base.html", &templ, false)),
+            "",
+            "{marker}"
+        );
+    }
+    // Not an HTML file by its name.
+    assert_eq!(quiet(read_event("/work/notes.md", &page, false)), "");
+    // The setting is off.
+    let cfg = home.join(".config/dtk");
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::fs::write(cfg.join("config.toml"), "[hooks]\nhtml_reads = false\n").unwrap();
+    assert_eq!(quiet(read_event("/work/report.html", &page, false)), "");
+}
+
+#[test]
+fn a_page_that_an_mcp_tool_returns_becomes_its_text_in_the_same_shape() {
+    let home = temp_home("mcp");
+    let page = big_page();
+    // Content blocks stay blocks.
+    let (out, _) = dtk(
+        &home,
+        &["hook", "claude"],
+        &mcp_event("mcp__fetch__fetch", json!([{"type": "text", "text": page}])),
+    );
+    let v: Value = serde_json::from_str(&out).expect("a page from an MCP tool is converted");
+    let upd = &v["hookSpecificOutput"]["updatedToolOutput"];
+    assert_eq!(upd[0]["type"], "text");
+    assert!(upd[0]["text"]
+        .as_str()
+        .unwrap()
+        .starts_with("[dtk] web page"));
+    // A string stays a string.
+    let (out, _) = dtk(
+        &home,
+        &["hook", "claude"],
+        &mcp_event("mcp__browser__page_html", json!(page)),
+    );
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert!(v["hookSpecificOutput"]["updatedToolOutput"]
+        .as_str()
+        .unwrap()
+        .starts_with("[dtk] web page"));
+}
+
+#[test]
+fn an_mcp_tool_that_reads_files_is_left_alone() {
+    let home = temp_home("mcp-skip");
+    let page = big_page();
+    let quiet = |tool: &str, text: &str| {
+        let (out, _) = dtk(
+            &home,
+            &["hook", "claude"],
+            &mcp_event(tool, json!([{"type": "text", "text": text}])),
+        );
+        out
+    };
+    for tool in [
+        "mcp__filesystem__read_file",
+        "mcp__files__read_text_file",
+        "mcp__repo__get_file_contents",
+    ] {
+        assert_eq!(quiet(tool, &page), "", "{tool} reads a file from the disk");
+    }
+    // A live page with `{{` in it (a code sample, a script) is still a page.
+    let with_braces = page.replacen("<body", "<body data-x=\"{{ name }}\"", 1);
+    assert!(quiet("mcp__fetch__fetch", &with_braces).contains("[dtk] web page"));
+    let small = "<!doctype html><html><body><p>hi</p></body></html>";
+    assert_eq!(quiet("mcp__fetch__fetch", small), "", "a small page");
+    // exclude_commands names the tool.
+    let cfg = home.join(".config/dtk");
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::fs::write(
+        cfg.join("config.toml"),
+        "[hooks]\nexclude_commands = [\"^mcp__fetch__\"]\n",
+    )
+    .unwrap();
+    assert_eq!(quiet("mcp__fetch__fetch", &page), "");
+}
