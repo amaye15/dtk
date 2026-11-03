@@ -45,6 +45,9 @@ A step that the user must remember is a bug.
   Lines that no reader used are counted (`accounted_for`); too many means the text is not a table.
 - A **silent drop is a bug**, even when the output looks tidy. Audit real output for it
   (`examples/audit.rs`, `dtk discover`).
+- **Whatever a summary says is reachable must be reachable.** "The full data is on disk" needs a
+  path, and the file must exist. Until 0.18.0 a table of 60 rows or fewer that got the statistics
+  summary said this and saved nothing. Test the claim: read the path the output gives.
 
 ### 4. No model inside dtk
 Every view is made by counting and parsing: instant, free, and the same every time. A model in the
@@ -59,6 +62,12 @@ taken in 16 sessions and cost about 7% more. A deterministic digest of the same 
   second HTML parser. Not against dtk's own code.
 - **Look at real history** before and after a change (`dtk discover`, `examples/audit.rs`,
   `examples/digest_view.rs`). The best bugs were found this way.
+- **Ask the model what the data is, not how it was printed.** A question that says "printed in two
+  blocks of columns" makes the model distrust a summary that contradicts it, and the test then
+  measures that, not dtk. A weaker model (Haiku) may also offer to read a file instead of reading
+  it; run a stronger one (Sonnet) before calling a result a defect.
+- **Compare old and new builds over real data before a release:** every big output of the history
+  and every text file in the projects. The release must change only what it is meant to change.
 - **Report weak spots honestly.** dtk helps the data-heavy minority of tool output. Say what it
   does not help, and what a measurement showed against an idea. Never oversell.
 

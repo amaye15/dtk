@@ -237,53 +237,68 @@ pub fn build(
         raw_path: None,
     };
     if t.rows.len() > lean::LOSSLESS_ROWS {
-        let is_json = matches!(t.format, Format::Jsonl | Format::JsonArray);
-        if t.format == Format::Csv && persisted.is_some() {
-            ctx.csv_path = persisted.map(|p| short_path(p, "csv", write));
-        } else {
-            let saved = if write {
-                store_write("csv", lean::to_csv(t).as_bytes())
-            } else {
-                None
-            };
-            ctx.csv_path = Some(
-                saved
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "<store>/data.csv".to_string()),
-            );
-        }
-        if is_json {
-            ctx.raw_path = match persisted {
-                Some(p) => Some(short_path(
-                    p,
-                    if t.format == Format::Jsonl {
-                        "jsonl"
-                    } else {
-                        "json"
-                    },
-                    write,
-                )),
-                None => {
-                    let ext = if t.format == Format::Jsonl {
-                        "jsonl"
-                    } else {
-                        "json"
-                    };
-                    let saved = if write {
-                        store_write(ext, text.as_bytes())
-                    } else {
-                        None
-                    };
-                    Some(
-                        saved
-                            .map(|p| p.display().to_string())
-                            .unwrap_or_else(|| format!("<store>/raw.{ext}")),
-                    )
-                }
-            };
-        }
+        save_data(&mut ctx, t, text, persisted, write);
+        return lean::render(t, &ctx, budget);
     }
+    // A table of up to 60 rows is shown whole as CSV when that is clearly smaller than the source.
+    // When it is not (a wide table, or heavy cells), `render` gives the statistics summary, and the
+    // summary says that all of the data is on disk: so it has to be there, and the summary has to
+    // say where.
+    let shown = lean::render(t, &ctx, budget);
+    if shown.lossless {
+        return shown;
+    }
+    save_data(&mut ctx, t, text, persisted, write);
     lean::render(t, &ctx, budget)
+}
+
+/// Saves the full data of `t` as CSV (and the source text of JSON) and records where in `ctx`.
+fn save_data(ctx: &mut Ctx, t: &Table, text: &str, persisted: Option<&Path>, write: bool) {
+    let is_json = matches!(t.format, Format::Jsonl | Format::JsonArray);
+    if t.format == Format::Csv && persisted.is_some() {
+        ctx.csv_path = persisted.map(|p| short_path(p, "csv", write));
+    } else {
+        let saved = if write {
+            store_write("csv", lean::to_csv(t).as_bytes())
+        } else {
+            None
+        };
+        ctx.csv_path = Some(
+            saved
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "<store>/data.csv".to_string()),
+        );
+    }
+    if is_json {
+        ctx.raw_path = match persisted {
+            Some(p) => Some(short_path(
+                p,
+                if t.format == Format::Jsonl {
+                    "jsonl"
+                } else {
+                    "json"
+                },
+                write,
+            )),
+            None => {
+                let ext = if t.format == Format::Jsonl {
+                    "jsonl"
+                } else {
+                    "json"
+                };
+                let saved = if write {
+                    store_write(ext, text.as_bytes())
+                } else {
+                    None
+                };
+                Some(
+                    saved
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| format!("<store>/raw.{ext}")),
+                )
+            }
+        };
+    }
 }
 
 /// `dtk hook claude [--then CMD ARGS...]`

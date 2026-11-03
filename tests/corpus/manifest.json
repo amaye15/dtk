@@ -287,6 +287,62 @@
       ]
     },
     {
+      "file": "positive/python_fetchall_tuples.txt",
+      "format": "python-repr",
+      "rows": 240,
+      "cols": 7,
+      "headers": [
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "file": "positive/python_fetchall_pprint.txt",
+      "format": "python-repr",
+      "rows": 240,
+      "cols": 7,
+      "headers": [
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "file": "positive/pandas_to_markdown_index.md",
+      "format": "table",
+      "rows": 80,
+      "cols": 7,
+      "headers": [
+        "index",
+        "order_id",
+        "customer",
+        "region",
+        "amount",
+        "qty",
+        "status"
+      ]
+    },
+    {
+      "file": "logs/spark_maven_test_run.log",
+      "format": "text-log",
+      "rows": 156,
+      "cols": 3,
+      "headers": [
+        "ts",
+        "level",
+        "msg"
+      ]
+    },
+    {
       "file": "positive/pandas_dict_per_line.txt",
       "format": "python-repr",
       "rows": 120,

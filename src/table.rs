@@ -44,6 +44,9 @@ pub enum Format {
     Records,
     /// A page that is one HTML table.
     Html,
+    /// A wide pandas frame that was printed in blocks of columns, joined row by row. Each block
+    /// was checked as a table of its own, so the lines of all blocks are accounted for.
+    ColumnBlocks,
 }
 
 impl Format {
@@ -53,7 +56,7 @@ impl Format {
             Format::JsonArray => "json-array",
             Format::Csv => "csv",
             Format::Tsv => "tsv",
-            Format::Aligned | Format::Bordered | Format::TailText => "table",
+            Format::Aligned | Format::Bordered | Format::TailText | Format::ColumnBlocks => "table",
             Format::TextLog => "text-log",
             Format::PyRepr => "python-repr",
             Format::Grid => "number-grid",
@@ -80,7 +83,74 @@ pub struct Table {
 
 /// Returns a table when `text` is clearly one.
 pub fn detect(text: &str) -> Option<Table> {
+    if let Some((without, note)) = without_elided_column(text) {
+        if let Some(mut t) = detect_lines(&without).and_then(|t| accounted_for(t, &without)) {
+            t.notes.insert(0, note);
+            return Some(t);
+        }
+    }
     detect_lines(text).and_then(|t| accounted_for(t, text))
+}
+
+/// pandas does not print every column of a wide frame: it hides the ones in the middle and prints
+/// `...` in their place, a column of its own with the three dots in the header and in every row.
+/// The text without that column is a frame like any other. It is returned with a note that says
+/// where the hidden columns were, so that nothing claims more than pandas printed. Only when the
+/// dots stand at the same place in the header and in every row; any other line (a footer such as
+/// `[300 rows x 38 columns]` aside) means the text is not read in this way.
+fn without_elided_column(text: &str) -> Option<(String, String)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let header = lines.iter().position(|l| !l.trim().is_empty())?;
+    let head: Vec<char> = lines[header].chars().collect();
+    let dots = ['.', '.', '.'];
+    let mut at = None;
+    for i in 2..head.len().saturating_sub(2) {
+        if head[i..i + 3] == dots
+            && head[i - 1] == ' '
+            && head[i - 2] == ' '
+            && head.get(i + 3).map_or(true, |c| c.is_whitespace())
+        {
+            if at.is_some() {
+                return None;
+            }
+            at = Some(i);
+        }
+    }
+    let at = at?;
+    let before = head[..at].iter().collect::<String>();
+    let after = head[at + 3..].iter().collect::<String>();
+    let (before, after) = (
+        before.split_whitespace().last()?,
+        after.split_whitespace().next()?,
+    );
+    let note = format!(
+        "pandas hid some columns in this output, between {before} and {after} (its `...` column); only the columns it printed are here"
+    );
+    let mut out = String::with_capacity(text.len());
+    let mut elided = 0usize;
+    for (k, line) in lines.iter().enumerate() {
+        let chars: Vec<char> = line.chars().collect();
+        let footer = line.trim_start().starts_with('[') && line.contains(" rows x ");
+        if k < header || line.trim().is_empty() || footer {
+            out.push_str(line);
+        } else if chars.len() > at + 3
+            && chars[at..at + 3] == dots
+            && chars[at - 1] == ' '
+            && chars[at - 2] == ' '
+            && chars[at + 3].is_whitespace()
+        {
+            out.extend(&chars[..at - 2]);
+            out.extend(&chars[at + 3..]);
+            elided += 1;
+        } else if chars.len() == at + 3 && chars[at..at + 3] == dots {
+            out.extend(&chars[..at - 2]);
+            elided += 1;
+        } else {
+            return None;
+        }
+        out.push('\n');
+    }
+    (elided >= MIN_ROWS).then_some((out, note))
 }
 
 /// A reader may set aside a few lines that are not rows (a footer, a bad line). When more than a
@@ -91,12 +161,9 @@ fn accounted_for(mut t: Table, text: &str) -> Option<Table> {
     let (header, borders) = match t.format {
         Format::Aligned | Format::TailText => (1, false),
         Format::Bordered => (1, true),
-        Format::Jsonl
-        | Format::PrefixedJsonl
-        | Format::Logfmt
-        | Format::AccessLog
-        | Format::TextLog => (0, false),
-        // One row may take several lines (CSV with a quoted newline, record blocks), or the row
+        Format::Jsonl | Format::PrefixedJsonl | Format::Logfmt | Format::AccessLog => (0, false),
+        // One row may take several lines (CSV with a quoted newline, record blocks, a log record
+        // with its stack trace: the lines under a timestamp are part of its message), or the row
         // is not a line at all (JSON, HTML, a Python value).
         _ => return Some(t),
     };
@@ -165,13 +232,15 @@ fn detect_lines(text: &str) -> Option<Table> {
         b'<' => return crate::foreign::parse_html_table(text),
         _ => {}
     }
-    crate::logs::parse_access_log(text)
+    crate::multiindex::parse_column_blocks(aligned)
+        .or_else(|| crate::logs::parse_access_log(text))
         .or_else(|| crate::logs::parse_prefixed_jsonl(text))
         .or_else(|| crate::logs::parse_logfmt(text))
         .or_else(|| parse_bordered(text))
         .or_else(|| parse_delimited(text))
         .or_else(|| crate::multiindex::parse_multiindex(aligned))
         .or_else(|| parse_aligned(text))
+        .or_else(|| crate::multiindex::parse_labelled_numbers(aligned))
         .or_else(|| crate::multiindex::parse_right_aligned(aligned))
         .or_else(|| crate::textcols::parse_tail_text(text))
         .or_else(|| crate::foreign::parse_number_grid(text))
@@ -585,7 +654,11 @@ fn parse_bordered(text: &str) -> Option<Table> {
     }
     let is_content = |l: &str| !l.trim().is_empty() && !is_border(l) && l.contains(CELL_SEPS);
     let header_at = lines.iter().position(|l| is_content(l))?;
-    let headers = split_bordered(lines[header_at]);
+    let mut headers = split_bordered(lines[header_at]);
+    // A blank first header is a frame's unnamed index (`df.to_markdown()`, `tabulate`).
+    if headers.first().is_some_and(String::is_empty) && !headers.iter().any(|h| h == "index") {
+        headers[0] = "index".to_string();
+    }
     if !valid_header(&headers) {
         return None;
     }

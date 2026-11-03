@@ -380,6 +380,223 @@ pub fn parse_right_aligned(text: &str) -> Option<Table> {
     })
 }
 
+/// A frame of numbers with a text label in each row: `df.corr()`, `df.describe()`, a pivot table of
+/// sums. pandas puts one space between a label and a negative first value (`f01 -0.023`), so such
+/// a line cannot be cut at runs of spaces. It is cut at every space instead, which is safe only
+/// because every cell after the label must be a number: a row with a word in it, or with a space
+/// inside a cell (a datetime), does not fit, and too many of those make the reader refuse. The
+/// header is blank over the labels.
+pub fn parse_labelled_numbers(text: &str) -> Option<Table> {
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.len() < MIN_ROWS + 1 || !lines[0].starts_with(char::is_whitespace) {
+        return None;
+    }
+    let names: Vec<&str> = lines[0].split_whitespace().collect();
+    if names.len() < 3 {
+        return None;
+    }
+    let number = |c: &str| {
+        c.parse::<f64>().is_ok()
+            || matches!(c, "NaN" | "nan" | "inf" | "-inf" | "None" | "<NA>" | "NaT")
+    };
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+    for (i, line) in lines[1..].iter().enumerate() {
+        let cells: Vec<&str> = line.split_whitespace().collect();
+        if cells.len() == names.len() + 1
+            && cells[0].parse::<f64>().is_err()
+            && cells[1..].iter().all(|c| number(c))
+        {
+            rows.push(cells.iter().map(|c| c.to_string()).collect());
+        } else {
+            if notes.len() < 5 {
+                notes.push(line.trim().to_string());
+            }
+            // A bad row early on means it is another kind of text.
+            if i >= 8 && (i + 1 - rows.len()) * 10 > i + 1 {
+                return None;
+            }
+        }
+    }
+    if rows.len() < MIN_ROWS || (lines.len() - 1 - rows.len()) * 20 > rows.len() {
+        return None;
+    }
+    let distinct: std::collections::HashSet<&String> = rows.iter().map(|r| &r[0]).collect();
+    if distinct.len() < rows.len() {
+        return None;
+    }
+    let mut headers = vec!["idx".to_string()];
+    headers.extend(names.iter().map(|n| n.to_string()));
+    if !valid_header(&headers) {
+        return None;
+    }
+    Some(Table {
+        format: Format::Aligned,
+        headers,
+        rows,
+        notes,
+    })
+}
+
+/// A wide frame that pandas printed in column blocks (`pd.set_option("display.width", 200)`, then
+/// `print(df)`): every block shows the same rows, with the index again at the left, and every
+/// header but the last ends with ` \`. The first block is read as a frame of its own. Each other
+/// block is read the same way, or, when it is too narrow for that (the last block often holds one
+/// or two columns), is cut at the right edges of its header after the row labels that the first
+/// block gave. The blocks are joined row by row, and only when every block has the same number
+/// of rows and the same label in every row. With any difference, the text is not read at all.
+pub fn parse_column_blocks(text: &str) -> Option<Table> {
+    let first = text.lines().find(|l| !l.trim().is_empty())?;
+    if !first.trim_end().ends_with('\\') {
+        return None;
+    }
+    let mut blocks: Vec<Vec<String>> = Vec::new();
+    let mut current: Vec<String> = Vec::new();
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            if !current.is_empty() {
+                blocks.push(std::mem::take(&mut current));
+            }
+        } else {
+            current.push(line.to_string());
+        }
+    }
+    if !current.is_empty() {
+        blocks.push(current);
+    }
+    if !(2..=MAX_BLOCKS).contains(&blocks.len()) {
+        return None;
+    }
+    // Every header but the last ends with the backslash, and the last never does.
+    let last = blocks.len() - 1;
+    for (k, block) in blocks.iter_mut().enumerate() {
+        match (k < last, block[0].trim_end().strip_suffix('\\')) {
+            (true, Some(head)) => block[0] = head.trim_end().to_string(),
+            (false, None) => {}
+            _ => return None,
+        }
+    }
+    let mut table = crate::table::detect(&blocks[0].join("\n"))?;
+    if table.format != Format::Aligned {
+        return None;
+    }
+    // The first column is the index. A default one is called `idx` here; a named one has its name
+    // on a line of its own under the header, which one block may read as the name and another as
+    // a stray line. What must hold in every block is the labels. Two different names are refused.
+    let labels: Vec<String> = table.rows.iter().map(|r| r[0].clone()).collect();
+    let mut names: Vec<String> = Vec::new();
+    let note_name = |n: &str, names: &mut Vec<String>| {
+        if n != "idx" && !names.iter().any(|x| x == n) {
+            names.push(n.to_string());
+        }
+    };
+    note_name(&table.headers[0].clone(), &mut names);
+    for block in &blocks[1..] {
+        let (headers, rows) = match crate::table::detect(&block.join("\n")) {
+            Some(t)
+                if t.format == Format::Aligned
+                    && t.rows.iter().map(|r| &r[0]).eq(labels.iter()) =>
+            {
+                note_name(&t.headers[0], &mut names);
+                (
+                    t.headers[1..].to_vec(),
+                    t.rows.iter().map(|r| r[1..].to_vec()).collect(),
+                )
+            }
+            _ => {
+                let cut = cut_after_labels(block, &labels)?;
+                if let Some(n) = cut.index_name {
+                    note_name(&n, &mut names);
+                }
+                (cut.headers, cut.rows)
+            }
+        };
+        table.headers.extend(headers);
+        for (row, more) in table.rows.iter_mut().zip(rows) {
+            row.extend(more);
+        }
+    }
+    if names.len() > 1 {
+        return None;
+    }
+    if let Some(name) = names.pop() {
+        table.headers[0] = name.clone();
+        // A block may have read the line that holds the name as a line that is not a row.
+        table.notes.retain(|n| n.trim() != name);
+    }
+    // Two blocks that hold the same column would be a different layout, not one frame.
+    if !valid_header(&table.headers) {
+        return None;
+    }
+    table.format = Format::ColumnBlocks;
+    Some(table)
+}
+
+/// The columns of a block that was cut after the labels of another block, and the name of the
+/// index when the block has a line that holds it.
+struct LabelledBlock {
+    headers: Vec<String>,
+    rows: Vec<Vec<String>>,
+    index_name: Option<String>,
+}
+
+/// A block read with the row labels that another block gave: each line starts with its label,
+/// and the cells are cut at the right edges of the header, where pandas right-aligns them. The
+/// block must have one line for each label, and every line must end at the last edge.
+fn cut_after_labels(block: &[String], labels: &[String]) -> Option<LabelledBlock> {
+    // A named index has its name, alone, on the line under the header.
+    let name = (block.len() == labels.len() + 2 && block[1].split_whitespace().count() == 1)
+        .then(|| block[1].trim().to_string());
+    let body = &block[1 + usize::from(name.is_some())..];
+    if body.len() != labels.len() {
+        return None;
+    }
+    let names = tokens(&block[0]);
+    if names.is_empty() {
+        return None;
+    }
+    let ends: Vec<usize> = names.iter().map(|t| t.end).collect();
+    let mut rows = Vec::with_capacity(labels.len());
+    for (line, label) in body.iter().zip(labels) {
+        let chars: Vec<char> = line.trim_end().chars().collect();
+        let label_chars: Vec<char> = label.chars().collect();
+        if chars.len() != *ends.last()?
+            || chars.get(..label_chars.len())? != label_chars.as_slice()
+            || label_chars.len() >= ends[0]
+        {
+            return None;
+        }
+        let mut cells = Vec::with_capacity(ends.len());
+        let mut from = label_chars.len();
+        for (j, &end) in ends.iter().enumerate() {
+            // The place after the previous column is the gap, and a value ends at the edge.
+            if (j > 0 && !chars[from].is_whitespace())
+                || from >= end
+                || chars[end - 1].is_whitespace()
+            {
+                return None;
+            }
+            cells.push(
+                chars[from..end]
+                    .iter()
+                    .collect::<String>()
+                    .trim()
+                    .to_string(),
+            );
+            from = end;
+        }
+        rows.push(cells);
+    }
+    Some(LabelledBlock {
+        headers: names.into_iter().map(|t| t.text).collect(),
+        rows,
+        index_name: name,
+    })
+}
+
+/// A frame is printed in at most this many blocks before pandas would have elided columns.
+const MAX_BLOCKS: usize = 12;
+
 /// One line as cells, cut at the right edges of the header.
 fn cut_cells(line: &[char], ends: &[usize], has_index: bool) -> Option<Vec<String>> {
     if line.len() != *ends.last()? {
@@ -413,6 +630,84 @@ fn cut_cells(line: &[char], ends: &[usize], has_index: bool) -> Option<Vec<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn labelled_numbers_are_cut_at_every_space_when_the_label_touches_a_negative() {
+        let mut s = String::from("      a       b       c\n");
+        for i in 0..12 {
+            s.push_str(&format!("r{i:<2} -{i}.500  {i}.250  {}.125\n", i * 2));
+        }
+        let t = parse_labelled_numbers(&s).expect("a frame of numbers");
+        assert_eq!(t.headers, ["idx", "a", "b", "c"]);
+        assert_eq!(t.rows.len(), 12);
+        assert_eq!(t.rows[3], ["r3", "-3.500", "3.250", "6.125"]);
+    }
+
+    #[test]
+    fn labelled_numbers_refuse_words_dates_and_repeated_labels() {
+        // A date holds a space: cutting at every space would split it into two cells.
+        let mut dates = String::from("          a      b      c\n");
+        for i in 0..30 {
+            dates.push_str(&format!(
+                "r{i:<3}  {i}.5  2025-01-0{} 10:00:00  {i}\n",
+                i % 9 + 1
+            ));
+        }
+        assert!(
+            parse_labelled_numbers(&dates).is_none(),
+            "a date among the numbers"
+        );
+        // A word among the numbers.
+        let mut words = String::from("      a      b      c\n");
+        for i in 0..20 {
+            words.push_str(&format!("r{i:<2}  {i}.5  ok  {i}\n"));
+        }
+        assert!(
+            parse_labelled_numbers(&words).is_none(),
+            "a word among the numbers"
+        );
+        // The same label in every row is not a set of labels.
+        let mut same = String::from("      a      b      c\n");
+        for i in 0..20 {
+            same.push_str(&format!("row  {i}.5  {i}.25  {i}\n"));
+        }
+        assert!(
+            parse_labelled_numbers(&same).is_none(),
+            "one label for every row"
+        );
+        // A header that starts at the first character is a named index, and `parse_aligned`'s.
+        let named = "region  a  b  c\nus  1  2  3\n".repeat(8);
+        assert!(parse_labelled_numbers(&named).is_none());
+    }
+
+    #[test]
+    fn a_block_of_one_column_is_cut_after_the_labels_of_the_first_block() {
+        let labels: Vec<String> = (0..3).map(|i| format!("r{i}")).collect();
+        let block: Vec<String> = [
+            "                created",
+            "r0  2025-01-01 08:00:00",
+            "r1  2025-01-01 08:41:00",
+            "r2  2025-01-01 09:22:00",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let cut = cut_after_labels(&block, &labels).expect("one column");
+        assert_eq!(cut.index_name, None);
+        assert_eq!(cut.headers, ["created"]);
+        assert_eq!(
+            cut.rows[1],
+            ["2025-01-01 08:41:00"],
+            "a space inside a cell stays in it"
+        );
+        // A label that is not the one at the start of its line.
+        let wrong: Vec<String> = ["r0", "rX", "r2"].iter().map(|s| s.to_string()).collect();
+        assert!(cut_after_labels(&block, &wrong).is_none());
+        // A line that does not end at the right edge of the header.
+        let mut ragged = block.clone();
+        ragged[2].push_str("  extra");
+        assert!(cut_after_labels(&ragged, &labels).is_none());
+    }
 
     fn grouped(groups: usize, per: usize) -> String {
         let mut s = String::from(

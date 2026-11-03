@@ -87,6 +87,35 @@ truth_wrap_db=$(sed -n 4p "$W/database_mcp_wrapper.txt" | jaq -r 'max_by(.amount
 UVS="$HERE/tests/corpus/scripts/print_orders.py"
 truth_uv=$(python3 "$UVS" | awk -F, 'NR>1 {n[$3]++} END {for (r in n) print n[r], r}' | sort -nr | head -1 | awk '{print $2" "$1}')
 
+# Wide pandas frames printed in column blocks, frames whose middle columns pandas hid, a list of
+# tuples from `cursor.fetchall()`, and a Spark log. The truths come from the CSV that pandas wrote
+# next to each fixture, or from Python on the raw text; dtk is not used.
+F="$HERE/tests/corpus/frames"
+# The row with the largest amount has its columns in both blocks of the printed frame: the answer
+# needs them joined. (A lookup of one other row needs the drill-down, which Sonnet runs and Haiku
+# often does not: see the changelog for 0.18.0.)
+truth_block=$(qsv sort -s amount -N -R "$F/wide_frame_wrapped.expected.csv" | qsv select order_id,f07 | sed -n 2p | tr ',' ' ')
+truth_hidden=$(qsv frequency -s region -l 1 "$F/columns_hidden_by_pandas.expected.csv" | sed -n 2p | awk -F, '{print $2" "$3}')
+truth_corr=$(python3 - "$F/corr_wrapped.expected.csv" <<'PY'
+import csv, sys
+rows = list(csv.reader(open(sys.argv[1])))
+names = rows[0][1:]
+best = max(((abs(float(rows[i + 1][j + 1])), names[i], names[j]) for i in range(len(names)) for j in range(i)), key=lambda t: t[0])
+print(best[1], best[2])
+PY
+)
+truth_fetch=$(python3 - "$C/python_fetchall_tuples.txt" <<'PY'
+import re, sys
+t = open(sys.argv[1]).read()
+rows = re.findall(r"\((\d+), 'cust_\d+', datetime\.datetime\([^)]*\), (?:datetime\.date\([^)]*\)|None), Decimal\('([0-9.]+)'\)", t)
+print(max(rows, key=lambda r: float(r[1]))[0], max(float(r[1]) for r in rows))
+PY
+)
+
+# A row that is in the middle of the table, found by its key: the summary shows only a few rows.
+lookup_id=$(qsv slice -i 143 "$C/csv_orders.csv" | qsv select order_id | sed -n 2p)
+truth_lookup=$(qsv slice -i 143 "$C/csv_orders.csv" | qsv select region,status | sed -n 2p | tr ',' ' ')
+
 # name | file | question | expected words (all must appear in the answer)
 CASES=(
 "csv|$C/csv_orders.csv|Which region has the most orders, and how many orders does it have?|$truth_csv"
@@ -114,6 +143,12 @@ CASES=(
 "db wrapper|$W/database_mcp_wrapper.txt|This is a database server's answer: warning text around a JSON array of rows. Which id has the largest amount? Give the id.|$truth_wrap_db"
 "uv run script|CMD:uv run --no-project python $UVS|This prints a CSV of orders (order_id, customer, region, amount, status). Which region has the most orders, and how many orders does it have?|$truth_uv"
 "split json|$C/pandas_split.json|This is a pandas DataFrame as JSON (columns, then data rows). How many rows have ok equal to false? Give the number.|$truth_split"
+"key lookup|$C/csv_orders.csv|Which region and status does the order with order_id $lookup_id have? Give both.|$truth_lookup"
+"wrapped frame|$F/wide_frame_wrapped.txt|This is the output of print(df) for a pandas DataFrame of orders. Look at the row with the largest amount: what are its order_id and its f07 value?|$truth_block"
+"hidden columns|$F/columns_hidden_by_pandas.txt|This is the output of print(df) for a pandas DataFrame of orders. Which region has the most rows, and how many?|$truth_hidden"
+"corr matrix|$F/corr_wrapped.txt|This is the output of print(df.corr()) for a pandas DataFrame: a correlation matrix. Which two different features have the highest absolute correlation? Give both names.|$truth_corr"
+"fetchall|$C/python_fetchall_tuples.txt|This is print(cursor.fetchall()) of the table orders (id, customer, placed, shipped, amount, paid, note). Which id has the largest amount, and what is that amount?|$truth_fetch"
+"spark log|$HERE/tests/corpus/logs/spark_maven_test_run.log|This is the output of a Maven test run that starts Spark. Which exception class failed the task, and what is its error code in brackets?|JsonToolsException E001"
 )
 
 run_one() { # question file disabled -> prints "tokens|turns|first_tokens|answer"
