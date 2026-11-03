@@ -1,0 +1,117 @@
+estimate.rs  16.0K
+lib.rs  837B
+meta.rs  7.4K
+priors.rs  14.3K
+stats.rs  6.7K
+37 matches in 4 files:
+
+crates/demo-calibrate/src/estimate.rs:11:pub struct Gray {
+crates/demo-calibrate/src/estimate.rs:22:pub fn from_rgb(image: &RgbImage) -> Self {
+crates/demo-calibrate/src/estimate.rs:41:pub fn center(&self, max_side: usize) -> Self {
+crates/demo-calibrate/src/estimate.rs:52:pub fn reduced(&self, max_side: usize) -> Self {
+crates/demo-calibrate/src/estimate.rs:75:pub fn percentile(sorted: &[f32], p: f32) -> f32 {
+crates/demo-calibrate/src/estimate.rs:88:pub fn otsu(gray: &Gray) -> f32 {
+crates/demo-calibrate/src/estimate.rs:122:pub fn ink_mask(gray: &Gray) -> (Vec<bool>, f32, f32) {
+crates/demo-calibrate/src/estimate.rs:148:pub fn noise_std(gray: &Gray) -> Option<f32> {
+crates/demo-calibrate/src/estimate.rs:187:pub fn blur_sigma(gray: &Gray) -> Option<f32> {
+crates/demo-calibrate/src/estimate.rs:240:pub fn skew_deg(gray: &Gray) -> Option<f32> {
+crates/demo-calibrate/src/estimate.rs:285:pub fn text_height(gray: &Gray) -> Option<f32> {
+crates/demo-calibrate/src/estimate.rs:350:pub fn contrast(gray: &Gray) -> (f32, Option<f32>) {
+crates/demo-calibrate/src/estimate.rs:360:pub fn color(image: &RgbImage) -> ([f32; 3], f32) {
+crates/demo-calibrate/src/estimate.rs:396:pub fn margins(gray: &Gray) -> Option<[f32; 4]> {
+crates/demo-calibrate/src/meta.rs:14:pub struct FileMeta {
+crates/demo-calibrate/src/meta.rs:22:pub fn file_meta(bytes: &[u8]) -> FileMeta {
+crates/demo-calibrate/src/meta.rs:153:pub fn quality_of_luminance(table: &[u16]) -> Option<u8> {
+crates/demo-calibrate/src/priors.rs:18:pub struct Summary {
+crates/demo-calibrate/src/priors.rs:35:pub fn of(values: &[f32]) -> Option<Self> {
+crates/demo-calibrate/src/priors.rs:54:pub struct Stats {
+crates/demo-calibrate/src/priors.rs:97:pub struct AugmentPriors {
+crates/demo-calibrate/src/priors.rs:117:pub struct BlurPrior {
+crates/demo-calibrate/src/priors.rs:127:pub struct NoisePrior {
+crates/demo-calibrate/src/priors.rs:137:pub struct JpegPrior {
+crates/demo-calibrate/src/priors.rs:147:pub struct RotatePrior {
+crates/demo-calibrate/src/priors.rs:157:pub struct GainPrior {
+crates/demo-calibrate/src/priors.rs:167:pub struct HtmlPriors {
+crates/demo-calibrate/src/priors.rs:175:pub struct ScanPrior {
+crates/demo-calibrate/src/priors.rs:182:pub struct Priors {
+crates/demo-calibrate/src/priors.rs:231:pub fn priors_of(images: &[ImageStats]) -> Priors {
+crates/demo-calibrate/src/priors.rs:311:pub fn to_toml(priors: &Priors) -> Result<String, CalibrateError> {
+crates/demo-calibrate/src/priors.rs:351:pub fn apply(config_text: &str, priors_text: &str) -> Result<String, Calibrat...
+crates/demo-calibrate/src/stats.rs:19:pub enum CalibrateError {
+crates/demo-calibrate/src/stats.rs:48:pub struct ImageStats {
+crates/demo-calibrate/src/stats.rs:82:pub fn analyze_bytes(name: &str, bytes: &[u8]) -> Result<ImageStats, Calibrat...
+crates/demo-calibrate/src/stats.rs:130:pub struct Analysis {
+crates/demo-calibrate/src/stats.rs:139:pub fn analyze_dir(dir: &Path, max_images: usize) -> Result<Analysis, Calibra...
+
+[dependencies]
+image = { workspace = true, features = ["jpeg"] }
+demo-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+demo-augment.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true
+# Calibration against real images
+
+Calibration closes the gap between synthetic and real images. The command `demo calibrate` reads real images, estimates their properties, and writes ranges.
+The command `demo gen --priors` draws the parameters of the augmentations from these ranges. See [decision 0024](decisions/0024-calibration-and-priors.md).
+
+## Steps
+
+1. Put real images in one directory. The command reads the files `png`, `jpg`, and `jpeg`. It does not enter subdirectories.
+2. Run the calibration:
+
+   ```
+   demo calibrate --real <dir> --out priors.toml
+   ```
+
+   The command reads at most `--max-images` files (default 1000), in the order of their names. It prints a table of the properties and the names of files that it skipped.
+3. Make a run with the priors:
+
+   ```
+   demo gen --config configs/pages.toml --out runs/real-like --priors priors.toml
+   ```
+
+4. Run the calibration again when the set of real images changes.
+
+The merged config goes into the run directory. The commands `repro`, `verify`, and `export` read that config, so they need no priors file.
+
+## What the command measures
+
+| Property | Unit | Method |
+|---|---|---|
+| `width`, `height`, `aspect` | pixels, ratio | The decoded image. |
+| `dpi` | dots per inch | The JFIF segment of a JPEG file, or the `pHYs` chunk of a PNG file. Most files have none. |
+| `jpeg_quality` | 1 to 100 | The luminance quantization table of a JPEG file, compared with the tables of libjpeg. |
+| `noise_std` | levels | The method of Immerkær on blocks of 16 by 16 pixels. The value is the 20th percentile of the blocks. It is the noise of the luminance. |
+| `blur_sigma` | pixels | The slope of isolated edges. The value is the median over the edges. |
+| `skew_deg` | degrees | The angle with the sharpest row histogram of the ink. A positive angle is clockwise. |
+| `text_height_px` | pixels | The median height of the connected parts of the ink that look like letters. |
+| `contrast`, `text_contrast` | 0 to 1 | The range of the levels of the page, and the difference between the ink and the paper. |
+| `paper_red`, `paper_green`, `paper_blue`, `saturation` | levels, 0 to 1 | The mean color of the paper, and the mean saturation. |
+| `margin_left`, `margin_top`, `margin_right`, `margin_bottom` | share of the side | The part of the image without ink at each side. |
+
+An estimate is `None` when the image gives too little evidence, for example a skew of an image with almost no ink. A `None` does not count in the summary.
+An image that cannot be decoded, or that has a side smaller than 32 pixels, is skipped and named in the report.
+The command reads at most 64 MB for a file, and it refuses an image with a side larger than 20000 pixels or with a decoded size larger than 1 GiB.
+
+## The file `priors.toml`
+
+| Table | Content | Who reads it |
+|---|---|---|
+| `[stats]` | For each property: `count`, `min`, `p10`, `p50`, `p90`, and `max`. | The reader. A property without evidence has no table. |
+| `[augment.blur]`, `[augment.noise]`, `[augment.jpeg]`, `[augment.rotate]`, `[augment.contrast]` | `p`, the share of all images that show the effect, and the range of the parameter. | `demo gen --priors` |
+| `[html.scan]` | `skew_deg`, the 90th percentile of the absolute skew. | `demo gen --priors` |
+
+The effect is present in an image from these values: a blur of 0.5 pixel, a noise of 1.5 levels (luminance), a skew of 0.25 degree, a text contrast below 0.9 of the value of a generated page,
+and every JPEG file. The range of a parameter goes from the 10th to the 90th percentile of the images that show the effect.
+The range of `noise.std` is the deviation of one channel. The command divides the measured luminance noise by 0.67, because the effect adds independent noise to each channel.
+
+You can edit the file before you use it. The file is a normal TOML file.
+
+## The merge

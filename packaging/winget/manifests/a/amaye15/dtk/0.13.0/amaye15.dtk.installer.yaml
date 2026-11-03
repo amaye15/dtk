@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
 PackageIdentifier: amaye15.dtk
-PackageVersion: 0.12.0
+PackageVersion: 0.13.0
 InstallerType: zip
 NestedInstallerType: portable
 NestedInstallerFiles:
@@ -11,7 +11,7 @@ Commands:
 ReleaseDate: 2026-11-03
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/amaye15/dtk/releases/download/v0.12.0/dtk-v0.12.0-x86_64-pc-windows-msvc.zip
-    InstallerSha256: 428850306883E2EFA62CD90E739ED40FFEAD6D7C3C02E686D51C8D448895D0F2
+    InstallerUrl: https://github.com/amaye15/dtk/releases/download/v0.13.0/dtk-v0.13.0-x86_64-pc-windows-msvc.zip
+    InstallerSha256: 1B334B51CC4AC78F640991C1A76A0202FC9F64A09189A4BF550115AA642CDACF
 ManifestType: installer
 ManifestVersion: 1.12.0
