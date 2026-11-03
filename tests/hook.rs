@@ -797,3 +797,114 @@ fn data_that_rtk_cut_is_summarized_from_its_tee_file() {
     let (_, out, _) = run(&home, &["hook", "claude"], &event("Bash", resp), &[]);
     assert_eq!(out, "");
 }
+
+// ---- logs that Claude Code saved to a file ------------------------------------------------
+
+/// What a Bash event looks like when the output was more than 30,000 characters: the first
+/// 30,000 in `stdout`, and the whole in a file under ~/.claude.
+fn saved_event(home: &Path, command: &str, full: &str) -> String {
+    let dir = home.join(".claude/projects/p/tool-results");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("b123.txt");
+    std::fs::write(&path, full).unwrap();
+    let cut: String = full.chars().take(29_999).collect();
+    json!({
+        "hook_event_name": "PostToolUse", "tool_name": "Bash",
+        "tool_input": {"command": command},
+        "tool_response": {
+            "stdout": cut, "stderr": "", "interrupted": false, "isImage": false,
+            "persistedOutputPath": path.display().to_string(),
+            "persistedOutputSize": full.len(),
+        },
+    })
+    .to_string()
+}
+
+fn pytest_log() -> String {
+    std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/corpus/logs/pytest_verbose_7_failures.log"
+    ))
+    .unwrap()
+}
+
+#[test]
+fn a_saved_test_log_becomes_a_digest_of_all_of_it() {
+    let home = temp_home("digest");
+    let log = pytest_log();
+    assert!(log.len() > 30_000);
+    let (code, out, _) = run(
+        &home,
+        &["hook", "claude"],
+        &saved_event(&home, "uv run pytest -v", &log),
+        &[],
+    );
+    assert_eq!(code, 0);
+    let v: Value = serde_json::from_str(&out).expect("dtk answered");
+    let upd = &v["hookSpecificOutput"]["updatedToolOutput"];
+    let s = upd["stdout"].as_str().unwrap();
+    assert!(s.starts_with("[dtk] log digest: 710 lines"), "{s}");
+    assert!(s.contains("7 failed, 593 passed"), "{s}");
+    assert!(s.contains("read more: sed -n"), "{s}");
+    // Claude Code must treat the digest as the whole output now, not as a preview.
+    assert!(upd.get("persistedOutputPath").is_none() && upd.get("persistedOutputSize").is_none());
+}
+
+#[test]
+fn a_saved_output_that_the_model_asked_for_is_not_digested() {
+    let home = temp_home("digest-content");
+    let log = pytest_log();
+    for cmd in [
+        "cat build.log",
+        "cd app && grep -rn FAILED .",
+        "git diff HEAD~5",
+        "tail -n 20000 test.log",
+        "find . -name '*.log'",
+        "curl -s https://example.com/build.log",
+    ] {
+        let (_, out, _) = run(
+            &home,
+            &["hook", "claude"],
+            &saved_event(&home, cmd, &log),
+            &[],
+        );
+        assert_eq!(out, "", "`{cmd}` asked for content");
+    }
+}
+
+#[test]
+fn only_a_log_is_digested_and_only_when_enabled() {
+    let home = temp_home("digest-off");
+    // Source code, saved because it was long: the lines are what was asked for.
+    let code: String = (0..900)
+        .map(|i| {
+            format!(
+                "    let value_{i} = compute(input_{i}, {}); // handles the error case\n",
+                i * 3
+            )
+        })
+        .collect();
+    let (_, out, _) = run(
+        &home,
+        &["hook", "claude"],
+        &saved_event(&home, "python tool.py", &code),
+        &[],
+    );
+    assert_eq!(out, "", "source code is not a log");
+    // A log, with the switch off.
+    let cfg = home.join(".config/dtk");
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::fs::write(cfg.join("config.toml"), "[hooks]\ndigest_logs = false\n").unwrap();
+    let (_, out, _) = run(
+        &home,
+        &["hook", "claude"],
+        &saved_event(&home, "uv run pytest -v", &pytest_log()),
+        &[],
+    );
+    assert_eq!(out, "", "digest_logs = false");
+    // Output that fits on the screen was never saved to a file: it is left as it is.
+    std::fs::remove_file(cfg.join("config.toml")).unwrap();
+    let small = json!({"stdout": pytest_log().chars().take(20_000).collect::<String>(), "stderr": "", "interrupted": false, "isImage": false});
+    let (_, out, _) = run(&home, &["hook", "claude"], &event("Bash", small), &[]);
+    assert_eq!(out, "", "not saved to a file");
+}

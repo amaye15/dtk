@@ -8,8 +8,10 @@
 //! assert!(dtk::summarize("not a table", &ctx, 2500).is_none());
 //! ```
 
+pub mod digest;
 mod foreign;
 pub mod ghcli;
+pub mod html;
 pub mod lean;
 mod logs;
 mod multiindex;
