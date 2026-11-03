@@ -132,6 +132,103 @@
       ]
     },
     {
+      "file": "positive/pandas_groupby_multiindex.txt",
+      "format": "table",
+      "rows": 160,
+      "cols": 6,
+      "headers": [
+        "region",
+        "product",
+        "amount_sum",
+        "amount_mean",
+        "qty",
+        "orders"
+      ]
+    },
+    {
+      "file": "positive/pandas_groupby_two_level_header.txt",
+      "format": "table",
+      "rows": 160,
+      "cols": 7,
+      "headers": [
+        "region",
+        "product",
+        "amount.sum",
+        "amount.mean",
+        "amount.max",
+        "qty.sum",
+        "qty.count"
+      ]
+    },
+    {
+      "file": "positive/pandas_series_multiindex.txt",
+      "format": "table",
+      "rows": 75,
+      "cols": 4,
+      "headers": [
+        "city",
+        "category",
+        "channel",
+        "amount"
+      ]
+    },
+    {
+      "file": "positive/pandas_pivot_multiindex.txt",
+      "format": "table",
+      "rows": 25,
+      "cols": 8,
+      "headers": [
+        "city",
+        "category",
+        "amount.2023",
+        "amount.2024",
+        "amount.2025",
+        "qty.2023",
+        "qty.2024",
+        "qty.2025"
+      ]
+    },
+    {
+      "file": "positive/pandas_groupby_labels_with_spaces.txt",
+      "format": "table",
+      "rows": 25,
+      "cols": 5,
+      "headers": [
+        "city",
+        "category",
+        "amount",
+        "qty",
+        "orders"
+      ]
+    },
+    {
+      "file": "positive/pandas_groupby_single_key_two_level_header.txt",
+      "format": "table",
+      "rows": 90,
+      "cols": 6,
+      "headers": [
+        "product",
+        "amount.sum",
+        "amount.mean",
+        "amount.max",
+        "qty.sum",
+        "qty.count"
+      ]
+    },
+    {
+      "file": "positive/pandas_set_index_named.txt",
+      "format": "table",
+      "rows": 80,
+      "cols": 5,
+      "headers": [
+        "product",
+        "tier",
+        "region",
+        "amount",
+        "qty"
+      ]
+    },
+    {
       "file": "positive/polars_orders.txt",
       "format": "table",
       "rows": 100,
@@ -846,6 +943,20 @@
         "humidity",
         "pressure",
         "status"
+      ]
+    },
+    {
+      "file": "positive/small_values.csv",
+      "format": "csv",
+      "rows": 150,
+      "cols": 6,
+      "headers": [
+        "trial",
+        "p_value",
+        "rate",
+        "loss",
+        "lr",
+        "score"
       ]
     }
   ],

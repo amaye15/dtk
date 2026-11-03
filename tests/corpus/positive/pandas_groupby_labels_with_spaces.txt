@@ -1,0 +1,27 @@
+                               amount   qty  orders
+city          category                             
+Austin        Books          22679.97   876     196
+              Credit Card    21948.05   890     196
+              Electronics    22522.07   816     190
+              Home & Garden  26997.16   981     220
+              Toys           22674.22   928     197
+Los Angeles   Books          23399.99   841     195
+              Credit Card    22677.49   924     202
+              Electronics    24867.75   913     207
+              Home & Garden  25151.85   930     203
+              Toys           23368.40   945     200
+New York      Books          22629.06   859     187
+              Credit Card    28120.67  1087     241
+              Electronics    22610.10   810     179
+              Home & Garden  24803.59   918     199
+              Toys           22151.69   840     183
+San Francisco Books          26561.26   974     210
+              Credit Card    26890.21   955     221
+              Electronics    22651.35   854     193
+              Home & Garden  23523.75   823     186
+              Toys           22675.42   901     194
+St. Louis     Books          23165.42   897     191
+              Credit Card    21052.42   863     190
+              Electronics    26237.68   874     208
+              Home & Garden  24536.69   943     211
+              Toys           22699.24   902     201
