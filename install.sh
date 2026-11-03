@@ -87,4 +87,18 @@ case ":$PATH:" in
   *":$DEST:"*) ;;
   *) info "$DEST is not on your PATH. Add it, for example: echo 'export PATH=\"$DEST:\$PATH\"' >> ~/.zshrc" ;;
 esac
-info "next: dtk init --global, then dtk verify"
+
+# Register the hook, so that nothing is left to do. Skip with DTK_NO_INIT=1. Claude Code must
+# be there (its folder exists): dtk init writes into ~/.claude/settings.json and keeps a backup.
+if [ "${DTK_NO_INIT:-}" = 1 ]; then
+  info "DTK_NO_INIT=1 is set: the hook is not registered. When you want it: dtk init --global"
+elif [ -d "${HOME:-/nonexistent}/.claude" ]; then
+  info "registering the hook in ~/.claude/settings.json (a backup is kept; undo with: dtk init --uninstall)"
+  if "$DEST/dtk" init --global; then
+    info "done. Start a new Claude Code session; check the setup with: dtk verify"
+  else
+    info "could not register the hook. Run it yourself and read its message: $DEST/dtk init --global"
+  fi
+else
+  info "Claude Code's folder (~/.claude) was not found. After you install Claude Code, run: dtk init --global"
+fi

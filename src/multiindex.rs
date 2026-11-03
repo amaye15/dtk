@@ -9,6 +9,8 @@
 //!
 //! A line that does not fit is refused, not guessed at: a table with a column in the wrong
 //! place is worse than no table.
+//!
+//! `parse_right_aligned` is the same idea for a frame whose cells hold a space (a datetime).
 
 use crate::table::{valid_header, Format, Table, MIN_ROWS};
 use std::collections::HashMap;
@@ -295,6 +297,117 @@ fn split_row(line: &str, level_starts: &[usize]) -> Option<Split> {
         index,
         values,
     })
+}
+
+/// A frame printed by pandas with a column that holds a space, usually a datetime
+/// (`2026-10-01 00:00:00`): `to_string()`, `to_string(index=False)`. pandas right-aligns every
+/// column, and a header ends where its values end, so the header's right edges cut each line into
+/// cells, and a space inside a cell does not matter. Every row must end at the last edge, and
+/// the character after each edge must be a space. A row that does not fit is a note, and too many
+/// of them make the reader refuse.
+pub fn parse_right_aligned(text: &str) -> Option<Table> {
+    let lines: Vec<Vec<char>> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.trim_end().chars().collect())
+        .collect();
+    if lines.len() < MIN_ROWS + 1 {
+        return None;
+    }
+    let head: String = lines[0].iter().collect();
+    let names = tokens(&head);
+    // `...` stands for columns pandas hid, so the table is not all there.
+    if names.len() < 2
+        || names
+            .iter()
+            .any(|t| t.text.contains("...") || t.text.contains('…'))
+    {
+        return None;
+    }
+    // A header over right-aligned columns is padded: some names are two spaces or more apart.
+    // Words in a sentence are one space apart, and a line repeated is not a table.
+    if !names.windows(2).any(|w| w[1].start >= w[0].end + 2) {
+        return None;
+    }
+    let ends: Vec<usize> = names.iter().map(|t| t.end).collect();
+    let body = &lines[1..];
+    // The index is left-aligned and starts every row at the first character; the header leaves
+    // that place blank. Without an index (`index=False`) the first column is right-aligned, and
+    // it only looks the same when it is as wide as its widest value; `cut_cells` then refuses.
+    let has_index = names[0].start > 0 && body.iter().take(12).all(|l| !l[0].is_whitespace());
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+    let mut bad = 0usize;
+    for (i, line) in body.iter().enumerate() {
+        match cut_cells(line, &ends, has_index) {
+            Some(cells) => rows.push(cells),
+            None => {
+                bad += 1;
+                if notes.len() < 5 {
+                    notes.push(line.iter().collect::<String>().trim().to_string());
+                }
+                if i >= 12 && bad * 5 > i + 1 {
+                    return None;
+                }
+            }
+        }
+    }
+    if rows.len() < MIN_ROWS || bad * 20 > rows.len() {
+        return None;
+    }
+    // Data has a column of numbers and rows that differ.
+    let width = rows[0].len();
+    let numeric = (0..width).any(|c| {
+        rows.iter().filter(|r| r[c].parse::<f64>().is_ok()).count() * 10 >= rows.len() * 9
+    });
+    let distinct: std::collections::HashSet<&Vec<String>> = rows.iter().collect();
+    if !numeric || distinct.len() < 3 {
+        return None;
+    }
+    let mut headers: Vec<String> = Vec::new();
+    if has_index {
+        headers.push("idx".to_string());
+    }
+    headers.extend(names.iter().map(|t| t.text.clone()));
+    if !valid_header(&headers) {
+        return None;
+    }
+    Some(Table {
+        format: Format::Aligned,
+        headers,
+        rows,
+        notes,
+    })
+}
+
+/// One line as cells, cut at the right edges of the header.
+fn cut_cells(line: &[char], ends: &[usize], has_index: bool) -> Option<Vec<String>> {
+    if line.len() != *ends.last()? {
+        return None;
+    }
+    let mut cells: Vec<String> = Vec::with_capacity(ends.len() + 1);
+    let mut from = 0;
+    if has_index {
+        let e = line.iter().position(|c| c.is_whitespace())?;
+        // A default index is whole numbers. With any other first word, a first column that holds
+        // a space (a datetime) would be split into an index and a value, so the line is refused.
+        if !line[..e].iter().all(char::is_ascii_digit) {
+            return None;
+        }
+        cells.push(line[..e].iter().collect());
+        from = e;
+    }
+    for (j, &end) in ends.iter().enumerate() {
+        let start = if j == 0 { from } else { ends[j - 1] };
+        // The place right after the previous column is the gap, and a value ends at the edge.
+        if (j > 0 && !line[start].is_whitespace()) || start >= end || line[end - 1].is_whitespace()
+        {
+            return None;
+        }
+        let cell: String = line[start..end].iter().collect();
+        cells.push(cell.trim().to_string());
+    }
+    Some(cells)
 }
 
 #[cfg(test)]

@@ -54,6 +54,24 @@ pub fn command_path(p: &std::path::Path) -> String {
     }
 }
 
+/// The path to put in the hook. On Linux the operating system gives the real path of a program,
+/// and with Homebrew that is a folder named after the version (`.../Cellar/dtk/0.11.0/bin/dtk`).
+/// The next upgrade deletes it, and the hook would point at nothing. A folder on the PATH that
+/// holds the same file under a stable name (`/home/linuxbrew/.linuxbrew/bin/dtk`) survives.
+pub fn stable_exe(exe: &std::path::Path, path_var: Option<&std::ffi::OsStr>) -> PathBuf {
+    let Ok(real) = exe.canonicalize() else {
+        return exe.to_path_buf();
+    };
+    let name = exe.file_name().unwrap_or_default();
+    for dir in path_var.map(std::env::split_paths).into_iter().flatten() {
+        let candidate = dir.join(name);
+        if candidate.is_absolute() && candidate.canonicalize().is_ok_and(|c| c == real) {
+            return candidate;
+        }
+    }
+    exe.to_path_buf()
+}
+
 fn commands(entry: &Value) -> Vec<String> {
     entry
         .get("hooks")
@@ -215,7 +233,7 @@ pub fn run(args: &[String]) -> i32 {
         return 1;
     };
     let exe = match std::env::current_exe() {
-        Ok(p) => command_path(&p),
+        Ok(p) => command_path(&stable_exe(&p, std::env::var_os("PATH").as_deref())),
         Err(e) => {
             eprintln!("dtk: cannot find my own path: {e}");
             return 1;
@@ -442,6 +460,34 @@ mod tests {
             h("/Users/me/.local/bin/dtk"),
             "delete the file /Users/me/.local/bin/dtk"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_hook_names_a_path_that_survives_an_upgrade() {
+        use std::os::unix::fs::symlink;
+        let root = std::env::temp_dir().join(format!("dtk-stable-{}", std::process::id()));
+        let cellar = root.join("Cellar/dtk/0.11.0/bin");
+        let bin = root.join("bin");
+        fs::create_dir_all(&cellar).unwrap();
+        fs::create_dir_all(&bin).unwrap();
+        fs::write(cellar.join("dtk"), b"x").unwrap();
+        symlink(cellar.join("dtk"), bin.join("dtk")).unwrap();
+        // The operating system reports the versioned file; the folder on the PATH is stable.
+        let real = cellar.join("dtk").canonicalize().unwrap();
+        let path = std::env::join_paths([root.join("nowhere"), bin.clone()]).unwrap();
+        assert_eq!(stable_exe(&real, Some(path.as_os_str())), bin.join("dtk"));
+        // Without a matching folder on the PATH the real path stays.
+        assert_eq!(stable_exe(&real, None), real);
+        let other = std::env::join_paths([root.join("nowhere")]).unwrap();
+        assert_eq!(stable_exe(&real, Some(other.as_os_str())), real);
+        // A different file with the same name is not the same program.
+        let impostor = root.join("other");
+        fs::create_dir_all(&impostor).unwrap();
+        fs::write(impostor.join("dtk"), b"y").unwrap();
+        let path = std::env::join_paths([impostor.clone()]).unwrap();
+        assert_eq!(stable_exe(&real, Some(path.as_os_str())), real);
+        fs::remove_dir_all(&root).ok();
     }
 
     #[test]

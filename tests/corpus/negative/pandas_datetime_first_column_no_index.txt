@@ -1,0 +1,61 @@
+                   when          city   delta         label   n
+2026-03-03 05:43:48.250   Los Angeles  -5.625 Home & Garden  33
+2026-03-12 15:56:43.250   Los Angeles  -5.823 Home & Garden  64
+2026-03-10 03:30:52.250   Los Angeles   0.218   Credit Card 463
+2026-03-10 01:48:53.250      New York   3.892         Books 238
+2026-03-11 03:45:10.250   Los Angeles  -3.084 Home & Garden  22
+2026-03-04 10:15:33.250 San Francisco  -2.043 Home & Garden 405
+2026-03-10 20:58:00.250   Los Angeles   3.598         Books 396
+2026-03-05 07:17:25.250 San Francisco   2.046   Credit Card 229
+2026-03-09 10:31:14.250   Los Angeles   0.209         Books 354
+2026-03-12 22:13:54.250 San Francisco   5.270   Credit Card -30
+2026-03-01 21:13:43.250     St. Louis   3.978   Credit Card 142
+2026-03-09 20:40:28.250 San Francisco  -5.426         Books  73
+2026-03-10 04:29:55.250      New York  -5.705   Credit Card 472
+2026-03-07 06:14:29.250      New York   8.775   Credit Card -30
+2026-03-03 01:16:45.250     St. Louis  -4.196 Home & Garden   4
+2026-03-03 22:11:58.250      New York  -9.905         Books 289
+2026-03-11 19:58:48.250     St. Louis  -2.212         Books 253
+2026-03-08 13:33:27.250     St. Louis   0.134 Home & Garden 275
+2026-03-03 10:35:40.250     St. Louis   3.930 Home & Garden 228
+2026-03-11 20:25:09.250   Los Angeles   9.211   Credit Card 389
+2026-03-06 08:37:52.250 San Francisco  -0.622         Books 243
+2026-03-07 10:34:59.250 San Francisco -10.545   Credit Card 328
+2026-03-07 02:15:02.250      New York  -3.721 Home & Garden  84
+2026-03-03 08:36:28.250 San Francisco   2.593   Credit Card 192
+2026-03-05 04:38:24.250      New York   6.972         Books 461
+2026-03-12 18:54:21.250   Los Angeles  -1.538 Home & Garden 174
+2026-03-10 21:38:54.250   Los Angeles  -4.728   Credit Card 382
+2026-03-09 22:12:15.250      New York  -2.480         Books 356
+2026-03-05 16:49:02.250     St. Louis  -7.581 Home & Garden 213
+2026-03-08 17:39:19.250     St. Louis  -5.976         Books 420
+2026-03-06 10:12:58.250     St. Louis  11.233   Credit Card  83
+2026-03-11 19:39:37.250   Los Angeles   8.024   Credit Card 282
+2026-03-01 11:53:17.250      New York  -3.359   Credit Card 226
+2026-03-07 05:13:00.250      New York  -6.457   Credit Card 282
+2026-03-04 06:19:03.250     St. Louis   3.964         Books 228
+2026-03-07 14:18:21.250      New York   3.260   Credit Card 356
+2026-03-09 10:13:33.250   Los Angeles   2.320         Books  57
+2026-03-03 02:15:21.250     St. Louis  -9.882         Books 430
+2026-03-06 10:25:15.250   Los Angeles  -0.709         Books 344
+2026-03-12 18:50:52.250   Los Angeles  -4.506   Credit Card -18
+2026-03-02 14:51:00.250      New York   5.324 Home & Garden 201
+2026-03-12 09:44:40.250     St. Louis -13.521 Home & Garden 437
+2026-03-06 19:53:48.250   Los Angeles   3.821   Credit Card 382
+2026-03-02 06:24:28.250   Los Angeles  -3.376         Books  96
+2026-03-07 17:11:14.250   Los Angeles   4.419 Home & Garden 141
+2026-03-03 00:34:56.250 San Francisco  -2.751   Credit Card 288
+2026-03-01 17:04:39.250   Los Angeles   5.774         Books 375
+2026-03-02 00:17:05.250   Los Angeles  -1.784         Books 497
+2026-03-10 07:24:09.250 San Francisco  -3.452 Home & Garden 334
+2026-03-01 22:30:16.250     St. Louis  -2.820         Books 398
+2026-03-11 04:33:22.250     St. Louis   7.002   Credit Card 337
+2026-03-11 02:45:27.250     St. Louis  -4.226   Credit Card  52
+2026-03-07 03:51:42.250     St. Louis   1.371   Credit Card  69
+2026-03-04 06:28:05.250      New York   4.142   Credit Card 493
+2026-03-05 20:28:03.250   Los Angeles  -5.643         Books 191
+2026-03-01 21:29:29.250   Los Angeles   0.217         Books 103
+2026-03-03 08:58:38.250 San Francisco  -1.428 Home & Garden 295
+2026-03-12 03:04:11.250   Los Angeles   7.485   Credit Card 137
+2026-03-08 00:08:25.250 San Francisco  -3.186 Home & Garden 454
+2026-03-04 03:48:50.250      New York   2.312   Credit Card  44

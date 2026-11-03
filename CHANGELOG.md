@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.0
+
+Out of the box, and more of the ways data gets printed. Found by checking what happens after an install, and by printing one DataFrame every way pandas allows.
+
+- **The installers finish the job.** `install.sh` and `install.ps1` now run `dtk init --global` when Claude Code's folder (`~/.claude`) exists: the hook is registered (a backup is kept) and chained to rtk when rtk is installed. Nothing is written when the folder is not there, and `DTK_NO_INIT=1` installs only. Running the installer again is an update and leaves one hook. Before, the last line was "next: dtk init --global", a step to remember.
+- **The hook survives an upgrade.** On Linux the operating system gives the real path of a program, and with Homebrew that is a versioned folder (`Cellar/dtk/0.11.0/bin/dtk`) that the next upgrade deletes. `dtk init` now writes the path from your `PATH` that holds the same file (`/home/linuxbrew/.linuxbrew/bin/dtk`).
+- **Seven more ways pandas prints a frame, all read.** `print(df.to_dict())`, which is the default and has one dict per column keyed by the row number; `to_dict("index")`; `to_dict("split")`; `df.to_json()`, which gave an outline with no data before; `df.values.tolist()` (columns are called `c0`, `c1`, ...); one dict per line (`for r in rows: print(r)`); and `to_string()` of a frame with a **datetime column**, with an integer index or none, with labels that hold spaces (`New York`).
+- **Datetime frames are read by position.** pandas right-aligns every column and a header ends where its values end, so the right edges of the header cut each line into cells, and a space inside a cell (a datetime, `Credit Card`) does not matter. A line that does not end at the last edge, or that has no space after an edge, makes the reader refuse the text. Two layouts that cannot be told apart are refused on purpose (a DatetimeIndex; a datetime in the first column with no index), because a datetime would be split into an index and a value. A line repeated 30 times, which has the same structure, is refused too: a table needs a padded header, a numeric column and rows that differ.
+- Checked by: every value of each new shape compared with the pandas frame it was printed from (about 21,000 cells, none different); 9 new corpus fixtures with rows and headers taken from the pandas frames and 2 new refused layouts; the prose test that caught the repeated line; retention 2123 of 2123; install scripts run for real in four sandbox homes (folder present, folder absent, `DTK_NO_INIT=1`, a second run), and the same four cases are now in the install test of every release; two new real-model questions, Sonnet and Haiku 2 of 2 right with and without dtk, 78% and 81% fewer tokens.
+
 ## 0.11.0
 
 Two wrong summaries, found by testing with the data that data people print. Both are fixed.

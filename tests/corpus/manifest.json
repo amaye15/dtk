@@ -229,6 +229,107 @@
       ]
     },
     {
+      "file": "positive/pandas_to_dict.txt",
+      "format": "python-repr",
+      "rows": 120,
+      "cols": 7,
+      "headers": [
+        "index",
+        "order_id",
+        "customer",
+        "region",
+        "amount",
+        "status",
+        "latency_ms"
+      ]
+    },
+    {
+      "file": "positive/pandas_to_dict_index.txt",
+      "format": "python-repr",
+      "rows": 120,
+      "cols": 7,
+      "headers": [
+        "key",
+        "order_id",
+        "customer",
+        "region",
+        "amount",
+        "status",
+        "latency_ms"
+      ]
+    },
+    {
+      "file": "positive/pandas_to_dict_split.txt",
+      "format": "python-repr",
+      "rows": 120,
+      "cols": 6,
+      "headers": [
+        "order_id",
+        "customer",
+        "region",
+        "amount",
+        "status",
+        "latency_ms"
+      ]
+    },
+    {
+      "file": "positive/pandas_values_tolist.txt",
+      "format": "python-repr",
+      "rows": 120,
+      "cols": 6,
+      "headers": [
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "file": "positive/pandas_dict_per_line.txt",
+      "format": "python-repr",
+      "rows": 120,
+      "cols": 6,
+      "headers": [
+        "order_id",
+        "customer",
+        "region",
+        "amount",
+        "status",
+        "latency_ms"
+      ]
+    },
+    {
+      "file": "positive/pandas_to_json_columns.json",
+      "format": "json-object",
+      "rows": 120,
+      "cols": 7,
+      "headers": [
+        "index",
+        "order_id",
+        "customer",
+        "region",
+        "amount",
+        "status",
+        "latency_ms"
+      ]
+    },
+    {
+      "file": "positive/pandas_to_string_datetime_spaces.txt",
+      "format": "table",
+      "rows": 120,
+      "cols": 6,
+      "headers": [
+        "idx",
+        "when",
+        "city",
+        "delta",
+        "label",
+        "n"
+      ]
+    },
+    {
       "file": "positive/polars_orders.txt",
       "format": "table",
       "rows": 100,
@@ -958,16 +1059,28 @@
         "lr",
         "score"
       ]
+    },
+    {
+      "file": "positive/pandas_datetime_to_string.txt",
+      "format": "table",
+      "rows": 50,
+      "cols": 8,
+      "headers": [
+        "idx",
+        "order_id",
+        "ts",
+        "customer",
+        "region",
+        "amount",
+        "status",
+        "latency_ms"
+      ]
     }
   ],
   "negative": [
     {
       "file": "negative/pandas_default_print.txt",
       "note": "columns hidden behind ..."
-    },
-    {
-      "file": "negative/pandas_datetime_to_string.txt",
-      "note": "datetime column glued by one space; labels unsafe"
     },
     {
       "file": "negative/readme.md",
@@ -1080,6 +1193,14 @@
     {
       "file": "negative/prose_with_commas.txt",
       "note": "prose"
+    },
+    {
+      "file": "negative/pandas_datetime_index.txt",
+      "note": "a DatetimeIndex: the index and the first column cannot be told apart by position"
+    },
+    {
+      "file": "negative/pandas_datetime_first_column_no_index.txt",
+      "note": "to_string(index=False) with a datetime first column looks like an index plus a value"
     }
   ],
   "either": [
