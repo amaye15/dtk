@@ -1201,6 +1201,26 @@
     {
       "file": "negative/pandas_datetime_first_column_no_index.txt",
       "note": "to_string(index=False) with a datetime first column looks like an index plus a value"
+    },
+    {
+      "file": "negative/markdown_page_with_table.md",
+      "note": "a reference page with a 43-row table in it: the rest of the page would be dropped"
+    },
+    {
+      "file": "negative/ls_la_listing.txt",
+      "note": "ls -la with times: the names are the content"
+    },
+    {
+      "file": "negative/gh_run_log_tab_separated.tsv",
+      "note": "headerless tab-separated CI log: the first line is data, not a header"
+    },
+    {
+      "file": "negative/tensor_shapes.txt",
+      "note": "name (128, 1) lines: the comma is inside the value"
+    },
+    {
+      "file": "negative/grep_results_with_size_list.txt",
+      "note": "grep results under a file list: not a table"
     }
   ],
   "either": [

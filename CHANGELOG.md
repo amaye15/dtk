@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.1
+
+Four wrong readings, found by lining up every big output in a real 60-day history against what the readers made of it (`cargo run --release --example audit -- FILES` does this for any set of outputs). All four are older than 0.13.0; widening dtk to MCP tools, whose results include documentation pages, is what brought the first one to light.
+
+- **A document with a table in it was replaced by the table.** A 160-line page with a 13-row Markdown table became those 13 rows, and the other 147 lines were dropped without a word. File lists and `grep` output with an aligned part did the same. Now every line a reader does not use as a row, header, border or kept note is counted. More than five such lines, and more than a tenth of the rows, means the text is not a table and passes through. Fewer are listed in a note: `9 other lines are not rows and are not shown`.
+- **An `ls -l` listing was read as a table whose header was a file.** The names are the content of a listing, so it is left alone (80% of lines in the `-rw-r--r--` form).
+- **A header cell that is a piece of data is not a name.** A number, a space and more (`8 andrewmayes`); a date or timestamp (`2026-08-04T22:01:17Z ...`, also behind a byte-order mark); half of a bracket (`layers.0.weight (128` and `)`). The tab-separated CI log from `gh run view --log` had no header, so its first line became the column names; a list of `name (128, 1)` lines was split at its comma.
+- Of 492 outputs read as tables in that history, 20 were wrong and are now left alone; the rest were checked column name by column name. The 20 had counted for about 20,000 tokens of "savings".
+- Checked by: 5 rejected fixtures, each shaped like a real output (with names changed) that 0.13.0 reads as a table and 0.13.1 does not; unit tests for the rules; 216 tests.
+
 ## 0.13.0
 
 Data that arrives with text around it, and data that comes from MCP tools.

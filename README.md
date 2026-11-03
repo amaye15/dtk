@@ -99,7 +99,7 @@ Up to 60 rows become CSV and nothing is dropped. A bigger table gets:
 
 **It never touches:**
 
-- source code, prose, and directory listings (`ls -l`, `find`): the exact text or the names are the content
+- source code, prose, documents with a table in them, and directory listings (`ls -l`, `find`): the exact text or the names are the content
 - small outputs: under 1,200 estimated tokens for a table, 4,000 for a JSON document (8,000 for `Read`)
 - requests for rows: `head`, `tail`, `sed -n`, `qsv slice`, rtk's `--head-lines` and `--tail-lines`, `jq`/`jaq` queries, dtk's own drill-down commands, reads with `offset` or `limit`, and any file dtk saved itself
 - output that rtk already cut (`... (N lines truncated)`): a summary would claim rows that are missing
@@ -156,7 +156,7 @@ min_outline_tokens = 4000  # smallest JSON document worth an outline
 
 ## How it is checked
 
-213 tests, plus the A/B script and an end-to-end test with a real MCP server. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (79 files detected as expected, 31 rejected, 6 found inside text). A test that lists the facts a summary must keep and checks them (2123 of 2123 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
+216 tests, plus the A/B script and an end-to-end test with a real MCP server. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (79 files detected as expected, 36 rejected, 6 found inside text). A test that lists the facts a summary must keep and checks them (2123 of 2123 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
 
 ## Limits
 

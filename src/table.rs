@@ -80,7 +80,46 @@ pub struct Table {
 
 /// Returns a table when `text` is clearly one.
 pub fn detect(text: &str) -> Option<Table> {
-    if text.len() > MAX_INPUT {
+    detect_lines(text).and_then(|t| accounted_for(t, text))
+}
+
+/// A reader may set aside a few lines that are not rows (a footer, a bad line). When more than a
+/// few are left over, the text is not a table: it is a document with a table in it, or a list
+/// that happens to align, and replacing it would drop most of it without a word. Fewer lines
+/// are fine, but the summary says that they are not shown.
+fn accounted_for(mut t: Table, text: &str) -> Option<Table> {
+    let (header, borders) = match t.format {
+        Format::Aligned | Format::TailText => (1, false),
+        Format::Bordered => (1, true),
+        Format::Jsonl
+        | Format::PrefixedJsonl
+        | Format::Logfmt
+        | Format::AccessLog
+        | Format::TextLog => (0, false),
+        // One row may take several lines (CSV with a quoted newline, record blocks), or the row
+        // is not a line at all (JSON, HTML, a Python value).
+        _ => return Some(t),
+    };
+    let nonblank = text.lines().filter(|l| !l.trim().is_empty());
+    let lines = if borders {
+        nonblank.filter(|l| !is_border(l)).count()
+    } else {
+        nonblank.count()
+    };
+    let shown = t.rows.len() + header + t.notes.len();
+    let left = lines.saturating_sub(shown);
+    if left > 5 && left * 10 > t.rows.len() {
+        return None;
+    }
+    if left > 0 {
+        t.notes
+            .push(format!("{left} other lines are not rows and are not shown"));
+    }
+    Some(t)
+}
+
+fn detect_lines(text: &str) -> Option<Table> {
+    if text.len() > MAX_INPUT || is_long_listing(text) {
         return None;
     }
     let cleaned = clean(text);
@@ -740,6 +779,41 @@ fn parse_json_array(text: &str) -> Option<Table> {
     from_objects(Format::JsonArray, objects.into_iter(), Vec::new())
 }
 
+/// Is this header cell really a piece of a data line? A number, then a space, then more
+/// (`8 andrewmayes`, `256 Oct 25 13:50 name`); a date; half of a bracket. A column name that starts
+/// with a number has no space after it (`5m`, `2024`).
+fn starts_like_data(cell: &str) -> bool {
+    let c = cell.trim().trim_start_matches('\u{feff}');
+    let b = c.as_bytes();
+    // A date or a timestamp (`2026-08-04T22:01:17Z ...`) is a value, whatever comes after it.
+    let dated = b.len() >= 10
+        && b[..4].iter().all(u8::is_ascii_digit)
+        && b[4] == b'-'
+        && b[5..7].iter().all(u8::is_ascii_digit)
+        && b[7] == b'-'
+        && b[8..10].iter().all(u8::is_ascii_digit);
+    // `name (128` and `)` are the two halves of `name (128, 1)` cut at its comma.
+    let unbalanced = c.matches('(').count() != c.matches(')').count()
+        || c.matches('[').count() != c.matches(']').count();
+    dated
+        || unbalanced
+        || (c.starts_with(|ch: char| ch.is_ascii_digit()) && c.contains(char::is_whitespace))
+}
+
+/// Lines such as `-rw-r--r--  1 user  staff  530 Oct 26 20:22 name`: an `ls -l` listing. The
+/// names are the content of a listing, and a summary would hide them.
+fn is_long_listing(text: &str) -> bool {
+    let perm = |l: &str| {
+        let b = l.trim_start().as_bytes();
+        b.len() > 10
+            && b"-dlcbps".contains(&b[0])
+            && b[1..10].iter().all(|c| b"rwxsStT-".contains(c))
+            && (b[10] == b' ' || b"@+.".contains(&b[10]))
+    };
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    lines.len() >= MIN_ROWS && lines.iter().filter(|l| perm(l)).count() * 10 >= lines.len() * 8
+}
+
 pub(crate) fn valid_header(h: &[String]) -> bool {
     if h.len() < 2 || h.len() > MAX_COLS {
         return false;
@@ -754,6 +828,7 @@ pub(crate) fn valid_header(h: &[String]) -> bool {
             || c.split_whitespace().count() > 6
             || c.parse::<f64>().is_ok()
             || c.contains(['"', '{', '}'])
+            || starts_like_data(c)
         {
             return false;
         }
@@ -1162,6 +1237,63 @@ pub mod tests {
         let w = detect_wrapped(&text).unwrap();
         assert_eq!(w.table.headers, ["id", "name", "ok"]);
         assert_eq!(w.table.rows.len(), 40);
+    }
+
+    #[test]
+    fn a_header_cell_that_is_a_piece_of_data_is_not_a_name() {
+        let h =
+            |cells: &[&str]| valid_header(&cells.iter().map(|c| c.to_string()).collect::<Vec<_>>());
+        assert!(h(&["id", "name", "5m", "p95 latency", "Mounted on"]));
+        assert!(!h(&["drwxr-xr-x@", "8 projectuser", "wheel"]));
+        assert!(!h(&[
+            "Build",
+            "Run tests",
+            "2026-08-04T22:01:17.57Z ##[group]Run"
+        ]));
+        assert!(!h(&["\u{feff}2026-08-04T22:01:17Z", "x"]));
+        assert!(!h(&["layers.0.weight (128", ")"]));
+        assert!(!h(&["{\"id\":", "0,"]));
+    }
+
+    #[test]
+    fn a_few_stray_lines_are_counted_and_many_make_it_no_table() {
+        // A Markdown table with prose lines around it. The prose is not bad rows to the reader,
+        // so only the count of unaccounted lines can tell a page from a table.
+        let page = |rows: usize, prose: usize| {
+            let mut s = String::from("| name | value | size |\n| --- | --- | --- |\n");
+            for i in 0..rows {
+                s.push_str(&format!("| item{i:03} | {} | {} |\n", i * 3, i % 17));
+            }
+            for i in 0..prose {
+                s.push_str(&format!("A sentence of the page, number {i}.\n"));
+            }
+            s
+        };
+        // 14 stray lines under 100 rows: five are kept as notes, nine are counted.
+        let t = detect(&page(100, 14)).expect("a table with a few lines of text");
+        assert_eq!(t.rows.len(), 100);
+        assert!(
+            t.notes
+                .iter()
+                .any(|n| n.starts_with("9 other lines are not rows")),
+            "{:?}",
+            t.notes
+        );
+        // 30 stray lines under 20 rows: a page with a table in it.
+        assert!(detect(&page(20, 30)).is_none());
+    }
+
+    #[test]
+    fn a_long_listing_is_left_alone() {
+        let ls: String = (0..30)
+            .map(|i| {
+                format!(
+                    "-rw-r--r--@  1 user  staff  {:>6} Oct 26 20:22 file_{i}.txt\n",
+                    i * 100
+                )
+            })
+            .collect();
+        assert!(detect(&ls).is_none());
     }
 
     #[test]

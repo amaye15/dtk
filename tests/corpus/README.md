@@ -32,6 +32,7 @@ How the files were made (tool and version on 2026-11-02):
 - `ps_aux.txt`, `ps_ef.txt`, `df_h.txt`: synthetic, in the layout of macOS `ps aux`, `ps -ef` and `df -h` (a free-text
   last column; the real outputs on the author's machine were checked by hand and are not committed)
 - `csv_comment_header.csv`, `csv_bom.csv`: a `#` comment header, and a byte-order mark
+- `negative/markdown_page_with_table.md`, `ls_la_listing.txt`, `gh_run_log_tab_separated.tsv`, `tensor_shapes.txt`, `grep_results_with_size_list.txt`: synthetic, in the shape of real outputs that 0.13.0 wrongly read as tables (found by comparing the lines of every big output in a real history with the lines each table accounted for)
 - `negative/`: this repository's README, source and changelog; real `cargo test`, `git diff`,
   `git log`, `env`, `brew list`, `ls -l`; a Python traceback; a shell script; YAML; prose
 - `either/`: `ps aux`, `df -h`, `lsof`, `netstat`, `qsv stats | qsv table`
