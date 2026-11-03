@@ -22,7 +22,9 @@ const MAX_CELL: usize = 400;
 /// The most characters `dtk get` prints.
 const MAX_GET: usize = 30_000;
 
-pub const COMMANDS: [&str; 7] = ["rows", "top", "count", "group", "where", "stats", "get"];
+pub const COMMANDS: [&str; 8] = [
+    "rows", "top", "count", "group", "where", "stats", "get", "html",
+];
 
 pub const USAGE: &str = "\
 dtk rows  FILE START [COUNT]          rows from START (counting from 0), COUNT default 20
@@ -34,6 +36,8 @@ dtk where FILE COLUMN OP VALUE [N]    rows where COLUMN OP VALUE; OP is = != > >
                                       (~ means contains, ignoring case); default N is 20
 dtk stats FILE COLUMN...              the statistics of those columns
 dtk get   FILE PATH                   one part of a JSON file: .a.b[0]  .items[]  .items | length
+dtk html  FILE WHAT                   a saved web page: text [FROM [COUNT]]  headings  links [N]
+                                      tables [N]  json [N]  grep WORD
 FILE is a path, or the short id that a summary prints.";
 
 fn fail(msg: &str) -> i32 {
@@ -44,6 +48,152 @@ fn fail(msg: &str) -> i32 {
 fn usage(msg: &str) -> i32 {
     eprintln!("dtk: {msg}\n\n{USAGE}");
     2
+}
+
+/// `dtk html FILE WHAT`: a part of a web page that dtk saved.
+fn html_cmd(args: &[String]) -> i32 {
+    let (Some(file), Some(what)) = (args.first(), args.get(1)) else {
+        return usage("dtk html needs FILE and WHAT");
+    };
+    let path = match resolve_ext(file, "html") {
+        Ok(p) => p,
+        Err(e) => return fail(&e),
+    };
+    let raw = match fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) => return fail(&format!("cannot read {}: {e}", path.display())),
+    };
+    let page = dtk::html::parse(&raw);
+    let num = |i: usize| args.get(i).and_then(|v| v.parse::<usize>().ok());
+    match what.as_str() {
+        "text" => {
+            let from = num(2).unwrap_or(0);
+            let count = num(3).unwrap_or(80);
+            for (i, l) in page.text.iter().enumerate().skip(from).take(count) {
+                println!("{}: {l}", i + 1);
+            }
+            let end = (from + count).min(page.text.len());
+            if end < page.text.len() {
+                println!(
+                    "... {} more lines: dtk html {file} text {end}",
+                    page.text.len() - end
+                );
+            }
+        }
+        "headings" => {
+            for (level, h, at) in &page.headings {
+                println!(
+                    "{}{h} (line {})",
+                    "  ".repeat(level.saturating_sub(1).min(4)),
+                    at + 1
+                );
+            }
+        }
+        "links" => {
+            let limit = num(2).unwrap_or(100);
+            for (label, href) in page.links.iter().take(limit) {
+                println!("{label} -> {href}");
+            }
+            if page.links.len() > limit {
+                println!(
+                    "... {} more: dtk html {file} links {}",
+                    page.links.len() - limit,
+                    page.links.len()
+                );
+            }
+        }
+        "tables" => match num(2) {
+            None => {
+                for (i, t) in page.tables.iter().enumerate() {
+                    let first: Vec<&str> = t[0].iter().take(6).map(String::as_str).collect();
+                    println!(
+                        "{i}: {} rows x {} columns: {}",
+                        t.len(),
+                        t.iter().map(Vec::len).max().unwrap_or(0),
+                        first.join(" | ")
+                    );
+                }
+            }
+            Some(n) => match page.tables.get(n) {
+                Some(t) => {
+                    let mut w = csv::WriterBuilder::new()
+                        .terminator(csv::Terminator::Any(b'\n'))
+                        .flexible(true)
+                        .from_writer(Vec::new());
+                    for r in t {
+                        let _ = w.write_record(r);
+                    }
+                    print!(
+                        "{}",
+                        String::from_utf8_lossy(&w.into_inner().unwrap_or_default())
+                    );
+                }
+                None => {
+                    return fail(&format!(
+                        "the page has {} tables, numbered from 0",
+                        page.tables.len()
+                    ))
+                }
+            },
+        },
+        "json" => match num(2) {
+            None => {
+                for (i, b) in page.data.iter().enumerate() {
+                    println!("{i}: {} ({} bytes)", b.kind, b.bytes);
+                }
+            }
+            Some(n) => match page.data.get(n) {
+                Some(b) => {
+                    let pretty = serde_json::from_str::<serde_json::Value>(&b.content)
+                        .and_then(|v| serde_json::to_string_pretty(&v))
+                        .unwrap_or_else(|_| b.content.clone());
+                    println!("{}", pretty.chars().take(MAX_GET).collect::<String>());
+                }
+                None => {
+                    return fail(&format!(
+                        "the page has {} JSON blocks, numbered from 0",
+                        page.data.len()
+                    ))
+                }
+            },
+        },
+        "grep" => {
+            let Some(word) = args.get(2) else {
+                return usage("dtk html FILE grep WORD");
+            };
+            let w = word.to_lowercase();
+            let hits: Vec<(usize, &String)> = page
+                .text
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| l.to_lowercase().contains(&w))
+                .collect();
+            for (i, l) in hits.iter().take(40) {
+                println!("{}: {}", i + 1, dtk::lean::trunc(l, 400));
+            }
+            println!("{} lines contain {word:?}", hits.len());
+        }
+        other => return usage(&format!("dtk html does not know {other:?}")),
+    }
+    0
+}
+
+/// A path, or the id of a file in the store, preferring the file with this extension.
+fn resolve_ext(file: &str, ext: &str) -> Result<PathBuf, String> {
+    let p = resolve(file, false)?;
+    if p.extension().and_then(|e| e.to_str()) == Some(ext) {
+        return Ok(p);
+    }
+    // The id may name several files (`<id>.html`, `<id>.csv`).
+    if let Some(dir) = p.parent() {
+        let sibling = dir
+            .join(p.file_stem().unwrap_or_default())
+            .with_extension(ext);
+        if sibling.exists() {
+            return Ok(sibling);
+        }
+    }
+    Ok(p)
 }
 
 /// A path, or the id of a file in the store.
@@ -688,6 +838,7 @@ pub fn run(cmd: &str, args: &[String]) -> i32 {
         "where" => where_cmd(args),
         "stats" => stats_cmd(args),
         "get" => get_cmd(args),
+        "html" => html_cmd(args),
         _ => usage(&format!("unknown command {cmd}")),
     }
 }

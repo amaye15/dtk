@@ -1,0 +1,1266 @@
+   Compiling broken v0.1.0 (/tmp/work)
+error[E0425]: cannot find value `undefined_1` in this scope
+ --> src/lib.rs:2:28
+  |
+2 | pub fn f1() { let x: u32 = undefined_1; }
+  |                            ^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_4` in this scope
+ --> src/lib.rs:5:28
+  |
+5 | pub fn f4() { let x: u32 = undefined_4; }
+  |                            ^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_7` in this scope
+ --> src/lib.rs:8:28
+  |
+8 | pub fn f7() { let x: u32 = undefined_7; }
+  |                            ^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_10` in this scope
+  --> src/lib.rs:11:29
+   |
+11 | pub fn f10() { let x: u32 = undefined_10; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_13` in this scope
+  --> src/lib.rs:14:29
+   |
+14 | pub fn f13() { let x: u32 = undefined_13; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_16` in this scope
+  --> src/lib.rs:17:29
+   |
+17 | pub fn f16() { let x: u32 = undefined_16; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_19` in this scope
+  --> src/lib.rs:20:29
+   |
+20 | pub fn f19() { let x: u32 = undefined_19; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_22` in this scope
+  --> src/lib.rs:23:29
+   |
+23 | pub fn f22() { let x: u32 = undefined_22; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_25` in this scope
+  --> src/lib.rs:26:29
+   |
+26 | pub fn f25() { let x: u32 = undefined_25; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_28` in this scope
+  --> src/lib.rs:29:29
+   |
+29 | pub fn f28() { let x: u32 = undefined_28; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_31` in this scope
+  --> src/lib.rs:32:29
+   |
+32 | pub fn f31() { let x: u32 = undefined_31; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_34` in this scope
+  --> src/lib.rs:35:29
+   |
+35 | pub fn f34() { let x: u32 = undefined_34; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_37` in this scope
+  --> src/lib.rs:38:29
+   |
+38 | pub fn f37() { let x: u32 = undefined_37; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_40` in this scope
+  --> src/lib.rs:41:29
+   |
+41 | pub fn f40() { let x: u32 = undefined_40; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_43` in this scope
+  --> src/lib.rs:44:29
+   |
+44 | pub fn f43() { let x: u32 = undefined_43; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_46` in this scope
+  --> src/lib.rs:47:29
+   |
+47 | pub fn f46() { let x: u32 = undefined_46; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_49` in this scope
+  --> src/lib.rs:50:29
+   |
+50 | pub fn f49() { let x: u32 = undefined_49; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_52` in this scope
+  --> src/lib.rs:53:29
+   |
+53 | pub fn f52() { let x: u32 = undefined_52; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_55` in this scope
+  --> src/lib.rs:56:29
+   |
+56 | pub fn f55() { let x: u32 = undefined_55; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_58` in this scope
+  --> src/lib.rs:59:29
+   |
+59 | pub fn f58() { let x: u32 = undefined_58; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_61` in this scope
+  --> src/lib.rs:62:29
+   |
+62 | pub fn f61() { let x: u32 = undefined_61; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_64` in this scope
+  --> src/lib.rs:65:29
+   |
+65 | pub fn f64() { let x: u32 = undefined_64; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_67` in this scope
+  --> src/lib.rs:68:29
+   |
+68 | pub fn f67() { let x: u32 = undefined_67; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_70` in this scope
+  --> src/lib.rs:71:29
+   |
+71 | pub fn f70() { let x: u32 = undefined_70; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_73` in this scope
+  --> src/lib.rs:74:29
+   |
+74 | pub fn f73() { let x: u32 = undefined_73; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_76` in this scope
+  --> src/lib.rs:77:29
+   |
+77 | pub fn f76() { let x: u32 = undefined_76; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `undefined_79` in this scope
+  --> src/lib.rs:80:29
+   |
+80 | pub fn f79() { let x: u32 = undefined_79; }
+   |                             ^^^^^^^^^^^^ not found in this scope
+
+error[E0308]: mismatched types
+ --> src/lib.rs:1:22
+  |
+1 | pub fn f0() -> u32 { "text" }
+  |                ---   ^^^^^^ expected `u32`, found `&str`
+  |                |
+  |                expected `u32` because of return type
+
+error[E0308]: mismatched types
+ --> src/lib.rs:3:41
+  |
+3 | pub fn f2(a: &str) -> usize { a.len() + 1u8 }
+  |                                         ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:3:39
+    |
+  3 | pub fn f2(a: &str) -> usize { a.len() + 1u8 }
+    |                                       ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+ --> src/lib.rs:4:22
+  |
+4 | pub fn f3() -> u32 { "text" }
+  |                ---   ^^^^^^ expected `u32`, found `&str`
+  |                |
+  |                expected `u32` because of return type
+
+error[E0308]: mismatched types
+ --> src/lib.rs:6:41
+  |
+6 | pub fn f5(a: &str) -> usize { a.len() + 1u8 }
+  |                                         ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:6:39
+    |
+  6 | pub fn f5(a: &str) -> usize { a.len() + 1u8 }
+    |                                       ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+ --> src/lib.rs:7:22
+  |
+7 | pub fn f6() -> u32 { "text" }
+  |                ---   ^^^^^^ expected `u32`, found `&str`
+  |                |
+  |                expected `u32` because of return type
+
+error[E0308]: mismatched types
+ --> src/lib.rs:9:41
+  |
+9 | pub fn f8(a: &str) -> usize { a.len() + 1u8 }
+  |                                         ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:9:39
+    |
+  9 | pub fn f8(a: &str) -> usize { a.len() + 1u8 }
+    |                                       ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:10:22
+   |
+10 | pub fn f9() -> u32 { "text" }
+   |                ---   ^^^^^^ expected `u32`, found `&str`
+   |                |
+   |                expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:12:42
+   |
+12 | pub fn f11(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:12:40
+    |
+ 12 | pub fn f11(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:13:23
+   |
+13 | pub fn f12() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:15:42
+   |
+15 | pub fn f14(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:15:40
+    |
+ 15 | pub fn f14(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:16:23
+   |
+16 | pub fn f15() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:18:42
+   |
+18 | pub fn f17(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:18:40
+    |
+ 18 | pub fn f17(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:19:23
+   |
+19 | pub fn f18() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:21:42
+   |
+21 | pub fn f20(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:21:40
+    |
+ 21 | pub fn f20(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:22:23
+   |
+22 | pub fn f21() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:24:42
+   |
+24 | pub fn f23(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:24:40
+    |
+ 24 | pub fn f23(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:25:23
+   |
+25 | pub fn f24() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:27:42
+   |
+27 | pub fn f26(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:27:40
+    |
+ 27 | pub fn f26(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:28:23
+   |
+28 | pub fn f27() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:30:42
+   |
+30 | pub fn f29(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:30:40
+    |
+ 30 | pub fn f29(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:31:23
+   |
+31 | pub fn f30() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:33:42
+   |
+33 | pub fn f32(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:33:40
+    |
+ 33 | pub fn f32(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:34:23
+   |
+34 | pub fn f33() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:36:42
+   |
+36 | pub fn f35(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:36:40
+    |
+ 36 | pub fn f35(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:37:23
+   |
+37 | pub fn f36() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:39:42
+   |
+39 | pub fn f38(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:39:40
+    |
+ 39 | pub fn f38(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:40:23
+   |
+40 | pub fn f39() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:42:42
+   |
+42 | pub fn f41(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:42:40
+    |
+ 42 | pub fn f41(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:43:23
+   |
+43 | pub fn f42() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:45:42
+   |
+45 | pub fn f44(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:45:40
+    |
+ 45 | pub fn f44(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:46:23
+   |
+46 | pub fn f45() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:48:42
+   |
+48 | pub fn f47(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:48:40
+    |
+ 48 | pub fn f47(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:49:23
+   |
+49 | pub fn f48() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:51:42
+   |
+51 | pub fn f50(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:51:40
+    |
+ 51 | pub fn f50(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:52:23
+   |
+52 | pub fn f51() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:54:42
+   |
+54 | pub fn f53(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:54:40
+    |
+ 54 | pub fn f53(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:55:23
+   |
+55 | pub fn f54() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:57:42
+   |
+57 | pub fn f56(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:57:40
+    |
+ 57 | pub fn f56(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:58:23
+   |
+58 | pub fn f57() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:60:42
+   |
+60 | pub fn f59(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:60:40
+    |
+ 60 | pub fn f59(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:61:23
+   |
+61 | pub fn f60() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:63:42
+   |
+63 | pub fn f62(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:63:40
+    |
+ 63 | pub fn f62(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:64:23
+   |
+64 | pub fn f63() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:66:42
+   |
+66 | pub fn f65(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:66:40
+    |
+ 66 | pub fn f65(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:67:23
+   |
+67 | pub fn f66() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:69:42
+   |
+69 | pub fn f68(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:69:40
+    |
+ 69 | pub fn f68(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:70:23
+   |
+70 | pub fn f69() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:72:42
+   |
+72 | pub fn f71(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:72:40
+    |
+ 72 | pub fn f71(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:73:23
+   |
+73 | pub fn f72() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:75:42
+   |
+75 | pub fn f74(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:75:40
+    |
+ 75 | pub fn f74(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:76:23
+   |
+76 | pub fn f75() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+error[E0308]: mismatched types
+  --> src/lib.rs:78:42
+   |
+78 | pub fn f77(a: &str) -> usize { a.len() + 1u8 }
+   |                                          ^^^ expected `usize`, found `u8`
+
+error[E0277]: cannot add `u8` to `usize`
+   --> src/lib.rs:78:40
+    |
+ 78 | pub fn f77(a: &str) -> usize { a.len() + 1u8 }
+    |                                        ^ no implementation for `usize + u8`
+    |
+    = help: the trait `Add<u8>` is not implemented for `usize`
+help: the following other types implement trait `Add<Rhs>`
+   --> /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/internal_macros.rs:22:9
+    |
+ 22 |         const impl $imp<$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add<usize>`
+...
+ 33 |         const impl $imp<&$u> for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add<&usize>`
+...
+ 44 |         const impl $imp<&$u> for &$t {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&usize` implements `Add`
+    |
+   ::: /Users/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/arith.rs:98:9
+    |
+ 98 |         const impl Add for $t {
+    |         ^^^^^^^^^^^^^^^^^^^^^ `usize` implements `Add`
+...
+113 | add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
+    | ---------------------------------------------------------------------------------- in this macro invocation
+    = note: this error originates in the macro `forward_ref_binop` which comes from the expansion of the macro `add_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> src/lib.rs:79:23
+   |
+79 | pub fn f78() -> u32 { "text" }
+   |                 ---   ^^^^^^ expected `u32`, found `&str`
+   |                 |
+   |                 expected `u32` because of return type
+
+Some errors have detailed explanations: E0277, E0308, E0425.
+For more information about an error, try `rustc --explain E0277`.
+error: could not compile `broken` (lib) due to 106 previous errors

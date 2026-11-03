@@ -7,6 +7,8 @@ use std::collections::{HashMap, HashSet};
 pub const LOSSLESS_ROWS: usize = 60;
 /// ...but only when that CSV is no bigger than this many estimated tokens.
 const LOSSLESS_TOKENS: usize = 1500;
+/// Characters kept of a cell in a row that reports a problem (a log's error).
+const PROBLEM_CELL: usize = 170;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
@@ -1133,7 +1135,7 @@ fn outlier_note(vals: &[(usize, f64)]) -> Option<String> {
     Some(format!("outliers beyond 3xIQR: {}", parts.join(", ")))
 }
 
-fn trunc(s: &str, max: usize) -> String {
+pub fn trunc(s: &str, max: usize) -> String {
     let s = s.replace('\n', " ");
     if s.chars().count() <= max {
         s
@@ -1932,6 +1934,22 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
         let refs: Vec<&Vec<String>> = clipped.iter().collect();
         write_csv(None, &refs, Some(p.max_cell))
     };
+    // The rows of a log that say what went wrong are read for their message, so they are cut
+    // later than sample rows are, and each says which row of the log it is.
+    let show_problems = |idx: &[usize]| -> String {
+        idx.iter()
+            .map(|&i| {
+                let clipped = clip(&[&t.rows[i]]);
+                let refs: Vec<&Vec<String>> = clipped.iter().collect();
+                format!(
+                    "row {}: {}",
+                    i + 1,
+                    write_csv(None, &refs, Some(PROBLEM_CELL)).trim_end()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
     // Wide rows cost more, so fewer of them are shown: about 1,400 characters of sample rows.
     let sample_len: usize = t
         .rows
@@ -2021,8 +2039,11 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
                 groups.sort_by(|a, b| b.1.cmp(&a.1).then(a.2.cmp(&b.2)));
                 shape_lines.push_str(&format!("error shapes ({}):\n", groups.len()));
                 for (shape, n, at) in groups.iter().take(5) {
-                    shape_lines
-                        .push_str(&format!("  {n}x {shape}   (first at {})\n", t.rows[*at][0]));
+                    shape_lines.push_str(&format!(
+                        "  {n}x {shape}   (first at row {}, {})\n",
+                        at + 1,
+                        t.rows[*at][0]
+                    ));
                 }
                 if groups.len() > 5 {
                     shape_lines.push_str(&format!("  ... {} more shapes\n", groups.len() - 5));
@@ -2042,7 +2063,7 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
                 }
                 keep.insert(i);
             }
-            let shown: Vec<&Vec<String>> = keep.iter().map(|&i| &t.rows[i]).collect();
+            let keep: Vec<usize> = keep.into_iter().collect();
             out.push_str(&format!(
                 "{} error{}, {} warning{} ({}).\n{}showing {} lines, each {}error with the {} lines before it:\n{}\n",
                 errors.len(),
@@ -2051,10 +2072,10 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
                 if warns.len() == 1 { "" } else { "s" },
                 t.headers[li],
                 shape_lines,
-                shown.len(),
+                keep.len(),
                 if errors.len() > 5 && msg_col.is_some() { "first " } else { "" },
                 CONTEXT_LINES,
-                show(&shown)
+                show_problems(&keep)
             ));
         } else if !bad.is_empty() {
             let shown: Vec<&Vec<String>> = bad.iter().take(p.important).copied().collect();

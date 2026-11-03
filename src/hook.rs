@@ -21,6 +21,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// What the model sees for an output Claude Code saved to a file: a short preview and a path.
 const STUB_TOKENS: usize = 580;
+/// The most tokens of a web page's text shown at once; the rest is one `dtk html` away.
+const HTML_BUDGET: usize = 1500;
 const KEEP_FILES: usize = 60;
 const KEEP_SECS: u64 = 14 * 24 * 3600;
 /// Longest the chained command may run.
@@ -632,6 +634,22 @@ pub fn evaluate(shown: &Input, cfg: &Config, write: bool) -> Verdict {
                 return evaluate_outline(inp, cfg, write, v, &doc);
             }
         }
+        // A web page that was fetched to be read.
+        if inp.tool == "Bash"
+            && cfg.html_pages
+            && dtk::html::looks_like_html(inp.text)
+            && dtk::html::fetches_page(&typed_cmd)
+        {
+            return evaluate_html(inp, cfg, write, v);
+        }
+        // A log that Claude Code saved to a file: the model would see its first lines only.
+        if inp.tool == "Bash"
+            && inp.persisted
+            && cfg.digest_logs
+            && !dtk::digest::prints_content(&typed_cmd)
+        {
+            return evaluate_digest(inp, write, v);
+        }
         v.reason = format!(
             "not a table: no JSONL, JSON, CSV, logfmt, access log, or aligned or bordered table found (needs at least {} rows)",
             table::MIN_ROWS
@@ -723,6 +741,77 @@ pub fn evaluate(shown: &Input, cfg: &Config, write: bool) -> Verdict {
     });
     v.table = Some(table);
     v.rendered = Some(rendered);
+    v
+}
+
+/// A fetched web page becomes its text. The page is saved for `dtk html`.
+fn evaluate_html(inp: &Input, cfg: &Config, write: bool, mut v: Verdict) -> Verdict {
+    let (status, body) = dtk::html::split_response(inp.text);
+    let page = dtk::html::parse(body);
+    if page.text.is_empty() {
+        v.reason = "an HTML page with no text in it".into();
+        return v;
+    }
+    let id = if write {
+        store_write("html", body.as_bytes())
+            .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
+            .unwrap_or_else(|| "<id>".into())
+    } else {
+        "<id>".into()
+    };
+    let text = dtk::html::summary(&page, body, &id, status, cfg.budget.min(HTML_BUDGET));
+    v.after = est_tokens(&text);
+    v.detected = Some(Detected {
+        name: "web-page",
+        rows: page.text.len(),
+        cols: 0,
+    });
+    v.rendered = Some(Rendered {
+        text,
+        lossless: false,
+    });
+    let enough = if inp.persisted {
+        true
+    } else {
+        v.tokens_full >= cfg.min_tokens && v.after * 10 <= v.tokens_full * 7
+    };
+    v.applies = enough;
+    v.reason = if enough {
+        format!(
+            "a fetched web page: {} tokens of HTML are {} tokens of text",
+            v.tokens_full, v.after
+        )
+    } else {
+        format!(
+            "a web page, but its text ({} tokens) is not at least 30% smaller than the HTML ({}), or the page is small",
+            v.after, v.tokens_full
+        )
+    };
+    v
+}
+
+/// A saved-to-file log gets a digest of all of it, with the path of the file in it.
+fn evaluate_digest(inp: &Input, write: bool, mut v: Verdict) -> Verdict {
+    let saved = inp.file.map(|p| short_path(p, "log", write));
+    let Some(text) = dtk::digest::digest(inp.text, saved.as_deref()) else {
+        v.reason = "not a table, and not a log that a digest would serve".into();
+        return v;
+    };
+    v.after = est_tokens(&text);
+    v.detected = Some(Detected {
+        name: "log-digest",
+        rows: inp.text.lines().filter(|l| !l.trim().is_empty()).count(),
+        cols: 0,
+    });
+    v.rendered = Some(Rendered {
+        text,
+        lossless: false,
+    });
+    v.applies = true;
+    v.reason = format!(
+        "saved-to-file log: the digest ({} tokens) covers all of it and replaces a preview of about {STUB_TOKENS} tokens",
+        v.after
+    );
     v
 }
 
@@ -998,8 +1087,35 @@ pub fn view(arg: Option<&str>) -> i32 {
             );
             return 0;
         }
+        if dtk::html::looks_like_html(&text) {
+            let (status, body) = dtk::html::split_response(&text);
+            let page = dtk::html::parse(body);
+            let id = store_write("html", body.as_bytes())
+                .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
+                .unwrap_or_else(|| "<id>".into());
+            let out = dtk::html::summary(&page, body, &id, status, HTML_BUDGET);
+            println!("{out}");
+            eprintln!(
+                "dtk: {} est. tokens -> {}",
+                est_tokens(&text),
+                est_tokens(&out)
+            );
+            return 0;
+        }
+        if let Some(d) = dtk::digest::digest(
+            &text,
+            path.as_ref().map(|p| p.display().to_string()).as_deref(),
+        ) {
+            println!("{d}");
+            eprintln!(
+                "dtk: {} est. tokens -> {}",
+                est_tokens(&text),
+                est_tokens(&d)
+            );
+            return 0;
+        }
         eprintln!(
-            "dtk: no table, CSV, JSON array, JSONL or JSON document found (a table needs at least {} rows)",
+            "dtk: no table, CSV, JSON array, JSONL, JSON document or log found (a table needs at least {} rows)",
             table::MIN_ROWS
         );
         return 1;
