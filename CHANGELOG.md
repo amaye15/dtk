@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.0
+
+Fewer tokens for more information, from reading what the summaries of real API data spent their tokens on. All automatic.
+
+- **Nested JSON is opened.** An object that most rows have, with the same few keys (an `owner` with a `login` and an `id`), becomes columns: `owner.login`, `owner.id`, up to two levels. Before, each was one cell of JSON text, shown as `{"login":"chenyukang","id":230646,"node_...` with no statistics. A map whose keys are data (more than 20 keys), a key that is sometimes a string, and a table that would pass 150 columns stay as they were.
+- **Columns that say nothing get a name, not a line.** Same value in every row (and no gaps): one `same in every row: a=1, b=x` line (the rest are named). A different token in every row, with no spaces (ids, URLs, node ids, hashes): one `different in every row` line with one example of the first two. Columns that split the rows into exactly the same groups as an earlier column (the id, login, node id and URL of one actor): `same groups as actor.login: actor.id, actor.url, ...`. A list cut short says `+N more`. Statistics lines and sample rows go to the columns that vary; the sample rows say which columns they show.
+- **Hashes by kind.** 40-character hex ids and UUIDs are `16 distinct, 40-character hex ids`, not two examples. A list of long values stops when it is long (`+N more`).
+- **Sample rows that earn their place.** Fewer plain first and last rows (5 and 2, fewer when rows are wide), and the **full rows of the extremes** after them: the largest and smallest of the first measure and the largest of the second. The model sees who and where the largest amount was.
+- Across the 63 corpus fixtures that get a summary, the summaries are 6.8% smaller than 0.9.0's (28,156 to 26,244 tokens), real API JSON by up to 20%, and they hold more.
+- Checked by: the retention harness now asks of every column that has no statistics line whether the summary accounts for it truthfully, working it out from the raw cells (a column called constant must be constant, a copy must have identical groups, a unique column must be unique): 1657 of 1657, including the full row of the largest value of the first measure.
+
 ## 0.9.0
 
 Back to the point of dtk: minimum tokens, maximum information, automatically, with rtk. 0.8.0 added `dtk group` as a command, but a command is a second step that the model must decide to take. The useful part belongs in the summary.

@@ -425,35 +425,111 @@ fn cell(v: &Value) -> String {
     }
 }
 
-/// Builds a table from JSON objects. Columns are the union of keys in first-seen order.
-fn from_objects<'a>(
-    format: Format,
-    objects: impl Iterator<Item = &'a Map<String, Value>>,
-    notes: Vec<String>,
-) -> Option<Table> {
+/// How deep nested objects are opened into columns: `owner.login`, `a.b.c`.
+const MAX_FLATTEN_DEPTH: usize = 2;
+/// An object with more keys than this is a map (keys are data), not a record, and stays one cell.
+const MAX_FLATTEN_KEYS: usize = 20;
+
+/// Which nested objects to open into columns: those that most rows have, that always have the
+/// same few keys, and are never mixed with strings or numbers in other rows.
+fn flatten_plan(
+    maps: &[&Map<String, Value>],
+    prefix: &str,
+    depth: usize,
+    plan: &mut HashSet<String>,
+) {
+    if depth >= MAX_FLATTEN_DEPTH {
+        return;
+    }
+    let mut keys: Vec<&str> = Vec::new();
+    for m in maps {
+        for (k, v) in m.iter() {
+            if v.is_object() && !keys.contains(&k.as_str()) {
+                keys.push(k);
+            }
+        }
+    }
+    for k in keys {
+        if k.contains('.') {
+            continue;
+        }
+        let subs: Vec<&Map<String, Value>> = maps
+            .iter()
+            .filter_map(|m| m.get(k).and_then(Value::as_object))
+            .collect();
+        let mixed = maps
+            .iter()
+            .any(|m| m.get(k).is_some_and(|v| !v.is_object() && !v.is_null()));
+        let mut union: HashSet<&str> = HashSet::new();
+        for sub in &subs {
+            union.extend(sub.keys().map(String::as_str));
+        }
+        if mixed
+            || subs.len() * 2 < maps.len()
+            || union.is_empty()
+            || union.len() > MAX_FLATTEN_KEYS
+            || union.iter().any(|u| u.contains('.'))
+        {
+            continue;
+        }
+        let path = if prefix.is_empty() {
+            k.to_string()
+        } else {
+            format!("{prefix}.{k}")
+        };
+        plan.insert(path.clone());
+        flatten_plan(&subs, &path, depth + 1, plan);
+    }
+}
+
+fn flatten_into(
+    prefix: &str,
+    m: &Map<String, Value>,
+    plan: &HashSet<String>,
+    out: &mut Vec<(String, String)>,
+) {
+    for (k, v) in m {
+        let path = if prefix.is_empty() {
+            k.clone()
+        } else {
+            format!("{prefix}.{k}")
+        };
+        match v {
+            Value::Object(sub) if plan.contains(&path) => flatten_into(&path, sub, plan, out),
+            Value::Null if plan.contains(&path) => {}
+            _ => out.push((path, cell(v))),
+        }
+    }
+}
+
+/// Columns and rows from objects, opened by `plan`. `None` when there are too many columns.
+fn rows_of_objects(
+    objects: &[&Map<String, Value>],
+    plan: &HashSet<String>,
+) -> Option<(Vec<String>, Vec<Vec<String>>)> {
     let mut headers: Vec<String> = Vec::new();
-    let mut index: HashMap<&str, usize> = HashMap::new();
-    let mut sparse: Vec<Vec<(usize, String)>> = Vec::new();
+    let mut index: HashMap<String, usize> = HashMap::new();
+    let mut sparse: Vec<Vec<(usize, String)>> = Vec::with_capacity(objects.len());
+    let mut pairs: Vec<(String, String)> = Vec::new();
     for obj in objects {
-        let mut row = Vec::with_capacity(obj.len());
-        for (k, v) in obj {
-            let i = match index.get(k.as_str()) {
+        pairs.clear();
+        flatten_into("", obj, plan, &mut pairs);
+        let mut row = Vec::with_capacity(pairs.len());
+        for (k, v) in pairs.drain(..) {
+            let i = match index.get(&k) {
                 Some(i) => *i,
                 None => {
                     if headers.len() >= MAX_COLS {
                         return None;
                     }
                     headers.push(k.clone());
-                    index.insert(k.as_str(), headers.len() - 1);
+                    index.insert(k, headers.len() - 1);
                     headers.len() - 1
                 }
             };
-            row.push((i, cell(v)));
+            row.push((i, v));
         }
         sparse.push(row);
-    }
-    if sparse.len() < MIN_ROWS || headers.len() < 2 {
-        return None;
     }
     let n = headers.len();
     let rows = sparse
@@ -466,6 +542,30 @@ fn from_objects<'a>(
             out
         })
         .collect();
+    Some((headers, rows))
+}
+
+/// Builds a table from JSON objects. Columns are the union of keys in first-seen order. Nested
+/// objects that are records (an `owner` with a `login` and an `id`) become columns of their own
+/// (`owner.login`, `owner.id`), so that each field has its own statistics instead of one cell of
+/// JSON text.
+fn from_objects<'a>(
+    format: Format,
+    objects: impl Iterator<Item = &'a Map<String, Value>>,
+    notes: Vec<String>,
+) -> Option<Table> {
+    let objs: Vec<&Map<String, Value>> = objects.collect();
+    if objs.len() < MIN_ROWS {
+        return None;
+    }
+    let mut plan = HashSet::new();
+    flatten_plan(&objs, "", 0, &mut plan);
+    // Fall back to the plain table if opening the objects makes more columns than we allow.
+    let (headers, rows) =
+        rows_of_objects(&objs, &plan).or_else(|| rows_of_objects(&objs, &HashSet::new()))?;
+    if headers.len() < 2 {
+        return None;
+    }
     Some(Table {
         format,
         headers,

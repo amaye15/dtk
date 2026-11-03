@@ -1,7 +1,7 @@
 //! Lean views: a small, typed summary of a table that keeps what an agent acts on.
 
 use crate::table::{Format, Table};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Tables up to this many rows are re-encoded as CSV and nothing is dropped.
 pub const LOSSLESS_ROWS: usize = 60;
@@ -130,13 +130,42 @@ fn fnum(x: f64) -> String {
 }
 
 fn top_values(distinct: &HashMap<&str, usize>, limit: usize) -> String {
+    const BUDGET: usize = 240;
     let mut v: Vec<(&&str, &usize)> = distinct.iter().collect();
     v.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
-    v.iter()
-        .take(limit)
-        .map(|(k, n)| format!("{} {}", k.chars().take(40).collect::<String>(), n))
-        .collect::<Vec<_>>()
-        .join(", ")
+    let mut parts: Vec<String> = Vec::new();
+    let mut used = 0;
+    for (i, (k, n)) in v.iter().take(limit).enumerate() {
+        let part = format!("{} {}", k.chars().take(30).collect::<String>(), n);
+        // Long values (titles, paths) stop the list; the three most common always show.
+        if i >= 3 && used + part.len() > BUDGET {
+            let left = v.len().min(limit) - i;
+            parts.push(format!("+{left} more"));
+            break;
+        }
+        used += part.len() + 2;
+        parts.push(part);
+    }
+    parts.join(", ")
+}
+
+/// Do all these values look like ids made by a program: hex of one length (a commit, a hash), or
+/// UUIDs? Then two examples are noise, and the kind is the information.
+fn opaque_kind(distinct: &HashMap<&str, usize>) -> Option<String> {
+    let mut len = None;
+    for k in distinct.keys().take(50) {
+        let hex = k.len() >= 12 && k.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-');
+        if !hex || len.is_some_and(|l| l != k.len()) {
+            return None;
+        }
+        len = Some(k.len());
+    }
+    let l = len?;
+    Some(if l == 36 {
+        "uuids".into()
+    } else {
+        format!("{l}-character hex ids")
+    })
 }
 
 /// " p50 X p95 Y" (nearest rank), or nothing when there are too few values to mean much.
@@ -621,6 +650,13 @@ fn analyze_col_impl<'a>(vals: impl Iterator<Item = &'a str> + Clone, skip: bool)
                 } else {
                     ">5000 distinct".to_string()
                 }
+            } else if let (true, Some(kind)) = (distinct.len() >= 3, opaque_kind(&distinct)) {
+                // a few hashes: the kind says it; a count says how often the commonest recurs
+                let most = distinct.values().max().copied().unwrap_or(0);
+                format!(
+                    "{} distinct, {kind}; the commonest appears {most}x",
+                    distinct.len()
+                )
             } else if distinct.len() <= 12 {
                 format!("{} distinct: {}", distinct.len(), top_values(&distinct, 12))
             } else if templates.len() >= 2 && templates.len() * 3 <= distinct.len() {
@@ -647,12 +683,15 @@ fn analyze_col_impl<'a>(vals: impl Iterator<Item = &'a str> + Clone, skip: bool)
                 } else {
                     ""
                 };
-                format!(
-                    "{} distinct{}, e.g. {}",
-                    distinct.len(),
-                    unique,
-                    top_values(&distinct, 2)
-                )
+                match opaque_kind(&distinct) {
+                    Some(kind) => format!("{} distinct{unique}, {kind}", distinct.len()),
+                    None => format!(
+                        "{} distinct{}, e.g. {}",
+                        distinct.len(),
+                        unique,
+                        top_values(&distinct, 2)
+                    ),
+                }
             }
         }
     };
@@ -1113,14 +1152,14 @@ struct Profile {
 
 const PROFILES: [Profile; 3] = [
     Profile {
-        head: 8,
-        tail: 4,
+        head: 5,
+        tail: 2,
         important: 20,
         max_cell: 60,
         stat_cols: 30,
     },
     Profile {
-        head: 4,
+        head: 3,
         tail: 2,
         important: 10,
         max_cell: 40,
@@ -1187,6 +1226,118 @@ pub fn render(t: &Table, ctx: &Ctx, budget: usize) -> Rendered {
     }
 }
 
+/// What a column is worth in a summary.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ColClass {
+    /// It varies: it gets a statistics line.
+    Informative,
+    /// The same value in (nearly) every row: one line for all of them.
+    Constant,
+    /// A different token in every row (an id, a URL, a hash): its name is enough.
+    Unique,
+}
+
+/// Does this column say anything beyond its name? `a=1` in every row, or `https://x/1`,
+/// `https://x/2`, ... in different rows, takes a line of statistics and tells the model nothing.
+fn classify(t: &Table, info: &[ColInfo], c: usize) -> ColClass {
+    let n = t.rows.len();
+    let i = &info[c];
+    if i.kind == Kind::Empty {
+        return ColClass::Constant;
+    }
+    if i.distinct == Some(1) && i.stats.nonempty >= 2 && i.stats.nulls == 0 {
+        return ColClass::Constant;
+    }
+    // Unique text with no spaces in it and no pattern worth showing.
+    if i.kind == Kind::Str
+        && i.distinct == Some(i.stats.nonempty)
+        && i.stats.nonempty >= 10
+        && i.stats.nonempty * 10 >= n * 9
+        && t.rows
+            .iter()
+            .take(200)
+            .all(|r| !r[c].contains(char::is_whitespace))
+    {
+        return ColClass::Unique;
+    }
+    ColClass::Informative
+}
+
+/// Columns that split the rows into exactly the same groups as an earlier column does: the id, the
+/// login, the node id and the URL of one actor are one fact, written four ways. Returns, for each
+/// such column, the earlier column it is a copy of. Only columns with repeated values are
+/// compared: a column of unique values is told apart by `classify`.
+fn aliases(t: &Table, info: &[ColInfo], candidates: &[usize]) -> Vec<(usize, usize)> {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let n = t.rows.len();
+    // canonical group labels: numbered in order of first appearance
+    let labels = |c: usize| -> Vec<u32> {
+        let mut seen: HashMap<&str, u32> = HashMap::new();
+        t.rows
+            .iter()
+            .map(|r| {
+                let next = seen.len() as u32;
+                *seen.entry(r[c].as_str()).or_insert(next)
+            })
+            .collect()
+    };
+    let mut by_print: HashMap<u64, Vec<(usize, Vec<u32>)>> = HashMap::new();
+    let mut out = Vec::new();
+    for &c in candidates {
+        let d = info[c].distinct.unwrap_or(0);
+        if !(2..n).contains(&d) || info[c].stats.nulls > 0 {
+            continue;
+        }
+        let l = labels(c);
+        let mut h = DefaultHasher::new();
+        l.hash(&mut h);
+        let bucket = by_print.entry(h.finish()).or_default();
+        if let Some((first, _)) = bucket.iter().find(|(_, other)| *other == l) {
+            out.push((c, *first));
+        } else {
+            bucket.push((c, l));
+        }
+    }
+    out
+}
+
+/// Names written once, with a run such as `feat_0`, `feat_1`, ... `feat_59` as `feat_0..feat_59`.
+fn compact_names(names: &[&str]) -> String {
+    fn split(name: &str) -> Option<(&str, u64)> {
+        let digits = name.len() - name.trim_end_matches(|c: char| c.is_ascii_digit()).len();
+        if digits == 0 || digits > 9 {
+            return None;
+        }
+        let (prefix, num) = name.split_at(name.len() - digits);
+        Some((prefix, num.parse().ok()?))
+    }
+    let mut out: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < names.len() {
+        let mut j = i;
+        if let Some((prefix, mut last)) = split(names[i]) {
+            while j + 1 < names.len() {
+                match split(names[j + 1]) {
+                    Some((p2, n2)) if p2 == prefix && n2 == last + 1 => {
+                        last = n2;
+                        j += 1;
+                    }
+                    _ => break,
+                }
+            }
+        }
+        if j - i >= 2 {
+            out.push(format!("{}..{}", names[i], names[j]));
+        } else {
+            out.push(names[i].to_string());
+            j = i;
+        }
+        i = j + 1;
+    }
+    out.join(", ")
+}
+
 /// `name:type` for every column. A run of columns that differ only by a counter and share a type
 /// (`feat_0`, `feat_1`, ... `feat_119`) is written once: `feat_0..feat_119:float`.
 fn compact_cols(headers: &[String], info: &[ColInfo]) -> String {
@@ -1233,6 +1384,48 @@ fn data_ref(ctx: &Ctx) -> String {
     ctx.csv_path
         .as_deref()
         .map_or_else(|| "<data file>".to_string(), file_ref)
+}
+
+/// The rows that hold the largest and smallest value of the first measure and the largest of the
+/// second, with what each is: `("largest amount", 17)`. One row per label, none twice.
+fn notable_rows(t: &Table, info: &[ColInfo]) -> Vec<(String, usize)> {
+    let id = id_column(t, info);
+    let mut measures: Vec<(usize, Vec<(usize, f64)>)> = Vec::new();
+    for c in 0..t.headers.len() {
+        if measures.len() == 2 {
+            break;
+        }
+        if !matches!(info[c].kind, Kind::Int | Kind::Float) || info[c].few_values || Some(c) == id {
+            continue;
+        }
+        let vals = numbers_of(t, c);
+        if !vals.is_empty() && !identifier_like(t, info, c, &vals) {
+            measures.push((c, vals));
+        }
+    }
+    let mut out: Vec<(String, usize)> = Vec::new();
+    for (i, (c, vals)) in measures.iter().enumerate() {
+        let first = |better: &dyn Fn(f64, f64) -> bool| {
+            vals.iter()
+                .copied()
+                .reduce(|a, b| if better(b.1, a.1) { b } else { a })
+        };
+        let (hi, lo) = (first(&|b, a| b > a), first(&|b, a| b < a));
+        let name = &t.headers[*c];
+        if let Some((r, _)) = hi {
+            out.push((format!("largest {name}"), r));
+        }
+        if i == 0 {
+            if let Some((r, _)) = lo {
+                out.push((format!("smallest {name}"), r));
+            }
+        }
+    }
+    // one entry per row: when the smallest is also the largest of another, keep the first label
+    let mut seen = HashSet::new();
+    out.retain(|(_, r)| seen.insert(*r));
+    out.truncate(3);
+    out
 }
 
 /// Pairs of numeric columns that move together (|Pearson r| of 0.9 or more), strongest first.
@@ -1466,6 +1659,27 @@ fn breakdown_notes(t: &Table, info: &[ColInfo]) -> Vec<String> {
         .collect()
 }
 
+/// A list of names (as `compact_names` writes it), cut when it is long, with the count of those
+/// left out: `a, b, c, +12 more`.
+fn clip_names(s: &str) -> String {
+    const MAX: usize = 160;
+    if s.chars().count() <= MAX {
+        return s.to_string();
+    }
+    let parts: Vec<&str> = s.split(", ").collect();
+    let mut out = String::new();
+    for (i, p) in parts.iter().enumerate() {
+        if out.len() + p.len() > MAX && i > 0 {
+            return format!("{out}, +{} more", parts.len() - i);
+        }
+        if i > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(p);
+    }
+    out
+}
+
 fn clip_label(s: &str) -> String {
     let t: String = s.chars().take(24).collect();
     if s.chars().count() > 24 {
@@ -1517,28 +1731,133 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
     if let Some(p) = &ctx.raw_path {
         out.push_str(&format!("raw: {} ({})\n", shell_quote(p), t.format.name()));
     }
-    // Every column is named. A wide table gets statistics for its first columns only.
-    // A very wide table (dozens of features) gets statistics for a dozen columns; the model asks
-    // for the others with `dtk stats`, and every column is named above.
-    let k = if cols > VERY_WIDE_COLS {
+    // Every column is named. Statistics go to the columns that vary; a column that is the same in
+    // every row, or different in every row (an id), costs a name and not a line. A table with
+    // dozens of varying columns (features) gets statistics for a dozen of them, and the model
+    // asks for the others with `dtk stats`.
+    let class: Vec<ColClass> = (0..cols).map(|c| classify(t, info, c)).collect();
+    let varying: Vec<usize> = (0..cols)
+        .filter(|&c| class[c] == ColClass::Informative)
+        .collect();
+    let copies = aliases(t, info, &varying);
+    let informative: Vec<usize> = varying
+        .iter()
+        .copied()
+        .filter(|c| !copies.iter().any(|(a, _)| a == c))
+        .collect();
+    let k = if informative.len() > VERY_WIDE_COLS {
         p.stat_cols.min(12)
     } else {
-        p.stat_cols.min(cols)
+        p.stat_cols.min(informative.len())
     };
+    let stat_cols: Vec<usize> = informative.iter().take(k).copied().collect();
     out.push_str(&format!("cols: {}\n", compact_cols(&t.headers, info)));
-    for (h, i) in t.headers.iter().zip(info).take(k) {
-        out.push_str(&format!("{}: {}\n", h, i.summary));
+    for &c in &stat_cols {
+        out.push_str(&format!("{}: {}\n", t.headers[c], info[c].summary));
     }
-    if cols > k {
+    if informative.len() > k {
+        let rest: Vec<&str> = informative[k..]
+            .iter()
+            .map(|&c| t.headers[c].as_str())
+            .collect();
         out.push_str(&format!(
-            "no statistics shown for the other {} columns ({}..{}): {} stats {} NAME...\n",
-            cols - k,
-            t.headers[k],
-            t.headers[cols - 1],
+            "no statistics shown for {} more columns ({}): {} stats {} NAME...\n",
+            rest.len(),
+            clip_names(&compact_names(&rest)),
             command_name(),
             data_ref(ctx)
         ));
     }
+    // Columns that say what an earlier column says: one line per original.
+    let mut groups: Vec<(usize, Vec<usize>)> = Vec::new();
+    for &(copy, original) in &copies {
+        match groups.iter_mut().find(|g| g.0 == original) {
+            Some(g) => g.1.push(copy),
+            None => groups.push((original, vec![copy])),
+        }
+    }
+    for (original, copy_cols) in groups.iter().take(8) {
+        let names: Vec<&str> = copy_cols.iter().map(|&c| t.headers[c].as_str()).collect();
+        out.push_str(&format!(
+            "same groups as {}: {}\n",
+            t.headers[*original],
+            clip_names(&compact_names(&names))
+        ));
+    }
+    let constants: Vec<usize> = (0..cols)
+        .filter(|&c| class[c] == ColClass::Constant)
+        .collect();
+    if !constants.is_empty() {
+        let shown: Vec<String> = constants
+            .iter()
+            .take(16)
+            .map(|&c| {
+                let v = info[c]
+                    .stats
+                    .top
+                    .first()
+                    .map_or("(empty)", |x| x.0.as_str());
+                format!("{}={}", t.headers[c], clip_label(v))
+            })
+            .collect();
+        out.push_str(&format!("same in every row: {}\n", shown.join(", ")));
+        // The values of the first sixteen are shown. The rest are named, so that none is lost.
+        if constants.len() > 16 {
+            let rest: Vec<&str> = constants[16..]
+                .iter()
+                .map(|&c| t.headers[c].as_str())
+                .collect();
+            out.push_str(&format!(
+                "  also the same in every row: {}\n",
+                clip_names(&compact_names(&rest))
+            ));
+        }
+    }
+    let uniques: Vec<&str> = (0..cols)
+        .filter(|&c| class[c] == ColClass::Unique)
+        .map(|c| t.headers[c].as_str())
+        .collect();
+    if !uniques.is_empty() {
+        out.push_str(&format!(
+            "different in every row (ids, urls): {}\n",
+            clip_names(&compact_names(&uniques))
+        ));
+        // one example of the first two, so that their shape is known
+        let examples: Vec<String> = (0..cols)
+            .filter(|&c| class[c] == ColClass::Unique)
+            .take(2)
+            .map(|c| format!("{} like {}", t.headers[c], clip_label(&t.rows[0][c])))
+            .collect();
+        out.push_str(&format!("  ({})\n", examples.join("; ")));
+    }
+    // The sample rows show the columns above that vary, plus the one that names a row and the
+    // level and message of a log. If nothing varies, they show the first columns.
+    let mut shown: Vec<usize> = stat_cols.clone();
+    if shown.is_empty() {
+        shown = (0..cols.min(p.stat_cols)).collect();
+    } else {
+        let must = id_column(t, info).into_iter().chain(
+            t.headers
+                .iter()
+                .enumerate()
+                .filter(|(_, h)| {
+                    LEVEL_NAMES.contains(&h.to_lowercase().as_str()) || h.as_str() == "msg"
+                })
+                .map(|(i, _)| i),
+        );
+        shown.extend(must);
+        // The first column is what the reader sees first in a row, and it is checked against.
+        if !constants.contains(&0)
+            && !shown.contains(&0)
+            && cols > 0
+            && class[0] != ColClass::Unique
+        {
+            shown.push(0);
+        }
+        shown.sort_unstable();
+        shown.dedup();
+    }
+    let all_in_order = shown.len() == cols;
     if let Some(note) = duplicate_note(t) {
         out.push_str(&note);
         out.push('\n');
@@ -1554,22 +1873,63 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
         }
     }
     let clip = |rows: &[&Vec<String>]| -> Vec<Vec<String>> {
-        rows.iter().map(|r| r[..k].to_vec()).collect()
+        rows.iter()
+            .map(|r| shown.iter().map(|&c| r[c].clone()).collect())
+            .collect()
     };
     let show = |rows: &[&Vec<String>]| -> String {
         let clipped = clip(rows);
         let refs: Vec<&Vec<String>> = clipped.iter().collect();
         write_csv(None, &refs, Some(p.max_cell))
     };
-    let head: Vec<&Vec<String>> = t.rows.iter().take(p.head).collect();
+    // Wide rows cost more, so fewer of them are shown: about 1,400 characters of sample rows.
+    let sample_len: usize = t
+        .rows
+        .iter()
+        .take(20)
+        .map(|r| {
+            shown
+                .iter()
+                .map(|&c| r[c].chars().count().min(p.max_cell) + 1)
+                .sum::<usize>()
+        })
+        .sum::<usize>()
+        / t.rows.len().clamp(1, 20);
+    let rows_wanted = (1400 / sample_len.max(1)).clamp(3, p.head + p.tail);
+    let head_n = (rows_wanted * 2).div_ceil(3).clamp(2, p.head);
+    let tail_n = (rows_wanted - head_n.min(rows_wanted)).clamp(1, p.tail);
+    let head: Vec<&Vec<String>> = t.rows.iter().take(head_n).collect();
+    let which = if all_in_order {
+        "columns in order above".to_string()
+    } else {
+        let names: Vec<&str> = shown.iter().map(|&c| t.headers[c].as_str()).collect();
+        format!("columns: {}", clip_names(&compact_names(&names)))
+    };
     out.push_str(&format!(
-        "head {} (columns in order above):\n{}\n",
+        "head {} ({which}):\n{}\n",
         head.len(),
         show(&head)
     ));
-    let tail_from = n.saturating_sub(p.tail).max(p.head.min(n));
+    let tail_from = n.saturating_sub(tail_n).max(head_n.min(n));
     let tail: Vec<&Vec<String>> = t.rows.iter().skip(tail_from).collect();
     out.push_str(&format!("tail {}:\n{}\n", tail.len(), show(&tail)));
+    // The rows that the notes above point at, in full: the largest and smallest of the first
+    // measure and the largest of the second. They say more than the first and last rows do.
+    let shown_rows = |r: usize| r < head_n.min(n) || r >= tail_from;
+    let notable = notable_rows(t, info);
+    let picked: Vec<(String, usize)> = notable
+        .into_iter()
+        .filter(|(_, r)| !shown_rows(*r))
+        .collect();
+    if !picked.is_empty() {
+        let labels: Vec<&str> = picked.iter().map(|(l, _)| l.as_str()).collect();
+        let rows: Vec<&Vec<String>> = picked.iter().map(|(_, r)| &t.rows[*r]).collect();
+        out.push_str(&format!(
+            "extremes ({}):\n{}\n",
+            labels.join("; "),
+            show(&rows)
+        ));
+    }
     if let Some(li) = t
         .headers
         .iter()
@@ -2361,6 +2721,101 @@ mod tests {
     }
 
     #[test]
+    fn columns_that_say_nothing_get_a_name_and_not_a_line() {
+        let mut s = String::from("id,kind,kind_code,actor,actor_id,url,version,note,amount\n");
+        for i in 0..80usize {
+            let (kind, code) = [("push", 1), ("pull", 2), ("tag", 3)][i % 3];
+            let (actor, actor_id) = [("ann", 101), ("bo", 202)][i % 2];
+            s.push_str(&format!(
+                "{},{kind},{code},{actor},{actor_id},https://x.test/items/{i},v1,{},{}\n",
+                7000 + i,
+                if i % 10 == 0 { "" } else { "same" },
+                (i * 37) % 91
+            ));
+        }
+        let t = detect(&s).unwrap();
+        let r = render(&t, &ctx(), 2500);
+        // kind and kind_code split the rows the same way; so do actor and actor_id
+        assert!(
+            r.text.contains("same groups as kind: kind_code"),
+            "{}",
+            r.text
+        );
+        assert!(
+            r.text.contains("same groups as actor: actor_id"),
+            "{}",
+            r.text
+        );
+        assert!(!r.text.contains("\nactor_id: "), "{}", r.text);
+        // version is v1 in every row, url is different in every row
+        assert!(
+            r.text.contains("same in every row: version=v1"),
+            "{}",
+            r.text
+        );
+        assert!(
+            r.text.contains("different in every row (ids, urls): url"),
+            "{}",
+            r.text
+        );
+        assert!(
+            r.text.contains("url like https://x.test/items/0"),
+            "{}",
+            r.text
+        );
+        assert!(
+            !r.text.contains("\nurl: ") && !r.text.contains("\nversion: "),
+            "{}",
+            r.text
+        );
+        // the varying columns keep their lines; a column with gaps is not constant
+        assert!(r.text.contains("\nkind: 3 distinct: "), "{}", r.text);
+        assert!(r.text.contains("\namount: 0.."), "{}", r.text);
+        assert!(r.text.contains("\nnote: "), "{}", r.text);
+        // the sample rows leave out what the lines above already said
+        assert!(r.text.contains("head "), "{}", r.text);
+        let rows_header = r.text.lines().find(|l| l.starts_with("head ")).unwrap();
+        assert!(
+            rows_header.contains("columns: ") && !rows_header.contains("url"),
+            "{rows_header}"
+        );
+    }
+
+    #[test]
+    fn hex_ids_are_named_by_kind_not_shown_twice() {
+        let mut s = String::from("id,sha,branch\n");
+        for i in 0..60usize {
+            s.push_str(&format!(
+                "{i},{:040x},{}\n",
+                (i % 12) as u128 * 0x1234_5678_9abc_def0_1234_5678,
+                ["main", "dev", "x"][i % 3]
+            ));
+        }
+        let t = detect(&s).unwrap();
+        let c = &analyze(&t)[1];
+        assert!(
+            c.summary.contains("12 distinct, ") && c.summary.contains("-character hex ids"),
+            "{}",
+            c.summary
+        );
+    }
+
+    #[test]
+    fn long_value_lists_stop_and_say_how_many_are_left() {
+        let mut s = String::from("id,title\n");
+        for i in 0..120usize {
+            s.push_str(&format!(
+                "{i},A rather long title of a pull request number {}\n",
+                i % 12
+            ));
+        }
+        let t = detect(&s).unwrap();
+        let line = &analyze(&t)[1].summary;
+        assert!(line.starts_with("12 distinct: "), "{line}");
+        assert!(line.contains(", +") && line.contains(" more"), "{line}");
+    }
+
+    #[test]
     fn outliers_are_named_but_a_heavy_tail_is_not() {
         let mut s = String::from("id,amount,wait\n");
         for i in 0..200 {
@@ -2516,8 +2971,16 @@ mod tests {
         }
         let t = detect(&s).unwrap();
         let r = render(&t, &ctx(), 2500);
+        // each column is a different token in every row, so none gets a statistics line
         assert!(
-            r.text.contains("no statistics shown for the other"),
+            r.text
+                .contains("different in every row (ids, urls): column_name_0..column_name_59"),
+            "{}",
+            r.text
+        );
+        assert!(
+            r.text
+                .contains("head 3 (columns: column_name_0..column_name_29)"),
             "{}",
             r.text
         );

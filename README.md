@@ -29,8 +29,8 @@ The cause is in view: the package was removed, and `/usr/bin/dtk` was still ther
 
 `scripts/ab-test.sh` asks real Claude Code seventeen questions about data files, with and without dtk. They include a column with `N/A` in it, prices written as `$1,234`, a filter on two columns, a table with 60 feature columns, a Python list of records, a pandas JSON file, the mean per group, and the sampling interval of a sensor log. The true answers come from `jaq`, `qsv`, `awk` and `grep`, not from dtk.
 
-- **Answers: no loss.** Sonnet: 38 of 38 right with dtk, 38 of 38 without. Haiku: 51 of 51 and 51 of 51. (2 to 3 runs per question and model.)
-- **Tokens from tool results fell 69% to 89% on thirteen of the seventeen questions** (300-row CSV 4,549 → 498, `ps aux` 2,072 → 623, a column with `N/A` 5,456 → 556). Turns fell from 6 to 4 on six questions.
+- **Answers: no loss.** Sonnet: 34 of 34 right with dtk, 34 of 34 without. Haiku: 34 of 34 and 34 of 34. (17 questions, 2 runs each.)
+- **Tokens from tool results fell 69% to 90% on thirteen of the seventeen questions** (300-row CSV 4,549 → 498, `ps aux` 2,072 → 623, a column with `N/A` 5,456 → 556). Turns fell from 6 to 4 on six questions.
 - **Where the saving is small,** Claude Code had already cut the output to a preview of about 550 tokens (a big CI log, a wide table, a big JSON file). The count stays about the same, and the model gets a summary of every row in place of the preview.
 
 ## Quick start
@@ -84,14 +84,15 @@ dtk reads Bash output and whole-file `Read` of data files. Detection is strict: 
 
 Up to 60 rows become CSV and nothing is dropped. A bigger table gets:
 
-- shape, and every column name with its type (a run such as `feat_0..feat_119:float` is one range)
-- per column: min, max, mean, median and p95; value counts; time range; nulls
+- shape, and every column name with its type (a run such as `feat_0..feat_119:float` is one range). Nested JSON objects are opened into columns of their own (`owner.login`, `head_commit.author.name`), so each field has statistics and none is a blob of JSON text.
+- per column that varies: min, max, mean, median and p95; value counts; time range; nulls
+- one line each, and no statistics line, for columns that say nothing more: those that are **the same in every row** (`version=v1`), **different in every row** (ids, URLs, hashes), or **group the rows exactly like an earlier column** (`same groups as actor.login: actor.id, actor.url, ...`). Every column is still named, so nothing is lost.
 - the mean of each measure per group, for the splits that matter most (the leftmost label column against the leftmost measure always; others when the groups explain a quarter of the variance): `amount by region (mean): ap 166.8, us 161.8, eu 101.5`
 - numbers and dates as people write them: `$1,234.56`, `45.3%` and `1,234` are numbers, `03/21/2025` is a date when the data settles the order, and `N/A`, `-` or `?` in a column of numbers are counted and set aside, not mistaken for words
 - data-quality notes: outliers beyond 3×IQR, rows that repeat an earlier row, and columns that move together (|r| of 0.9 or more)
 - for a time column: whether the rows are in time order, the step between them (`every 5min`), and the longest gap (`3h5min after row 148`)
 - **the row that holds each numeric column's largest and smallest value** (`max at order_id=100243`)
-- the first and last rows, and message shapes with counts (`request # took #ms (2000)`)
+- a few first and last rows, and the **full rows of the extremes** (`extremes (largest amount; smallest amount; largest latency_ms): ...`), so that "who had the largest amount?" needs no second step. Message shapes come with counts (`request # took #ms (2000)`).
 - the rows where `level` says warn or error. In a text log, each error comes with the 4 lines before it, and repeated errors are grouped. A log with no level field gets a `flag` column that dtk derives from words such as `error:` and `FAILED`, and the summary says so.
 - the `dtk` commands to read more of the data
 
@@ -153,7 +154,7 @@ min_outline_tokens = 4000  # smallest JSON document worth an outline
 
 ## How it is checked
 
-189 tests, plus the A/B script. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (63 files detected as expected, 30 rejected). A test that lists the facts a summary must keep and checks them (1298 of 1298 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
+192 tests, plus the A/B script. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (63 files detected as expected, 30 rejected). A test that lists the facts a summary must keep and checks them (1657 of 1657 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
 
 ## Limits
 
