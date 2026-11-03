@@ -28,6 +28,9 @@ The script downloads the archive for your system, checks its SHA-256 sum, and pu
 | `DTK_VERSION=v0.4.0` | Install one release. The default is the newest. |
 | `DTK_INSTALL_DIR=/usr/local/bin` | Install in another folder. |
 | `DTK_SKIP_CHECKSUM=1` | Skip the SHA-256 check. Not recommended. |
+| `DTK_NO_INIT=1` | Install only. Do not register the hook. |
+
+When Claude Code's folder (`~/.claude`) exists, the script also runs `dtk init --global`: it registers the hook, keeps a backup of `settings.json`, and chains to rtk when rtk is installed. If the folder does not exist, the script says so and registers nothing.
 
 If `~/.local/bin` is not on your `PATH`, the script prints the line to add to your shell profile.
 
@@ -37,7 +40,7 @@ If `~/.local/bin` is not on your `PATH`, the script prints the line to add to yo
 irm https://raw.githubusercontent.com/amaye15/dtk/main/install.ps1 | iex
 ```
 
-The script installs `dtk.exe` in `%USERPROFILE%\.local\bin` after it checks the SHA-256 sum. It uses the same variables as `install.sh`, and `DTK_ADD_TO_PATH=1` also adds the folder to your user `PATH`.
+The script installs `dtk.exe` in `%USERPROFILE%\.local\bin` after it checks the SHA-256 sum. It uses the same variables as `install.sh` (including `DTK_NO_INIT=1`), registers the hook when `%USERPROFILE%\.claude` exists, and `DTK_ADD_TO_PATH=1` also adds the folder to your user `PATH`.
 
 ## Homebrew (macOS and Linux)
 
@@ -119,7 +122,7 @@ For ARM, use `dtk_arm64.deb` and `dtk.aarch64.rpm`. The packages put `dtk` in `/
 
 ## Register the hook
 
-Install does not change Claude Code. Register the hook once, then start a new Claude Code session:
+`install.sh` and `install.ps1` do this for you. After Homebrew, Scoop, winget, Cargo or a package, register the hook once, then start a new Claude Code session:
 
 ```sh
 dtk init --global       # edits ~/.claude/settings.json, writes a backup first
@@ -149,7 +152,7 @@ dtk is **live** by default: it replaces big tables with summaries. To see first 
 | Cargo | `cargo install dtk --locked --force` |
 | `.deb`, `.rpm` | Install the new package. |
 
-After an update, run `dtk init --global` again. It is safe to repeat, and it points the hook at the new file.
+The hook names a path that stays the same through an update (a folder on your `PATH`, not a versioned Homebrew folder), so an update needs no other step. The two scripts run `dtk init --global` again by themselves; it is safe to repeat. Run it yourself if `dtk doctor` says the hook points at a missing file.
 
 ## Uninstall
 

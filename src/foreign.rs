@@ -274,12 +274,15 @@ fn records_from_value(v: Value) -> Option<Vec<Map<String, Value>>> {
     }
 }
 
-/// A Python list of dicts (or a dict of lists), as `print` shows it.
+/// A Python list of dicts (or a dict of lists), as `print` shows it. Also the other ways pandas
+/// prints a frame: `to_dict()` (a dict per column), `to_dict("index")`, `to_dict("split")`,
+/// `values.tolist()` (a list of lists), and one dict per line.
 pub fn parse_python_repr(text: &str) -> Option<Table> {
     let t = text.trim();
     let b = t.as_bytes();
-    // Only text that is a list or dict of dict-like things, and not JSON (which parsed earlier).
-    if !(b.first() == Some(&b'[') && b.get(1) == Some(&b'{') || b.first() == Some(&b'{')) {
+    // Only text that is a list or dict of container things, and not JSON (which parsed earlier).
+    let list_of_containers = b.first() == Some(&b'[') && matches!(b.get(1), Some(b'{' | b'['));
+    if !(list_of_containers || b.first() == Some(&b'{')) {
         return None;
     }
     let mut p = Py {
@@ -290,15 +293,162 @@ pub fn parse_python_repr(text: &str) -> Option<Table> {
     let v = p.value(0)?;
     p.ws();
     if p.i != b.len() {
-        return None;
+        return python_dict_per_line(t);
     }
     // Valid JSON is not Python repr: the JSON parsers decide what it is (a wrapper with two
     // big arrays is ambiguous, and stays so).
     if serde_json::from_str::<Value>(t).is_ok() {
         return None;
     }
-    let objects = records_from_value(v)?;
+    nested_table(Format::PyRepr, v)
+}
+
+/// One dict per line (`for r in rows: print(r)`).
+fn python_dict_per_line(text: &str) -> Option<Table> {
+    let mut objects: Vec<Map<String, Value>> = Vec::new();
+    let mut lines = 0usize;
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        lines += 1;
+        let l = line.trim();
+        let mut p = Py {
+            s: l.as_bytes(),
+            text: l,
+            i: 0,
+        };
+        if let Some(Value::Object(m)) = p.value(0) {
+            p.ws();
+            if p.i == l.len() {
+                objects.push(m);
+            }
+        }
+    }
+    if objects.len() < MIN_ROWS || objects.len() * 20 < lines * 19 {
+        return None;
+    }
     crate::table::from_object_list(Format::PyRepr, &objects)
+}
+
+fn scalar(v: &Value) -> bool {
+    !matches!(v, Value::Array(_) | Value::Object(_))
+}
+
+/// The ways pandas prints a frame as one nested value, from the most to the least specific.
+fn nested_table(format: Format, v: Value) -> Option<Table> {
+    let retag = |mut t: Table| {
+        t.format = format;
+        t
+    };
+    if let Some(t) = parse_columnar(&v) {
+        return Some(retag(t));
+    }
+    if let Some(t) = column_dicts(format, &v) {
+        return Some(t);
+    }
+    if let Some(t) = crate::table::from_keyed_root(format, &v) {
+        return Some(t);
+    }
+    if let Some(t) = list_of_lists(format, &v) {
+        return Some(t);
+    }
+    let objects = records_from_value(v)?;
+    crate::table::from_object_list(format, &objects)
+}
+
+/// The shapes that need a Python or JSON value, for JSON text that is not a list of records:
+/// `df.to_json()` and a list of lists.
+pub fn parse_nested_json(root: &Value) -> Option<Table> {
+    match root {
+        Value::Object(_) => column_dicts(Format::JsonObject, root),
+        Value::Array(_) => list_of_lists(Format::JsonArray, root),
+        _ => None,
+    }
+}
+
+/// `{'a': {0: 1, 1: 2}, 'b': {0: 'x', 1: 'y'}}`: one dict per column, keyed by the row label
+/// (`df.to_dict()` and `df.to_json()`, which are what pandas gives by default). The row labels
+/// become a first column. A frame has more rows than columns, which tells this from rows keyed by
+/// id (`{"a1": {...}, "a2": {...}}`); when the two are close, the other reading is kept.
+fn column_dicts(format: Format, root: &Value) -> Option<Table> {
+    let m = root.as_object()?;
+    let cols: Vec<(&String, &Map<String, Value>)> = m
+        .iter()
+        .filter_map(|(k, v)| v.as_object().map(|o| (k, o)))
+        .collect();
+    if cols.len() != m.len() || cols.len() < 2 {
+        return None;
+    }
+    let n = cols[0].1.len();
+    if n < MIN_ROWS || n < cols.len() * 2 {
+        return None;
+    }
+    let labels: Vec<&String> = cols[0].1.keys().collect();
+    if cols
+        .iter()
+        .any(|(_, o)| o.len() != n || !labels.iter().all(|k| o.contains_key(k.as_str())))
+    {
+        return None;
+    }
+    let first = if m.contains_key("index") {
+        "row"
+    } else {
+        "index"
+    };
+    let mut headers = vec![first.to_string()];
+    headers.extend(cols.iter().map(|(k, _)| (*k).clone()));
+    if !valid_header(&headers) {
+        return None;
+    }
+    let rows: Vec<Vec<String>> = labels
+        .iter()
+        .map(|l| {
+            let mut r = vec![(*l).clone()];
+            r.extend(
+                cols.iter()
+                    .map(|(_, o)| o.get(l.as_str()).map_or_else(String::new, cell)),
+            );
+            r
+        })
+        .collect();
+    Some(Table {
+        format,
+        headers,
+        rows,
+        notes: Vec::new(),
+    })
+}
+
+/// `[[1, 'a', 2.5], [2, 'b', 3.5], ...]`: rows with no names (`df.values.tolist()`). The columns
+/// are called c0, c1, ... and one of them must hold numbers, or it is a list of words.
+fn list_of_lists(format: Format, root: &Value) -> Option<Table> {
+    let a = root.as_array()?;
+    if a.len() < MIN_ROWS {
+        return None;
+    }
+    let w = a.first()?.as_array()?.len();
+    if !(2..=150).contains(&w) {
+        return None;
+    }
+    let rows: Vec<Vec<String>> = a
+        .iter()
+        .filter_map(Value::as_array)
+        .filter(|r| r.len() == w && r.iter().all(scalar))
+        .map(|r| r.iter().map(cell).collect())
+        .collect();
+    if rows.len() * 20 < a.len() * 19 {
+        return None;
+    }
+    let numeric = (0..w).any(|c| {
+        rows.iter().filter(|r| r[c].parse::<f64>().is_ok()).count() * 10 >= rows.len() * 9
+    });
+    if !numeric {
+        return None;
+    }
+    Some(Table {
+        format,
+        headers: generic_headers(w),
+        rows,
+        notes: Vec::new(),
+    })
 }
 
 // ---- columnar JSON -----------------------------------------------------------------------------

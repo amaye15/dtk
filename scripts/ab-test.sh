@@ -74,6 +74,10 @@ truth_mi=$(awk 'NR>2 { if ($0 ~ /^[^ ]/) { r=$1; p=$2; v=$3 } else { p=$1; v=$2 
 truth_mi2=$(awk 'NR>3 { if ($0 ~ /^[^ ]/) { r=$1; p=$2; v=$5 } else { p=$1; v=$4 } if (r=="eu" && p=="sku_005") print v }' "$C/pandas_groupby_two_level_header.txt")
 truth_tiny=$(awk -F, 'NR>1 && (m=="" || $3+0<m+0) {m=$3; t=$1} END{print t}' "$C/small_values.csv")
 
+# pandas printed as a dict per column (`print(df.to_dict())`), and a frame with a datetime column.
+truth_dict=$(jaq -r '. as $d | ($d.latency_ms | to_entries | max_by(.value)) as $m | "\($m.value) \($d.order_id[$m.key])"' "$C/pandas_to_json_columns.json")
+truth_dt=$(grep -c "Credit Card" "$C/pandas_to_string_datetime_spaces.txt")
+
 # name | file | question | expected words (all must appear in the answer)
 CASES=(
 "csv|$C/csv_orders.csv|Which region has the most orders, and how many orders does it have?|$truth_csv"
@@ -95,6 +99,8 @@ CASES=(
 "multiindex|$C/pandas_groupby_multiindex.txt|This is pandas output of a groupby on region and product; a blank region means the same region as the line above. What is amount_sum for region us-west and product sku_017? Give the number.|$truth_mi"
 "two headers|$C/pandas_groupby_two_level_header.txt|This is pandas output of a groupby on region and product, with two lines of column names (amount: sum mean max, then qty: sum count); a blank region means the same as the line above. What is the amount max for region eu and product sku_005? Give the number.|$truth_mi2"
 "tiny values|$C/small_values.csv|Which trial has the smallest value in the rate column? Give the trial number.|$truth_tiny"
+"to_dict|$C/pandas_to_dict.txt|This is print(df.to_dict()) of a pandas DataFrame: a dict per column, keyed by the row number. What is the highest latency_ms, and which order_id has it? Give both numbers.|$truth_dict"
+"datetime frame|$C/pandas_to_string_datetime_spaces.txt|This is print(df.to_string()) of a pandas DataFrame. How many rows have the label Credit Card? Give the number.|$truth_dt"
 "split json|$C/pandas_split.json|This is a pandas DataFrame as JSON (columns, then data rows). How many rows have ok equal to false? Give the number.|$truth_split"
 )
 

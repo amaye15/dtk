@@ -96,10 +96,9 @@ pub fn detect(text: &str) -> Option<Table> {
             if let Some(t) = parse_json_array(text) {
                 return Some(t);
             }
-            if let Some(t) = serde_json::from_str::<Value>(text)
-                .ok()
-                .and_then(|v| crate::foreign::parse_columnar(&v))
-            {
+            if let Some(t) = serde_json::from_str::<Value>(text).ok().and_then(|v| {
+                crate::foreign::parse_columnar(&v).or_else(|| crate::foreign::parse_nested_json(&v))
+            }) {
                 return Some(t);
             }
             if let Some(t) = crate::foreign::parse_python_repr(text) {
@@ -107,6 +106,14 @@ pub fn detect(text: &str) -> Option<Table> {
             }
         }
         b'{' => {
+            // A dict per column (`df.to_json()`) must be tried first: with ten columns or more,
+            // the container reader would take the columns for rows.
+            if let Some(t) = serde_json::from_str::<Value>(text)
+                .ok()
+                .and_then(|v| crate::foreign::parse_nested_json(&v))
+            {
+                return Some(t);
+            }
             return parse_jsonl(text)
                 .or_else(|| parse_json_container(text))
                 .or_else(|| {
@@ -126,6 +133,7 @@ pub fn detect(text: &str) -> Option<Table> {
         .or_else(|| parse_delimited(text))
         .or_else(|| crate::multiindex::parse_multiindex(aligned))
         .or_else(|| parse_aligned(text))
+        .or_else(|| crate::multiindex::parse_right_aligned(aligned))
         .or_else(|| crate::textcols::parse_tail_text(text))
         .or_else(|| crate::foreign::parse_number_grid(text))
         .or_else(|| crate::foreign::parse_records(text))
@@ -236,25 +244,35 @@ fn parse_json_container(text: &str) -> Option<Table> {
     }
     match rows {
         Rows::Array(objs) => from_objects(Format::JsonObject, objs.into_iter(), notes),
-        Rows::Keyed(kv) => {
-            let maps: Vec<Map<String, Value>> = kv
-                .iter()
-                .map(|(k, o)| {
-                    let mut m = Map::new();
-                    m.insert("key".to_string(), Value::String((*k).clone()));
-                    for (kk, vv) in o.iter() {
-                        let name = if kk == "key" {
-                            "_key".to_string()
-                        } else {
-                            kk.clone()
-                        };
-                        m.insert(name, vv.clone());
-                    }
-                    m
-                })
-                .collect();
-            from_objects(Format::JsonObject, maps.iter(), notes)
-        }
+        Rows::Keyed(kv) => from_objects(Format::JsonObject, keyed_maps(&kv).iter(), notes),
+    }
+}
+
+/// Rows keyed by id (`{"a1": {...}, "a2": {...}}`) as objects that carry the key in a `key` field.
+fn keyed_maps(kv: &[(&String, &Map<String, Value>)]) -> Vec<Map<String, Value>> {
+    kv.iter()
+        .map(|(k, o)| {
+            let mut m = Map::new();
+            m.insert("key".to_string(), Value::String((*k).clone()));
+            for (kk, vv) in o.iter() {
+                let name = if kk == "key" {
+                    "_key".to_string()
+                } else {
+                    kk.clone()
+                };
+                m.insert(name, vv.clone());
+            }
+            m
+        })
+        .collect()
+}
+
+/// A table from an object keyed by row label, read from something other than JSON text
+/// (`df.to_dict("index")`).
+pub(crate) fn from_keyed_root(format: Format, root: &Value) -> Option<Table> {
+    match rows_of(root)? {
+        Rows::Keyed(kv) => from_objects(format, keyed_maps(&kv).iter(), Vec::new()),
+        Rows::Array(_) => None,
     }
 }
 
@@ -1024,10 +1042,37 @@ pub mod tests {
     }
 
     #[test]
-    fn real_pandas_output_with_a_datetime_column_is_refused_not_mislabelled() {
-        // pandas can join a datetime column to its neighbour with one space, so the columns
-        // cannot be told apart safely. No summary is better than wrong labels.
-        assert!(detect(include_str!("../tests/fixtures/pandas_datetime.txt")).is_none());
+    fn real_pandas_output_with_a_datetime_column_is_read_by_position() {
+        // pandas joins a datetime column to its neighbour with one space, and the datetime holds
+        // a space itself, so a split on spaces cannot tell the columns apart. The right edges of
+        // the header can: every cell ends where its header ends.
+        let t = detect(include_str!("../tests/fixtures/pandas_datetime.txt")).unwrap();
+        assert_eq!(
+            t.headers,
+            [
+                "idx",
+                "order_id",
+                "ts",
+                "customer",
+                "region",
+                "amount",
+                "latency_ms"
+            ]
+        );
+        assert_eq!(t.rows[0][..3], ["0", "100000", "2026-10-01 00:00:00"]);
+        assert_eq!(t.rows[1][2], "2026-10-01 00:07:00");
+        assert!(t.rows.iter().all(|r| r.len() == t.headers.len()));
+    }
+
+    #[test]
+    fn a_datetime_that_could_be_an_index_is_refused_not_guessed() {
+        // Without an integer index, a datetime in the first column reads as an index and a value,
+        // so the position reader refuses it. (Other readers may still take such lines as a log.)
+        let mut s = String::from("                    when   n\n");
+        for i in 0..30 {
+            s.push_str(&format!("2026-03-01 08:30:{:02}.250 {:>3}\n", i, 100 + i));
+        }
+        assert!(crate::multiindex::parse_right_aligned(&s).is_none());
     }
 
     pub fn polars_text(n: usize) -> String {
