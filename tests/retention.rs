@@ -79,6 +79,8 @@ struct Fact {
     any_of: Vec<String>,
     /// Only the summary line of this column is searched, when set.
     in_line_of: Option<String>,
+    /// When not empty: some row line (not a line of statistics) must hold all of these.
+    same_line: Vec<String>,
 }
 
 fn facts(t: &Table) -> Vec<Fact> {
@@ -90,8 +92,11 @@ fn facts(t: &Table) -> Vec<Fact> {
             what,
             any_of,
             in_line_of: line.map(String::from),
+            same_line: Vec::new(),
         })
     };
+    // The full rows of the extremes of the first measure: (what, strings one row line must hold).
+    let mut full_rows: Vec<(String, Vec<String>)> = Vec::new();
     fact("row count".into(), vec![format!("{n} rows")], None);
     for h in &t.headers {
         fact(format!("column name {h}"), vec![h.clone()], None);
@@ -154,6 +159,14 @@ fn facts(t: &Table) -> Vec<Fact> {
                 && which_row_cols < 5
             {
                 which_row_cols += 1;
+                if which_row_cols == 1 {
+                    let r = (0..n).find(|&r| num(&t.rows[r][c]) == Some(hi)).unwrap();
+                    let label_col = id.unwrap_or(0);
+                    full_rows.push((
+                        format!("{h}: the full row of the largest value is shown"),
+                        vec![t.rows[r][label_col].clone(), t.rows[r][c].clone()],
+                    ));
+                }
                 for (label, target) in [("largest", hi), ("smallest", lo)] {
                     let r = (0..n)
                         .find(|&r| num(&t.rows[r][c]) == Some(target))
@@ -305,7 +318,7 @@ fn facts(t: &Table) -> Vec<Fact> {
         let numeric_codes = !words && codes && matches!(kinds[c].kind, Kind::Int | Kind::Float);
         if counts.len() <= 12 && counts.len() >= 2 && (words || numeric_codes) {
             // A value of 40 characters or more is a blob (nested JSON), not something to count.
-            for (v, k) in counts.iter().filter(|(v, _)| v.chars().count() < 40) {
+            for (v, k) in counts.iter().filter(|(v, _)| v.chars().count() < 25) {
                 fact(
                     format!("{h}: {v} occurs {k} times"),
                     vec![format!("{v} {k}")],
@@ -499,6 +512,14 @@ fn facts(t: &Table) -> Vec<Fact> {
     let last = t.rows[n - 1][0].clone();
     fact("first row".into(), vec![first], None);
     fact("last row".into(), vec![last], None);
+    for (what, same_line) in full_rows {
+        out.push(Fact {
+            what,
+            any_of: Vec::new(),
+            in_line_of: None,
+            same_line,
+        });
+    }
     out
 }
 
@@ -529,6 +550,7 @@ fn named_in(text: &str, name: &str) -> bool {
         return false;
     };
     text.split_whitespace().any(|tok| {
+        let tok = tok.trim_matches(|c| "(),;:".contains(c));
         let Some((a, b)) = tok.split_once("..") else {
             return false;
         };
@@ -540,6 +562,94 @@ fn named_in(text: &str, name: &str) -> bool {
             _ => false,
         }
     })
+}
+
+/// Why a column has no line of statistics, worked out here from its cells, and whether the summary
+/// says so. A claim is only accepted when it is true.
+fn accounted(text: &str, t: &Table, c: usize) -> Result<(), String> {
+    let n = t.rows.len();
+    let h = &t.headers[c];
+    let cells: Vec<&str> = t.rows.iter().map(|r| r[c].as_str()).collect();
+    let nonempty = cells.iter().filter(|v| !v.is_empty()).count();
+    let distinct: std::collections::HashSet<&str> =
+        cells.iter().copied().filter(|v| !v.is_empty()).collect();
+    let line_starting = |prefix: &str| text.lines().find(|l| l.starts_with(prefix)).unwrap_or("");
+    let says = |prefix: &str, needle: &str| line_starting(prefix).contains(needle);
+    // A list cut short ends in `+N more`: accepted for a name that is not shown.
+    let cut_short = |line: &str| {
+        line.rsplit_once(", +").is_some_and(|(_, r)| {
+            r.ends_with(" more") && r.starts_with(|c: char| c.is_ascii_digit())
+        })
+    };
+    // 1. the same value in every row (or empty in every row)
+    if nonempty == 0 || (distinct.len() == 1 && nonempty >= 2 && nonempty * 2 >= n) {
+        let also = text
+            .lines()
+            .find(|l| l.trim_start().starts_with("also the same in every row:"))
+            .unwrap_or("");
+        return if says("same in every row:", &format!("{h}="))
+            || named_in(also, h)
+            || cut_short(also)
+        {
+            Ok(())
+        } else {
+            Err("constant, but not in the 'same in every row' line".into())
+        };
+    }
+    // 2. the same groups as an earlier column
+    let groups = |col: usize| -> Vec<usize> {
+        let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        t.rows
+            .iter()
+            .map(|r| {
+                let k = seen.len();
+                *seen.entry(r[col].as_str()).or_insert(k)
+            })
+            .collect()
+    };
+    if cells.iter().all(|v| !v.is_empty()) && (2..n).contains(&distinct.len()) {
+        let mine = groups(c);
+        for e in 0..c {
+            let theirs: std::collections::HashSet<&str> =
+                t.rows.iter().map(|r| r[e].as_str()).collect();
+            if t.rows.iter().all(|r| !r[e].is_empty())
+                && (2..n).contains(&theirs.len())
+                && groups(e) == mine
+            {
+                let prefix = format!("same groups as {}:", t.headers[e]);
+                let line = line_starting(&prefix);
+                return if named_in(line, h) || cut_short(line) {
+                    Ok(())
+                } else {
+                    Err(format!("a copy of {}, but not said", t.headers[e]))
+                };
+            }
+        }
+    }
+    // 3. a different token in every row
+    let kinds = analyze(t);
+    if kinds[c].kind == Kind::Str
+        && nonempty >= 10
+        && distinct.len() == nonempty
+        && nonempty * 10 >= n * 9
+        && cells
+            .iter()
+            .take(200)
+            .all(|v| !v.contains(char::is_whitespace))
+    {
+        let line = line_starting("different in every row");
+        return if named_in(line, h) || cut_short(line) {
+            Ok(())
+        } else {
+            Err("unique, but not in the 'different in every row' line".into())
+        };
+    }
+    // 4. left out for lack of room, and said so
+    let line = line_starting("no statistics shown for");
+    if named_in(line, h) || (cut_short(line) && !line.is_empty()) {
+        return Ok(());
+    }
+    Err("no line, and not accounted for".into())
 }
 
 fn line_of<'a>(text: &'a str, header: &str) -> &'a str {
@@ -566,24 +676,28 @@ fn summaries_keep_the_facts_that_questions_need() {
             continue; // every row is shown, nothing to keep
         }
         let (mut f_total, mut f_kept) = (0, 0);
-        let wide = r.text.contains("no statistics shown for the other");
         for f in facts(&t) {
             let hay = match &f.in_line_of {
                 Some(h) => line_of(&r.text, h),
                 None => r.text.as_str(),
             };
-            // A wide table says that it leaves columns out. A fact about one of them is
-            // disclosed as absent, not lost. (Every column fact starts with its name.)
-            if wide
-                && f.in_line_of
-                    .as_ref()
-                    .is_some_and(|h| line_of(&r.text, h).is_empty())
+            // A column without a statistics line is accounted for below: it is the same in every
+            // row, a copy of another column, different in every row, or named as left out.
+            if f.in_line_of
+                .as_ref()
+                .is_some_and(|h| line_of(&r.text, h).is_empty())
             {
                 continue;
             }
 
             f_total += 1;
-            let kept = if f.what.starts_with("column name ") {
+            let kept = if !f.same_line.is_empty() {
+                // a row line: not a line of statistics (`name: ...`)
+                r.text.lines().any(|l| {
+                    !t.headers.iter().any(|h| l.starts_with(&format!("{h}: ")))
+                        && f.same_line.iter().all(|s| l.contains(s.as_str()))
+                })
+            } else if f.what.starts_with("column name ") {
                 named_in(hay, &f.any_of[0])
             } else {
                 f.any_of.iter().any(|s| hay.contains(s.as_str()))
@@ -595,6 +709,17 @@ fn summaries_keep_the_facts_that_questions_need() {
                     "{file}: {}",
                     f.what.chars().take(110).collect::<String>()
                 ));
+            }
+        }
+        // Every column without a line of statistics must be accounted for, truthfully.
+        for c in 0..t.headers.len() {
+            if !line_of(&r.text, &t.headers[c]).is_empty() {
+                continue;
+            }
+            f_total += 1;
+            match accounted(&r.text, &t, c) {
+                Ok(()) => f_kept += 1,
+                Err(why) => missing.push(format!("{file}: column {} - {why}", t.headers[c])),
             }
         }
         println!("{file:46} {f_kept:3}/{f_total:3} facts kept");
