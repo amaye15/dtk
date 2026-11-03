@@ -155,6 +155,10 @@ fn tee_path(marker: &str) -> Option<std::path::PathBuf> {
         Some(tail) => format!("{}{tail}", crate::hook::home()?.display()),
         None => p.to_string(),
     };
+    // `$HOME/.local/share/...` after a `C:\Users\me` home: one kind of separator, or Windows
+    // (a `\\?\` path in particular) does not find the file.
+    #[cfg(windows)]
+    let expanded = expanded.replace('/', "\\");
     Some(std::path::PathBuf::from(expanded))
 }
 
