@@ -26,6 +26,7 @@ struct Totals {
     results: usize,
     bash: usize,
     read: usize,
+    mcp: usize,
     tables: usize,
     would_apply: usize,
     full_outputs: usize,
@@ -99,7 +100,7 @@ fn scan_file(path: &Path, cfg: &Config, t: &mut Totals) {
                     let subject = input["command"]
                         .as_str()
                         .or_else(|| input["file_path"].as_str())
-                        .unwrap_or("");
+                        .unwrap_or(if name.starts_with("mcp__") { name } else { "" });
                     let ranged = input.get("offset").is_some() || input.get("limit").is_some();
                     if let Some(id) = b["id"].as_str() {
                         uses.insert(
@@ -177,11 +178,22 @@ fn scan_file(path: &Path, cfg: &Config, t: &mut Totals) {
                         n,
                     )
                 }
+                name if name.starts_with("mcp__") => {
+                    t.mcp += 1;
+                    let n = est_tokens(&content);
+                    (content, false, None, n)
+                }
                 _ => continue,
             };
             let v = evaluate(
                 &Input {
-                    tool: if tool == "Read" { "Read" } else { "Bash" },
+                    tool: if tool == "Read" {
+                        "Read"
+                    } else if tool.starts_with("mcp__") {
+                        "MCP"
+                    } else {
+                        "Bash"
+                    },
                     subject,
                     text: &text,
                     file: file.as_deref(),
@@ -279,7 +291,7 @@ pub fn run(args: &[String]) -> i32 {
     t.top.sort_by_key(|x| std::cmp::Reverse(x.0));
     if json_out {
         let v = json!({
-            "sessions": t.files, "tool_results": t.results, "bash": t.bash, "read": t.read,
+            "sessions": t.files, "tool_results": t.results, "bash": t.bash, "read": t.read, "mcp": t.mcp,
             "tables": t.tables, "by_format": t.by_format, "would_replace": t.would_apply,
             "shown_in_full": {"outputs": t.full_outputs, "est_tokens_saved": t.full_saved},
             "saved_to_file": {"outputs": t.saved_to_file, "summary_tokens": t.saved_to_file_summary_tokens},
@@ -292,8 +304,8 @@ pub fn run(args: &[String]) -> i32 {
     }
     let window = days.map_or("all time".to_string(), |d| format!("last {d} days"));
     println!(
-        "dtk discover ({window}): {} sessions, {} tool results; {} Bash and {} Read results were big enough to check",
-        t.files, t.results, t.bash, t.read
+        "dtk discover ({window}): {} sessions, {} tool results; {} Bash, {} Read and {} MCP results were big enough to check",
+        t.files, t.results, t.bash, t.read, t.mcp
     );
     let fmts: Vec<String> = t
         .by_format

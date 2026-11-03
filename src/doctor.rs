@@ -86,6 +86,12 @@ pub fn run() -> i32 {
                     "the hook was registered before Read support, so data files read with the Read tool are not summarized. Run: dtk init --global",
                 );
             }
+            if matcher != "*" && !matcher.split('|').any(|m| m.starts_with("mcp__")) {
+                line(
+                    "warn",
+                    "the hook was registered before MCP support, so tables that MCP tools return (database rows, issue lists) are not summarized. Run: dtk init --global",
+                );
+            }
             if std::path::Path::new(exe).exists() {
                 line(
                     "ok",

@@ -10,16 +10,18 @@ use std::fs;
 use std::io::Read;
 use std::path::Path;
 
-/// `dtk explain [FILE|-] [--command CMD] [--read] [--saved]`
+/// `dtk explain [FILE|-] [--command CMD] [--read] [--mcp TOOL] [--saved]`
 pub fn explain(args: &[String]) -> i32 {
     let mut file: Option<&str> = None;
     let mut command: Option<&str> = None;
     let (mut read, mut saved) = (false, false);
+    let mut mcp: Option<&str> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--command" => command = it.next().map(String::as_str),
             "--read" => read = true,
+            "--mcp" => mcp = it.next().map(String::as_str),
             "--saved" => saved = true,
             other if file.is_none() => file = Some(other),
             other => {
@@ -44,7 +46,13 @@ pub fn explain(args: &[String]) -> i32 {
             (s, None)
         }
     };
-    let tool = if read { "Read" } else { "Bash" };
+    let tool = if mcp.is_some() {
+        "MCP"
+    } else if read {
+        "Read"
+    } else {
+        "Bash"
+    };
     let default_subject = match (&path, read) {
         (Some(p), _) => {
             if read {
@@ -55,7 +63,10 @@ pub fn explain(args: &[String]) -> i32 {
         }
         _ => "-".to_string(),
     };
-    let subject = command.map(String::from).unwrap_or(default_subject);
+    let subject = mcp
+        .map(String::from)
+        .or_else(|| command.map(String::from))
+        .unwrap_or(default_subject);
     let (cfg, cfg_error) = Config::load();
     let live = is_live();
     println!("tool:      {tool}");

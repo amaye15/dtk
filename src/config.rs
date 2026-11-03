@@ -48,7 +48,7 @@ pub fn path() -> Option<PathBuf> {
 pub fn default_file() -> String {
     let d = Config::default();
     format!(
-        "# dtk configuration. Delete a line to get its default back.\n\n[hooks]\n# Leave these alone. \"^text\" matches the start of a command (or a file path for Read);\n# any other text matches anywhere in it.\nexclude_commands = []\n\n[thresholds]\nmin_tokens = {}        # smallest output worth replacing (estimated tokens)\nbudget = {}            # largest summary\nmin_persisted_rows = {}  # fewest rows for output that Claude Code saved to a file\nmin_outline_tokens = {}  # smallest JSON document (not a table) worth an outline\n",
+        "# dtk configuration. Delete a line to get its default back.\n\n[hooks]\n# Leave these alone. \"^text\" matches the start of a command (a file path for Read, a tool name such as mcp__db__query for MCP);\n# any other text matches anywhere in it.\nexclude_commands = []\n\n[thresholds]\nmin_tokens = {}        # smallest output worth replacing (estimated tokens)\nbudget = {}            # largest summary\nmin_persisted_rows = {}  # fewest rows for output that Claude Code saved to a file\nmin_outline_tokens = {}  # smallest JSON document (not a table) worth an outline\n",
         d.min_tokens, d.budget, d.min_persisted_rows, d.min_outline_tokens
     )
 }

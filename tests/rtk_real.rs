@@ -242,7 +242,7 @@ fn enabling_the_posthook_pipeline_later_widens_dtks_matcher_through_rtk() {
     need_rtk!();
     let home = temp_home("widen");
     dtk(&home, &["init", "--global"]);
-    assert_eq!(post(&home)[0]["matcher"], "Bash|Read");
+    assert_eq!(post(&home)[0]["matcher"], "Bash|Read|mcp__.*");
     enable_posthook(&home);
     rtk(&home, &["init", "-g", "--auto-patch"]);
     let p = post(&home);
@@ -250,11 +250,15 @@ fn enabling_the_posthook_pipeline_later_widens_dtks_matcher_through_rtk() {
     let m = p[0]["matcher"].as_str().unwrap().to_string();
     assert!(m.contains("Grep") && m.contains("WebFetch"), "{m}");
     dtk(&home, &["init", "--global"]);
-    assert_eq!(
-        post(&home)[0]["matcher"],
-        m.as_str(),
-        "dtk keeps what rtk widened"
-    );
+    // rtk rewrote the matcher and dropped dtk's MCP token; dtk puts its own back and keeps all
+    // that rtk widened.
+    let again = post(&home)[0]["matcher"].as_str().unwrap().to_string();
+    for token in m.split('|').chain(["Bash", "Read", "mcp__.*"]) {
+        assert!(
+            again.split('|').any(|t| t == token),
+            "{token} is in {again}"
+        );
+    }
     let out = dtk(&home, &["init", "--uninstall"]);
     assert!(out.contains("restored the rtk PostToolUse hook"), "{out}");
     assert_eq!(post(&home)[0]["matcher"], m.as_str());
