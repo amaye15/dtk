@@ -78,6 +78,11 @@ truth_tiny=$(awk -F, 'NR>1 && (m=="" || $3+0<m+0) {m=$3; t=$1} END{print t}' "$C
 truth_dict=$(jaq -r '. as $d | ($d.latency_ms | to_entries | max_by(.value)) as $m | "\($m.value) \($d.order_id[$m.key])"' "$C/pandas_to_json_columns.json")
 truth_dt=$(grep -c "Credit Card" "$C/pandas_to_string_datetime_spaces.txt")
 
+# Rows with a line of text above, and with a database server's warning around them.
+W="$HERE/tests/corpus/wrapped"
+truth_wrap=$(sed -n 2p "$W/status_line_json_array.txt" | jaq '[.[] | select(.status=="fail")] | length')
+truth_wrap_db=$(sed -n 4p "$W/database_mcp_wrapper.txt" | jaq -r 'max_by(.amount) | .id')
+
 # name | file | question | expected words (all must appear in the answer)
 CASES=(
 "csv|$C/csv_orders.csv|Which region has the most orders, and how many orders does it have?|$truth_csv"
@@ -101,6 +106,8 @@ CASES=(
 "tiny values|$C/small_values.csv|Which trial has the smallest value in the rate column? Give the trial number.|$truth_tiny"
 "to_dict|$C/pandas_to_dict.txt|This is print(df.to_dict()) of a pandas DataFrame: a dict per column, keyed by the row number. What is the highest latency_ms, and which order_id has it? Give both numbers.|$truth_dict"
 "datetime frame|$C/pandas_to_string_datetime_spaces.txt|This is print(df.to_string()) of a pandas DataFrame. How many rows have the label Credit Card? Give the number.|$truth_dt"
+"text + json|$W/status_line_json_array.txt|This output is a line of text and then a JSON array of rows. How many rows have status fail? Give the number.|$truth_wrap"
+"db wrapper|$W/database_mcp_wrapper.txt|This is a database server's answer: warning text around a JSON array of rows. Which id has the largest amount? Give the id.|$truth_wrap_db"
 "split json|$C/pandas_split.json|This is a pandas DataFrame as JSON (columns, then data rows). How many rows have ok equal to false? Give the number.|$truth_split"
 )
 

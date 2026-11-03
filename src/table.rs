@@ -141,6 +141,105 @@ pub fn detect(text: &str) -> Option<Table> {
         .or_else(|| crate::foreign::parse_headerless(text))
 }
 
+/// A table with a few lines of prose around it: a status line before a JSON array, a title above
+/// a CSV, a database server's warning on both sides of its rows.
+pub struct Wrapped {
+    pub table: Table,
+    /// The data is `text[start..end]`; the text before and after is kept as it is.
+    pub start: usize,
+    pub end: usize,
+}
+
+/// At most this many lines of prose before or after the data, each at most this long.
+const WRAP_LINES: usize = 6;
+const WRAP_LINE_CHARS: usize = 300;
+
+fn is_prose_block(s: &str) -> bool {
+    s.lines().count() <= WRAP_LINES && s.lines().all(|l| l.chars().count() <= WRAP_LINE_CHARS)
+}
+
+/// Where the first JSON value in `s` ends, as a byte offset. `s` starts with `[` or `{`.
+fn json_value_end(s: &str) -> Option<usize> {
+    let mut it = serde_json::Deserializer::from_str(s).into_iter::<Value>();
+    it.next()?.ok()?;
+    Some(it.byte_offset())
+}
+
+/// Do ten lines in a row have the same number (one or more) of some delimiter, or the same
+/// number (two or more) of gaps of two spaces? Cheap evidence that a table starts here.
+fn looks_tabular(rest: &str) -> bool {
+    let lines: Vec<&str> = rest
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .take(MIN_ROWS + 1)
+        .collect();
+    if lines.len() < MIN_ROWS + 1 {
+        return false;
+    }
+    let same = |count: &dyn Fn(&str) -> usize, least: usize| {
+        let first = count(lines[0]);
+        first >= least && lines.iter().filter(|l| count(l) == first).count() > MIN_ROWS - 1
+    };
+    [',', '\t', ';', '|']
+        .iter()
+        .any(|d| same(&|l: &str| l.matches(*d).count(), 1))
+        || same(&|l: &str| l.trim().split("  ").count() - 1, 2)
+}
+
+/// Finds a table that has prose around it. Only tried when `detect` finds nothing in the text
+/// as it is.
+pub fn detect_wrapped(text: &str) -> Option<Wrapped> {
+    if text.len() > MAX_INPUT || text.len() < 200 {
+        return None;
+    }
+    let mut starts = vec![0usize];
+    for (i, b) in text.bytes().enumerate() {
+        if b == b'\n' {
+            starts.push(i + 1);
+            if starts.len() > WRAP_LINES + 1 {
+                break;
+            }
+        }
+    }
+    for (p, &off) in starts.iter().enumerate().take(WRAP_LINES + 1) {
+        if p > 0 && !is_prose_block(&text[..off]) {
+            return None;
+        }
+        let rest = &text[off..];
+        let body = rest.trim_start();
+        let body_at = off + (rest.len() - body.len());
+        let first = body.as_bytes().first().copied();
+        // The rows start here, as JSON lines or CSV: let the plain readers have the rest.
+        if p > 0 && (matches!(first, Some(b'[' | b'{')) || looks_tabular(rest)) {
+            if let Some(table) = detect(rest) {
+                return Some(Wrapped {
+                    table,
+                    start: off,
+                    end: text.len(),
+                });
+            }
+        }
+        // One JSON value, then a few lines of prose.
+        if matches!(first, Some(b'[' | b'{')) {
+            if let Some(len) = json_value_end(body) {
+                let after = &body[len..];
+                if (p > 0 || !after.trim().is_empty())
+                    && is_prose_block(after.trim_start_matches('\n'))
+                {
+                    if let Some(table) = detect(&body[..len]) {
+                        return Some(Wrapped {
+                            table,
+                            start: body_at,
+                            end: body_at + len,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// The objects of a JSON array, or the entries of a JSON object whose values are objects.
 enum Rows<'a> {
     Array(Vec<&'a Map<String, Value>>),
@@ -648,10 +747,13 @@ pub(crate) fn valid_header(h: &[String]) -> bool {
     let mut seen = HashSet::new();
     for c in h {
         let c = c.trim();
+        // Quotes and braces are what a line of JSON is made of: a header like `{"id":` is a data
+        // line read with the wrong parser.
         if c.is_empty()
             || c.chars().count() > 60
             || c.split_whitespace().count() > 6
             || c.parse::<f64>().is_ok()
+            || c.contains(['"', '{', '}'])
         {
             return false;
         }
@@ -996,6 +1098,70 @@ pub mod tests {
         assert_eq!(t.format, Format::Grid);
         assert_eq!(t.headers, ["c0", "c1", "c2"]);
         assert_eq!(t.rows.len(), 41);
+    }
+
+    fn wrapped_rows(n: usize) -> String {
+        let rows: Vec<String> = (0..n)
+            .map(|i| {
+                format!(
+                    "{{\"id\": {i}, \"name\": \"user_{}\", \"amount\": {}}}",
+                    i % 31,
+                    i * 3
+                )
+            })
+            .collect();
+        format!("[{}]", rows.join(", "))
+    }
+
+    #[test]
+    fn prose_around_json_rows_is_found_and_kept_apart() {
+        let data = wrapped_rows(40);
+        let text = format!("Query returned 40 rows:\n{data}\nTotal: 40\n");
+        assert!(detect(&text).is_none(), "the plain reader sees prose first");
+        let w = detect_wrapped(&text).unwrap();
+        assert_eq!(w.table.rows.len(), 40);
+        assert_eq!(&text[..w.start], "Query returned 40 rows:\n");
+        assert_eq!(&text[w.start..w.end], data);
+        assert_eq!(&text[w.end..], "\nTotal: 40\n");
+    }
+
+    #[test]
+    fn too_much_prose_around_the_rows_is_not_a_wrapper() {
+        let data = wrapped_rows(40);
+        // Seven lines before the data.
+        let before = "A line of text.\n".repeat(7);
+        assert!(detect_wrapped(&format!("{before}{data}\n")).is_none());
+        // One line that is too long to be a status line.
+        let long = format!("{}\n", "word ".repeat(80));
+        assert!(detect_wrapped(&format!("{long}{data}\n")).is_none());
+        // Seven lines after the data.
+        let after = "\nAnother line.".repeat(7);
+        assert!(detect_wrapped(&format!("{data}{after}\n")).is_none());
+    }
+
+    #[test]
+    fn a_line_of_json_is_not_a_header() {
+        // One status line above JSON lines used to make a table whose columns were the words of
+        // the first JSON line (`{"id":`, `0,`, `"name":`, ...).
+        let rows: Vec<String> = (0..40)
+            .map(|i| {
+                format!(
+                    "{{\"id\": {i}, \"name\": \"user_{}\", \"ok\": true}}",
+                    i % 7
+                )
+            })
+            .collect();
+        let text = format!("Fetching page 1 of 1...\n{}\nDone.\n", rows.join("\n"));
+        if let Some(t) = detect(&text) {
+            assert!(
+                !t.headers.iter().any(|h| h.contains('"') || h.contains('{')),
+                "{:?}",
+                t.headers
+            );
+        }
+        let w = detect_wrapped(&text).unwrap();
+        assert_eq!(w.table.headers, ["id", "name", "ok"]);
+        assert_eq!(w.table.rows.len(), 40);
     }
 
     #[test]

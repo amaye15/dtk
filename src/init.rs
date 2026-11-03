@@ -23,7 +23,7 @@ use std::process::{Command, Stdio};
 
 const DEFAULT_THEN: &str = "rtk hook claude";
 /// Tools dtk handles itself: Bash output and whole-file reads of data files.
-const OWN_MATCHER: &str = "Bash|Read";
+const OWN_MATCHER: &str = "Bash|Read|mcp__.*";
 
 pub fn settings_path() -> Option<PathBuf> {
     Some(home()?.join(".claude/settings.json"))
@@ -306,7 +306,12 @@ pub fn run(args: &[String]) -> i32 {
                 Vec::new()
             };
             if !matchers.is_empty() {
-                let matcher = union_tokens(&matchers);
+                // `mcp__.*` is dtk's own addition; rtk's hook is given back as rtk had it.
+                let matcher = union_tokens(&matchers)
+                    .split('|')
+                    .filter(|t| *t != "mcp__.*")
+                    .collect::<Vec<_>>()
+                    .join("|");
                 let cmd = folded
                     .first()
                     .map(|f| f.1.clone())

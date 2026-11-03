@@ -76,10 +76,11 @@ drill: dtk where 5fa6aeae75bd region = eu  |  dtk top 5fa6aeae75bd amount 10  | 
 
 ## What it recognizes
 
-dtk reads Bash output and whole-file `Read` of data files. Detection is strict: when dtk is not sure, the output passes through untouched.
+dtk reads Bash output, whole-file `Read` of data files, and the results of MCP tools (database rows, issue lists). Detection is strict: when dtk is not sure, the output passes through untouched.
 
 - **Rows and columns:** JSON Lines, JSON arrays, objects that wrap one big array, CSV/TSV (`;` and `|` too, and pandas `to_csv()` with its index), bordered tables (polars, psql, MySQL, SQLite, Markdown, rich), aligned tables (pandas `to_string()`, with datetime columns too, and `groupby().agg()`, `pivot_table` and Series output with a MultiIndex), `ps aux`, `ps -ef`, `df -h`, logfmt, access logs, `docker compose logs`, and plain text logs whose lines start with a timestamp (CI, application, syslog).
 - **Data as other tools print it:** a Python list of dicts (`print(df.to_dict("records"))`), the other ways pandas prints a frame (`to_dict()`, `to_dict("index")`, `to_dict("split")`, `to_json()`, `values.tolist()`, one dict per line), pandas `to_json(orient="split")`, a printed number matrix, delimited text with no header (`psql -t -A`, `sqlite3 -list`), one-block-per-row output (`psql -x`, `sqlite3 -line`, MySQL `\G`), and a page that is one HTML table (`df.to_html()`).
+- **With text around it:** up to six short lines of text before or after the data stay as they are, and only the data is replaced: a status line above a JSON array, a title above a CSV, a total below it, or a database server's warning on both sides of its rows.
 - **An outline:** a JSON document that is not a table (`cargo metadata`, `terraform show -json`). It lists each key with its size, the merged shape of the records in each array, and a `jaq` command to read any part.
 
 Up to 60 rows become CSV and nothing is dropped. A bigger table gets:
@@ -102,7 +103,8 @@ Up to 60 rows become CSV and nothing is dropped. A bigger table gets:
 - small outputs: under 1,200 estimated tokens for a table, 4,000 for a JSON document (8,000 for `Read`)
 - requests for rows: `head`, `tail`, `sed -n`, `qsv slice`, rtk's `--head-lines` and `--tail-lines`, `jq`/`jaq` queries, dtk's own drill-down commands, reads with `offset` or `limit`, and any file dtk saved itself
 - output that rtk already cut (`... (N lines truncated)`): a summary would claim rows that are missing
-- commands listed in `exclude_commands`
+- a JSON document that an MCP tool returns: the model asked a server for those values, so only tables are summarized there
+- commands listed in `exclude_commands`; for an MCP tool the name is the tool name (`^mcp__github__`)
 
 ## Works with rtk
 
@@ -154,7 +156,7 @@ min_outline_tokens = 4000  # smallest JSON document worth an outline
 
 ## How it is checked
 
-204 tests, plus the A/B script. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (79 files detected as expected, 31 rejected). A test that lists the facts a summary must keep and checks them (2123 of 2123 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
+213 tests, plus the A/B script and an end-to-end test with a real MCP server. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (79 files detected as expected, 31 rejected, 6 found inside text). A test that lists the facts a summary must keep and checks them (2123 of 2123 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
 
 ## Limits
 

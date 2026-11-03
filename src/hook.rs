@@ -397,8 +397,69 @@ fn handle(input: &str) -> Option<String> {
     match ev.get("tool_name")?.as_str()? {
         "Bash" => handle_bash(&ev),
         "Read" => handle_read(&ev),
+        name if name.starts_with("mcp__") => handle_mcp(&ev, name),
         _ => None,
     }
+}
+
+/// The text of an MCP tool result: one string (structured output), or content blocks that are
+/// all text. A result with an image or a resource in it is left alone.
+fn mcp_text(resp: &Value) -> Option<String> {
+    match resp {
+        Value::String(s) => Some(s.clone()),
+        Value::Array(blocks) => {
+            let mut parts = Vec::with_capacity(blocks.len());
+            for b in blocks {
+                if b.get("type")?.as_str()? != "text" {
+                    return None;
+                }
+                parts.push(b.get("text")?.as_str()?);
+            }
+            Some(parts.join("\n"))
+        }
+        _ => None,
+    }
+}
+
+/// A table that an MCP tool returned (database rows, a list of issues). The summary replaces the
+/// text, and the model reads more of the rows with `dtk` commands, as for Bash. A JSON document
+/// that is not a table is never outlined here: the model asked a server for those values.
+fn handle_mcp(ev: &Value, name: &str) -> Option<String> {
+    let resp = ev.get("tool_response")?;
+    let text = mcp_text(resp)?;
+    let live = is_live();
+    let cfg = Config::load().0;
+    let v = evaluate(
+        &Input {
+            tool: "MCP",
+            subject: name,
+            text: &text,
+            file: None,
+            persisted: false,
+        },
+        &cfg,
+        live,
+    );
+    let applied = live && v.applies;
+    log_table(&Decision {
+        tool: "MCP",
+        what: name.chars().take(100).collect(),
+        verdict: &v,
+        persisted: false,
+        applied,
+        live,
+    });
+    if !applied {
+        return None;
+    }
+    let summary = v.rendered?.text;
+    // The answer has the shape of the result: a string stays a string, blocks stay blocks.
+    let updated = match resp {
+        Value::String(_) => Value::String(summary),
+        _ => json!([{"type": "text", "text": summary}]),
+    };
+    let out = json!({"hookSpecificOutput": {"hookEventName": "PostToolUse", "updatedToolOutput": updated}});
+    Some(out.to_string())
 }
 
 /// Commands that ask for specific rows must get them, not a summary of them.
@@ -447,9 +508,9 @@ pub fn wants_raw(cmd: &str) -> bool {
 
 /// What came in: the text of a tool result, and where it came from.
 pub struct Input<'a> {
-    /// `Bash` or `Read`.
+    /// `Bash`, `Read` or `MCP`.
     pub tool: &'a str,
-    /// The command, or the file path for `Read`.
+    /// The command, the file path for `Read`, or the tool name (`mcp__db__query`) for `MCP`.
     pub subject: &'a str,
     pub text: &'a str,
     /// A file on disk that holds this very data, so the summary can point at it.
@@ -529,9 +590,15 @@ pub fn evaluate(inp: &Input, cfg: &Config, write: bool) -> Verdict {
         );
         return v;
     }
-    let Some(table) = table::detect(inp.text) else {
-        if let Some(doc) = outline::parse_document(inp.text) {
-            return evaluate_outline(inp, cfg, write, v, &doc);
+    // A table may have a few lines of prose around it; they stay, word for word.
+    let found = table::detect(inp.text)
+        .map(|t| (t, 0, inp.text.len()))
+        .or_else(|| table::detect_wrapped(inp.text).map(|w| (w.table, w.start, w.end)));
+    let Some((table, start, end)) = found else {
+        if inp.tool != "MCP" {
+            if let Some(doc) = outline::parse_document(inp.text) {
+                return evaluate_outline(inp, cfg, write, v, &doc);
+            }
         }
         v.reason = format!(
             "not a table: no JSONL, JSON, CSV, logfmt, access log, or aligned or bordered table found (needs at least {} rows)",
@@ -539,7 +606,23 @@ pub fn evaluate(inp: &Input, cfg: &Config, write: bool) -> Verdict {
         );
         return v;
     };
-    let rendered = build(&table, inp.text, inp.file, write, cfg.budget);
+    let wrapped = (start, end) != (0, inp.text.len());
+    // The file that Claude Code saved holds the prose too; it is not the data file then.
+    let mut rendered = build(
+        &table,
+        &inp.text[start..end],
+        if wrapped { None } else { inp.file },
+        write,
+        cfg.budget,
+    );
+    if wrapped {
+        rendered.text = format!(
+            "{}{}{}",
+            &inp.text[..start],
+            rendered.text,
+            &inp.text[end..]
+        );
+    }
     v.after = est_tokens(&rendered.text);
     let rows = table.rows.len();
     let (applies, reason) = if inp.persisted {
@@ -845,7 +928,10 @@ pub fn view(arg: Option<&str>) -> i32 {
             (s, None)
         }
     };
-    let Some(t) = table::detect(&text) else {
+    let found = table::detect(&text)
+        .map(|t| (t, 0, text.len()))
+        .or_else(|| table::detect_wrapped(&text).map(|w| (w.table, w.start, w.end)));
+    let Some((t, start, end)) = found else {
         if let Some(doc) = outline::parse_document(&text) {
             let file = match &path {
                 Some(p) => Some(short_path(p, "json", true)),
@@ -866,12 +952,20 @@ pub fn view(arg: Option<&str>) -> i32 {
         );
         return 1;
     };
-    let r = build(&t, &text, path.as_deref(), true, Config::load().0.budget);
-    println!("{}", r.text);
+    let wrapped = (start, end) != (0, text.len());
+    let r = build(
+        &t,
+        &text[start..end],
+        if wrapped { None } else { path.as_deref() },
+        true,
+        Config::load().0.budget,
+    );
+    let shown = format!("{}{}{}", &text[..start], r.text, &text[end..]);
+    println!("{shown}");
     eprintln!(
         "dtk: {} est. tokens -> {}",
         est_tokens(&text),
-        est_tokens(&r.text)
+        est_tokens(&shown)
     );
     0
 }

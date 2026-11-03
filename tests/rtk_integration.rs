@@ -253,7 +253,7 @@ fn init_folds_rtks_post_hook_into_the_chain_and_uninstall_restores_it() {
         "other hook kept, rtk's entry folded, one dtk entry: {post:?}"
     );
     assert_eq!(post[0]["hooks"][0]["command"], "other-tool");
-    assert_eq!(post[1]["matcher"], "Bash|Read|Grep|WebFetch");
+    assert_eq!(post[1]["matcher"], "Bash|Read|mcp__.*|Grep|WebFetch");
     assert!(post[1]["hooks"][0]["command"]
         .as_str()
         .unwrap()
@@ -274,7 +274,7 @@ fn init_chains_to_rtk_when_rtk_has_no_post_hook_yet() {
     run(&home, Some(&bin), &["init", "--global"], "", &[]);
     let s = read_settings(&home);
     let e = &s["hooks"]["PostToolUse"][0];
-    assert_eq!(e["matcher"], "Bash|Read");
+    assert_eq!(e["matcher"], "Bash|Read|mcp__.*");
     assert!(e["hooks"][0]["command"]
         .as_str()
         .unwrap()

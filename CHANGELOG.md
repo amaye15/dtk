@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.0
+
+Data that arrives with text around it, and data that comes from MCP tools.
+
+- **MCP tool results.** The hook now matches `mcp__.*` as well as `Bash` and `Read`. A table that an MCP tool returns (rows from a database server, a list of issues) is replaced by its summary, in the shape Claude Code gave it: content blocks stay content blocks, and structured output stays a string. A big JSON document that is not a table is left alone, because the model asked a server for those values. Results with an image, and results that are errors, are left alone. `exclude_commands = ["^mcp__github__"]` skips a server; `dtk explain --mcp NAME`, `dtk discover` and `dtk doctor` know about MCP. Checked with real Claude Code and a real (small) MCP server: 6,189 tokens became 320 for rows, 5,442 became 301 for structured output, and the document was untouched; every answer right on Haiku and Sonnet (`scripts/mcp-test.sh`). Run `dtk init --global` once to add the matcher to an older install; `dtk doctor` says so.
+- **Text around the data.** Up to six short lines (300 characters each) before or after a table stay word for word, and only the table is replaced. This reads a status line above a JSON array, a title above a CSV, a line of totals below JSON, and the layout of database servers such as Supabase, which put a warning about untrusted data on both sides of the rows (that warning is kept, on purpose). Before, none of these was read.
+- **Fixed: a wrong table from one line of text.** A line of text above JSON lines made a loose reader take the first JSON line as the header and split it on spaces, so the columns were called `{"id":`, `0,`, `"name":` and the summary had 299 rows. A header with a quote or a brace is not a name now, and the right reader gets the text.
+- Checked by: 6 fixtures with the expected prose and rows, and a rule that none of the 31 rejected fixtures (README, source code, diffs, logs) is found to hold a table; every payload compared with its source rows (10,500 cells, none different); hook tests for Bash and MCP; a timing check (no change on 20 to 35 MB of text or on source code); four end-to-end MCP cases and two wrapped Bash cases on Sonnet and Haiku, right every time with dtk, 87% to 94% fewer tokens.
+
 ## 0.12.0
 
 Out of the box, and more of the ways data gets printed. Found by checking what happens after an install, and by printing one DataFrame every way pandas allows.
