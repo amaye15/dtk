@@ -651,13 +651,16 @@ pub fn evaluate(shown: &Input, cfg: &Config, write: bool) -> Verdict {
         if page_wanted && dtk::html::looks_like_html(inp.text) {
             return evaluate_html(inp, cfg, write, v);
         }
-        // A log that Claude Code saved to a file: the model would see its first lines only.
+        // A log. Claude Code saved it to a file (the model would see its first lines only), or
+        // rtk cut it and dtk read rtk's saved copy (the model would see fifty lines), or it is
+        // long enough that a digest serves better than the whole.
+        let long_enough = cfg.min_digest_tokens > 0 && v.tokens_full >= cfg.min_digest_tokens;
         if inp.tool == "Bash"
-            && inp.persisted
             && cfg.digest_logs
+            && (inp.persisted || recovered.is_some() || long_enough)
             && !dtk::digest::prints_content(&typed_cmd)
         {
-            return evaluate_digest(inp, write, v);
+            return evaluate_digest(inp, write, v, recovered.is_some());
         }
         v.reason = format!(
             "not a table: no JSONL, JSON, CSV, logfmt, access log, or aligned or bordered table found (needs at least {} rows)",
@@ -813,8 +816,14 @@ fn evaluate_html(inp: &Input, cfg: &Config, write: bool, mut v: Verdict) -> Verd
 }
 
 /// A saved-to-file log gets a digest of all of it, with the path of the file in it.
-fn evaluate_digest(inp: &Input, write: bool, mut v: Verdict) -> Verdict {
-    let saved = inp.file.map(|p| short_path(p, "log", write));
+fn evaluate_digest(inp: &Input, write: bool, mut v: Verdict, from_rtk: bool) -> Verdict {
+    // The file that holds the whole text: the one Claude Code saved, or a copy in dtk's store (a
+    // log that was not saved, or that rtk cut and saved in a folder that rtk prunes).
+    let saved = match inp.file {
+        Some(p) if inp.persisted => Some(short_path(p, "log", write)),
+        _ if write => store_write("log", inp.text.as_bytes()).map(|p| p.display().to_string()),
+        _ => Some("<store>/log".to_string()),
+    };
     let Some(text) = dtk::digest::digest(inp.text, saved.as_deref()) else {
         v.reason = "not a table, and not a log that a digest would serve".into();
         return v;
@@ -829,11 +838,40 @@ fn evaluate_digest(inp: &Input, write: bool, mut v: Verdict) -> Verdict {
         text,
         lossless: false,
     });
-    v.applies = true;
-    v.reason = format!(
-        "saved-to-file log: the digest ({} tokens) covers all of it and replaces a preview of about {STUB_TOKENS} tokens",
-        v.after
-    );
+    (v.applies, v.reason) = if inp.persisted {
+        (
+            true,
+            format!(
+                "saved-to-file log: the digest ({} tokens) covers all of it and replaces a preview of about {STUB_TOKENS} tokens",
+                v.after
+            ),
+        )
+    } else if from_rtk {
+        // rtk left fifty lines; the digest may be a little bigger and covers every line.
+        let ok = v.after <= v.baseline * 13 / 10 + 400;
+        (
+            ok,
+            format!(
+                "rtk cut this log to {} tokens; the digest ({}) covers all of it, read from rtk's saved copy",
+                v.baseline, v.after
+            ),
+        )
+    } else {
+        let ok = v.after * 10 <= v.tokens_full * 5;
+        (
+            ok,
+            format!(
+                "a long log ({} tokens): the digest ({} tokens) {}",
+                v.tokens_full,
+                v.after,
+                if ok {
+                    "covers all of it"
+                } else {
+                    "would not be at least half as small"
+                }
+            ),
+        )
+    };
     v
 }
 

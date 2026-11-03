@@ -908,3 +908,105 @@ fn only_a_log_is_digested_and_only_when_enabled() {
     let (_, out, _) = run(&home, &["hook", "claude"], &event("Bash", small), &[]);
     assert_eq!(out, "", "not saved to a file");
 }
+
+// ---- logs that were not saved to a file ---------------------------------------------------
+
+fn mid_log() -> String {
+    std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/corpus/logs/pytest_260_tests_4_failures.log"
+    ))
+    .unwrap()
+}
+
+#[test]
+fn a_long_log_that_was_not_saved_gets_a_digest_and_a_copy_in_the_store() {
+    let home = temp_home("digest-long");
+    let log = mid_log();
+    assert!(
+        log.len() < 30_000 && est_tokens_of(&log) > 3000,
+        "a log that fits on the screen"
+    );
+    let ev = |cmd: &str| {
+        json!({"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": cmd},
+               "tool_response": {"stdout": log, "stderr": "", "interrupted": false, "isImage": false}})
+        .to_string()
+    };
+    let (code, out, _) = run(&home, &["hook", "claude"], &ev("uv run pytest -v"), &[]);
+    assert_eq!(code, 0);
+    let v: Value = serde_json::from_str(&out).expect("a long log is digested");
+    let s = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
+        .as_str()
+        .unwrap();
+    assert!(s.starts_with("[dtk] log digest"), "{s}");
+    assert!(s.contains("4 failed, 256 passed"), "{s}");
+    // The whole text is in dtk's store, and the digest says where.
+    let store = home.join(".local/share/dtk/store");
+    let saved = std::fs::read_dir(&store)
+        .unwrap()
+        .flatten()
+        .find(|e| e.path().extension().is_some_and(|x| x == "log"));
+    let saved = saved.expect("a copy of the log in the store").path();
+    assert_eq!(std::fs::read_to_string(&saved).unwrap(), log);
+    assert!(s.contains(&saved.display().to_string()), "{s}");
+    // Not for a command that prints content, not under the threshold, and not when switched off.
+    for cmd in ["cat test.log", "grep -n FAILED test.log", "git diff"] {
+        let (_, out, _) = run(&home, &["hook", "claude"], &ev(cmd), &[]);
+        assert_eq!(out, "", "`{cmd}`");
+    }
+    let cfg = home.join(".config/dtk");
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::fs::write(
+        cfg.join("config.toml"),
+        "[thresholds]\nmin_digest_tokens = 0\n",
+    )
+    .unwrap();
+    let (_, out, _) = run(&home, &["hook", "claude"], &ev("uv run pytest -v"), &[]);
+    assert_eq!(out, "", "min_digest_tokens = 0 means never");
+    std::fs::write(
+        cfg.join("config.toml"),
+        "[thresholds]\nmin_digest_tokens = 100000\n",
+    )
+    .unwrap();
+    let (_, out, _) = run(&home, &["hook", "claude"], &ev("uv run pytest -v"), &[]);
+    assert_eq!(out, "", "under the threshold");
+}
+
+fn est_tokens_of(s: &str) -> usize {
+    s.len().div_ceil(4)
+}
+
+#[test]
+fn a_log_that_rtk_cut_gets_a_digest_of_all_of_it_from_rtks_saved_copy() {
+    // `rtk uv run pytest -v` keeps fifty lines of a long log and saves the rest in its tee folder.
+    let home = temp_home("digest-rtk");
+    let tee = home.join(".local/share/rtk/tee");
+    std::fs::create_dir_all(&tee).unwrap();
+    let full = mid_log();
+    std::fs::write(tee.join("1793697113_pytest.log"), &full).unwrap();
+    let lines: Vec<&str> = full.lines().collect();
+    let shown = format!(
+        "{}\n... ({} lines omitted)\n{}\n[see remaining: tail -n +26 \"$HOME/.local/share/rtk/tee/1793697113_pytest.log\"]\n",
+        lines[..25].join("\n"),
+        lines.len() - 50,
+        lines[lines.len() - 25..].join("\n")
+    );
+    let resp = json!({"stdout": shown, "stderr": "", "interrupted": false, "isImage": false});
+    let ev = json!({"hook_event_name": "PostToolUse", "tool_name": "Bash",
+                    "tool_input": {"command": "rtk uv run pytest -v"}, "tool_response": resp.clone()})
+    .to_string();
+    let (_, out, _) = run(&home, &["hook", "claude"], &ev, &[]);
+    let v: Value = serde_json::from_str(&out).expect("dtk answered");
+    let s = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
+        .as_str()
+        .unwrap();
+    assert!(s.starts_with("[dtk] log digest"), "{s}");
+    assert!(
+        s.contains("4 failed, 256 passed"),
+        "the digest covers lines that rtk cut: {s}"
+    );
+    assert!(
+        !s.contains("see remaining"),
+        "rtk's pointer is replaced by the digest"
+    );
+}

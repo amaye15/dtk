@@ -270,3 +270,72 @@ fn rtks_pipeline_never_touches_the_output_of_a_dtk_command() {
         );
     }
 }
+
+/// A log with no timestamps, as `uv run pytest -v` prints it, that the real rtk cuts to about
+/// fifty lines. A stand-in `uv` prints the log, so the test needs no Python.
+#[test]
+fn a_log_that_the_real_rtk_cut_is_digested_whole() {
+    need_rtk!();
+    let home = workdir("digest-uv");
+    let log = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/corpus/logs/pytest_260_tests_4_failures.log");
+    let bin = home.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let shim = bin.join("uv");
+    fs::write(&shim, format!("#!/bin/sh\ncat '{}'\n", log.display())).unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&shim, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let mut c = Command::new("rtk");
+    c.args(["uv", "run", "pytest", "-v"]).env("PATH", &path);
+    with_home(&mut c, &home);
+    let cut = text(c.output().unwrap());
+    assert!(
+        cut.lines().count() < 80 && (cut.contains("rtk recall") || cut.contains("see remaining")),
+        "rtk no longer cuts this way; update the test:\n{cut}"
+    );
+    let shown = cut.trim_end().to_string();
+    // The hook runs as Claude Code runs it, in the same home, so rtk's saved copy is in reach.
+    let ev = serde_json::json!({
+        "hook_event_name": "PostToolUse", "tool_name": "Bash",
+        "tool_input": {"command": "uv run pytest -v"},
+        "tool_response": {"stdout": shown, "stderr": "", "interrupted": false, "isImage": false},
+    })
+    .to_string();
+    let mut c = Command::new(env!("CARGO_BIN_EXE_dtk"));
+    c.args(["hook", "claude"]).env("PATH", &path);
+    with_home(&mut c, &home);
+    use std::io::Write;
+    let mut child = c
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(ev.as_bytes())
+        .unwrap();
+    let out = String::from_utf8_lossy(&child.wait_with_output().unwrap().stdout).to_string();
+    let v: serde_json::Value = serde_json::from_str(&out).expect("dtk answered");
+    let s = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
+        .as_str()
+        .unwrap();
+    assert!(s.starts_with("[dtk] log digest"), "{s}");
+    assert!(
+        s.contains("4 failed, 256 passed"),
+        "the digest covers lines that rtk cut: {s}"
+    );
+    assert!(
+        s.contains("AssertionError: order 13: total 40 does not match 39"),
+        "the assertion of a failure that was in the middle, which rtk cut: {s}"
+    );
+}
