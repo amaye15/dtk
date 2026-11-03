@@ -163,10 +163,12 @@ fn every_wrapped_fixture_is_found_and_its_prose_is_kept() {
             ));
         }
         // The prose before and after is exactly what the file has, and the data is between.
-        if text[..w.start] != *e["before"].as_str().unwrap() {
+        // (Git on Windows may have turned the line ends of the fixture into CRLF.)
+        let lf = |s: &str| s.replace("\r\n", "\n");
+        if lf(&text[..w.start]) != e["before"].as_str().unwrap() {
             failures.push(format!("{file}: text before is {:?}", &text[..w.start]));
         }
-        if text[w.end..] != *e["after"].as_str().unwrap() {
+        if lf(&text[w.end..]) != e["after"].as_str().unwrap() {
             failures.push(format!("{file}: text after is {:?}", &text[w.end..]));
         }
         // The plain reader must not have taken the text as a table of its own.
