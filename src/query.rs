@@ -361,16 +361,6 @@ fn where_cmd(args: &[String]) -> i32 {
     0
 }
 
-/// A number as `dtk group` prints it: whole numbers whole, others to four places without trailing
-/// zeros.
-fn plain(x: f64) -> String {
-    if x.fract() == 0.0 && x.abs() < 1e15 {
-        return format!("{}", x as i64);
-    }
-    let s = format!("{x:.4}");
-    s.trim_end_matches('0').trim_end_matches('.').to_string()
-}
-
 fn group_cmd(args: &[String]) -> i32 {
     let (Some(file), Some(by)) = (args.first(), args.get(1)) else {
         return usage("dtk group needs FILE and BY");
@@ -470,7 +460,7 @@ fn group_cmd(args: &[String]) -> i32 {
                 rec.push(if acc.n[i] == 0 {
                     String::new()
                 } else {
-                    plain(match *a {
+                    dtk::lean::fnum(match *a {
                         "mean" => acc.sum[i] / acc.n[i] as f64,
                         "sum" => acc.sum[i],
                         "min" => acc.min[i],

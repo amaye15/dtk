@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.0
+
+Two wrong summaries, found by testing with the data that data people print. Both are fixed.
+
+- **Small numbers keep their digits.** Statistics were rounded to four decimals, so a column of p-values, rates, losses or learning rates (1e-8 to 1e-3) read `rate: 0..0 mean 0 p50 0 p95 0`: a model would call the column all zeros. Now a number below 0.1 has four significant digits, a number below 1e-4 is in exponent form (`2.96e-8`), and the smallest and largest value are the cells as written (`rate: 2.960e-08..9.983e-06 mean 4.827e-6`). `dtk group` prints the same way. Cost: 20 tokens on a table with five such columns; 0.09% on the whole corpus.
+- **pandas output with a MultiIndex is read.** `groupby([a, b]).agg(...)`, a Series from `value_counts()` or `groupby().sum()`, `pivot_table`, `set_index`. pandas leaves a repeated index label blank, so the rows do not have the same number of cells and a split on spaces gives the wrong columns. The new reader works by character position instead: the line of index names marks the index columns, and the right edges of the values mark the value columns. Two or three lines of column names are joined (`amount.sum`, `qty.count`), a blank top label repeats the one to its left, a label with a space (`New York`, `Home & Garden`) stays whole, and the name of a column level (`year` in a pivot table) is not a column. A Series needs its `Name: ..., dtype: ...` footer. A line that does not fit makes the reader refuse the text, not guess.
+- **Fixed: a table with a missing column and missing rows.** When the groups were big, the aligned-text reader took the short rows (one blank index label) for the whole table. It dropped the first row of every group and the group column, and the summary still said "statistics over all rows". A 240-row `groupby` was read as 236 rows with no `region`. The reader now refuses a table when a line it would drop has more cells than the rows it keeps.
+- Checked by: every value of 20 real pandas outputs (about 11,000 cells, with row counts and header names) compared with the pandas frame they were printed from, none different; 8 new corpus fixtures whose rows and headers come from the pandas frames, and one of tiny values; a test that fails without the fix to the aligned reader; retention 1854 of 1854 (the new fixtures are what found the rounding); three new real-model questions, Sonnet and Haiku 2 of 2 right with and without dtk, 78% to 80% fewer tokens.
+
 ## 0.10.0
 
 Fewer tokens for more information, from reading what the summaries of real API data spent their tokens on. All automatic.

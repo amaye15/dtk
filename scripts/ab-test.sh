@@ -69,6 +69,11 @@ truth_split=$(jaq '[.data[] | select(.[7] == false)] | length' "$C/pandas_split.
 truth_group=$(qsv fmt --out-delimiter '\t' "$M" | awk -F'\t' 'NR>1 && $2=="eu" {s+=$3; n++} END {printf "%.1f", s/n}')
 truth_wide=$(awk -F, 'NR==1 {for (i=1;i<=NF;i++) h[i]=$i; next} {for (i=2;i<=61;i++) s[i]+=$i} END {for (i=2;i<=61;i++) if (s[i] > m) {m=s[i]; b=h[i]}; print b}' "$C/wide_features.csv")
 
+# pandas output with a MultiIndex (a repeated label is left blank), and a column of tiny values.
+truth_mi=$(awk 'NR>2 { if ($0 ~ /^[^ ]/) { r=$1; p=$2; v=$3 } else { p=$1; v=$2 } if (r=="us-west" && p=="sku_017") print v }' "$C/pandas_groupby_multiindex.txt")
+truth_mi2=$(awk 'NR>3 { if ($0 ~ /^[^ ]/) { r=$1; p=$2; v=$5 } else { p=$1; v=$4 } if (r=="eu" && p=="sku_005") print v }' "$C/pandas_groupby_two_level_header.txt")
+truth_tiny=$(awk -F, 'NR>1 && (m=="" || $3+0<m+0) {m=$3; t=$1} END{print t}' "$C/small_values.csv")
+
 # name | file | question | expected words (all must appear in the answer)
 CASES=(
 "csv|$C/csv_orders.csv|Which region has the most orders, and how many orders does it have?|$truth_csv"
@@ -87,6 +92,9 @@ CASES=(
 "python repr|$C/python_repr_records.txt|This is a Python list of records. Which order_id has the largest amount? Give the order_id.|$truth_repr"
 "group mean|$M|What is the mean amount for region eu? Round to one decimal place.|$truth_group"
 "cadence|$C/sensor_readings.csv|How many minutes pass between readings, and how many hours long is the longest gap in the data? Give both numbers.|5 3"
+"multiindex|$C/pandas_groupby_multiindex.txt|This is pandas output of a groupby on region and product; a blank region means the same region as the line above. What is amount_sum for region us-west and product sku_017? Give the number.|$truth_mi"
+"two headers|$C/pandas_groupby_two_level_header.txt|This is pandas output of a groupby on region and product, with two lines of column names (amount: sum mean max, then qty: sum count); a blank region means the same as the line above. What is the amount max for region eu and product sku_005? Give the number.|$truth_mi2"
+"tiny values|$C/small_values.csv|Which trial has the smallest value in the rate column? Give the trial number.|$truth_tiny"
 "split json|$C/pandas_split.json|This is a pandas DataFrame as JSON (columns, then data rows). How many rows have ok equal to false? Give the number.|$truth_split"
 )
 

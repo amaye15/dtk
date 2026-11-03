@@ -121,12 +121,57 @@ fn has_leading_zero(s: &str) -> bool {
     b.len() > 1 && b[0] == b'0' && b[1].is_ascii_digit()
 }
 
-fn fnum(x: f64) -> String {
+/// A computed number for a summary: whole numbers whole; four decimals from 0.1 up; below that,
+/// four significant digits, so a column of 0.000031 does not read as 0; below 1e-4 the exponent
+/// form (`2.96e-8`), which is shorter than the zeros and loses nothing.
+pub fn fnum(x: f64) -> String {
     if x.fract() == 0.0 && x.abs() < 1e15 {
         return format!("{}", x as i64);
     }
-    let s = format!("{:.4}", x);
-    s.trim_end_matches('0').trim_end_matches('.').to_string()
+    let a = x.abs();
+    if !(1e-4..1e15).contains(&a) {
+        return exp4(x);
+    }
+    let decimals = if a >= 0.1 {
+        4
+    } else {
+        (3 - a.log10().floor() as i32) as usize
+    };
+    trim_zeros(format!("{x:.decimals$}"))
+}
+
+/// Four significant digits in exponent form, without trailing zeros: `2.96e-8`, `-1.5e20`.
+fn exp4(x: f64) -> String {
+    if x == 0.0 || !x.is_finite() {
+        return "0".into();
+    }
+    let s = format!("{x:.3e}");
+    match s.split_once('e') {
+        Some((m, e)) => format!("{}e{e}", trim_zeros(m.to_string())),
+        None => s,
+    }
+}
+
+fn trim_zeros(s: String) -> String {
+    if s.contains('.') {
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
+    } else {
+        s
+    }
+}
+
+/// The smallest or largest value of a float column. When it is a short plain number in the data,
+/// it is the cell as written: it is a value somebody may quote, and the head and tail rows show
+/// the same cells. Otherwise it is the number, rounded as the other statistics are.
+fn edge_num(cell: Option<&str>, x: f64) -> String {
+    match cell.map(str::trim) {
+        // pandas pads to six decimals (`169.717200`); the zeros say nothing.
+        Some(c) if c.len() <= 12 && c.parse::<f64>().is_ok() && !c.contains(['e', 'E']) => {
+            trim_zeros(c.to_string())
+        }
+        Some(c) if c.len() <= 12 && c.parse::<f64>().is_ok() => c.to_string(),
+        _ => fnum(x),
+    }
 }
 
 fn top_values(distinct: &HashMap<&str, usize>, limit: usize) -> String {
@@ -482,6 +527,7 @@ fn analyze_col_impl<'a>(vals: impl Iterator<Item = &'a str> + Clone, skip: bool)
     let (mut all_int, mut all_float, mut all_bool, mut all_time) = (true, true, true, true);
     let (mut imin, mut imax) = (i64::MAX, i64::MIN);
     let (mut fmin, mut fmax, mut fsum) = (f64::INFINITY, f64::NEG_INFINITY, 0f64);
+    let (mut fmin_cell, mut fmax_cell): (Option<&str>, Option<&str>) = (None, None);
     let (mut tmin, mut tmax): (Option<&str>, Option<&str>) = (None, None);
     let mut distinct: HashMap<&str, usize> = HashMap::new();
     let mut overflow = false;
@@ -502,6 +548,12 @@ fn analyze_col_impl<'a>(vals: impl Iterator<Item = &'a str> + Clone, skip: bool)
             match parse_number(v) {
                 Some((f, fmt)) => {
                     fmt_seen[fmt as usize] += 1;
+                    if f < fmin {
+                        fmin_cell = (fmt == NumFmt::Plain).then_some(v);
+                    }
+                    if f > fmax {
+                        fmax_cell = (fmt == NumFmt::Plain).then_some(v);
+                    }
                     fmin = fmin.min(f);
                     fmax = fmax.max(f);
                     fsum += f;
@@ -621,8 +673,8 @@ fn analyze_col_impl<'a>(vals: impl Iterator<Item = &'a str> + Clone, skip: bool)
         Kind::Int => format!("{}..{} mean {}{}", imin, imax, fnum(mean), pct_text(pcts)),
         Kind::Float => format!(
             "{}..{} mean {}{}",
-            fnum(fmin),
-            fnum(fmax),
+            edge_num(fmin_cell, fmin),
+            edge_num(fmax_cell, fmax),
             fnum(mean),
             pct_text(pcts)
         ),
@@ -1505,13 +1557,11 @@ fn sig4(x: f64) -> String {
     if x == 0.0 || !x.is_finite() {
         return "0".into();
     }
-    let decimals = (3 - x.abs().log10().floor() as i32).clamp(0, 8) as usize;
-    let s = format!("{x:.decimals$}");
-    if s.contains('.') {
-        s.trim_end_matches('0').trim_end_matches('.').to_string()
-    } else {
-        s
+    if x.abs() < 1e-4 {
+        return exp4(x);
     }
+    let decimals = (3 - x.abs().log10().floor() as i32).clamp(0, 8) as usize;
+    trim_zeros(format!("{x:.decimals$}"))
 }
 
 /// How much of a measure's variance a label column explains (eta squared), the label column, the
@@ -2118,6 +2168,48 @@ mod tests {
             csv_path: Some("/tmp/x.csv".into()),
             raw_path: Some("/tmp/x.jsonl".into()),
         }
+    }
+
+    #[test]
+    fn numbers_keep_four_significant_digits_below_a_tenth() {
+        assert_eq!(fnum(0.0), "0");
+        assert_eq!(fnum(1234.0), "1234");
+        assert_eq!(fnum(100.29971), "100.2997");
+        assert_eq!(fnum(0.5), "0.5");
+        assert_eq!(fnum(0.0875123), "0.08751");
+        assert_eq!(fnum(0.00031234), "0.0003123");
+        assert_eq!(fnum(2.96e-8), "2.96e-8");
+        assert_eq!(fnum(-1.5e-7), "-1.5e-7");
+        assert_eq!(fnum(-0.00002), "-2e-5");
+        assert_eq!(sig4(2.96e-8), "2.96e-8");
+        assert_eq!(sig4(0.012345), "0.01235");
+    }
+
+    #[test]
+    fn a_column_of_tiny_values_is_not_shown_as_zero() {
+        let mut text = String::from("id,rate,loss\n");
+        for i in 0..80 {
+            text.push_str(&format!(
+                "{i},{:.3e},{:.6}\n",
+                (i + 1) as f64 * 2.5e-8,
+                (i + 1) as f64 * 3e-6
+            ));
+        }
+        let t = detect(&text).unwrap();
+        let r = render(&t, &ctx(), 2500);
+        assert!(!r.lossless);
+        // The smallest and the largest value are the cells as written.
+        assert!(
+            r.text.contains("rate: 2.500e-8..2.000e-6 mean "),
+            "{}",
+            r.text
+        );
+        assert!(
+            r.text.contains("loss: 0.000003..0.00024 mean "),
+            "{}",
+            r.text
+        );
+        assert!(!r.text.contains("mean 0 "), "{}", r.text);
     }
 
     #[test]

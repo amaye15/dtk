@@ -1,0 +1,77 @@
+city           category       channel
+Austin         Books          app         8382.49
+                              store       7629.30
+                              web         6668.18
+               Credit Card    app         7848.51
+                              store       6079.30
+                              web         8020.24
+               Electronics    app         7159.59
+                              store       7241.32
+                              web         8121.16
+               Home & Garden  app         8687.96
+                              store      11238.73
+                              web         7070.47
+               Toys           app         7782.01
+                              store       6770.57
+                              web         8121.64
+Los Angeles    Books          app         6948.04
+                              store       6618.37
+                              web         9833.58
+               Credit Card    app         7921.69
+                              store       6402.71
+                              web         8353.09
+               Electronics    app         7854.83
+                              store       9307.82
+                              web         7705.10
+               Home & Garden  app         8846.44
+                              store       8327.77
+                              web         7977.64
+               Toys           app         7509.77
+                              store       7801.58
+                              web         8057.05
+New York       Books          app         8519.93
+                              store       7602.72
+                              web         6506.41
+               Credit Card    app         7489.39
+                              store       9580.15
+                              web        11051.13
+               Electronics    app         7084.80
+                              store       9452.78
+                              web         6072.52
+               Home & Garden  app         7350.26
+                              store       8065.33
+                              web         9388.00
+               Toys           app         6531.39
+                              store       7618.74
+                              web         8001.56
+San Francisco  Books          app         7951.36
+                              store       7988.93
+                              web        10620.97
+               Credit Card    app         9608.13
+                              store       8536.26
+                              web         8745.82
+               Electronics    app         7650.36
+                              store       7007.96
+                              web         7993.03
+               Home & Garden  app         8177.36
+                              store       8137.82
+                              web         7208.57
+               Toys           app         7405.62
+                              store       7217.99
+                              web         8051.81
+St. Louis      Books          app         8726.28
+                              store       7290.30
+                              web         7148.84
+               Credit Card    app         7124.02
+                              store       6060.16
+                              web         7868.24
+               Electronics    app         9062.98
+                              store       8218.18
+                              web         8956.52
+               Home & Garden  app         7817.69
+                              store       8416.18
+                              web         8302.82
+               Toys           app         5933.63
+                              store       8896.17
+                              web         7869.44
+Name: amount, dtype: float64

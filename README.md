@@ -29,7 +29,7 @@ The cause is in view: the package was removed, and `/usr/bin/dtk` was still ther
 
 `scripts/ab-test.sh` asks real Claude Code seventeen questions about data files, with and without dtk. They include a column with `N/A` in it, prices written as `$1,234`, a filter on two columns, a table with 60 feature columns, a Python list of records, a pandas JSON file, the mean per group, and the sampling interval of a sensor log. The true answers come from `jaq`, `qsv`, `awk` and `grep`, not from dtk.
 
-- **Answers: no loss.** Sonnet: 34 of 34 right with dtk, 34 of 34 without. Haiku: 34 of 34 and 34 of 34. (17 questions, 2 runs each.)
+- **Answers: no loss.** Sonnet: 34 of 34 right with dtk, 34 of 34 without. Haiku: 34 of 34 and 34 of 34. (17 questions, 2 runs each.) Three questions added in 0.11.0 (pandas `groupby` output with a MultiIndex, with one and with two lines of column names, and the row with the smallest of tiny numbers): Sonnet and Haiku 2 of 2 right with and without dtk, 78% to 80% fewer tokens.
 - **Tokens from tool results fell 69% to 90% on thirteen of the seventeen questions** (300-row CSV 4,549 → 498, `ps aux` 2,072 → 623, a column with `N/A` 5,456 → 556). Turns fell from 6 to 4 on six questions.
 - **Where the saving is small,** Claude Code had already cut the output to a preview of about 550 tokens (a big CI log, a wide table, a big JSON file). The count stays about the same, and the model gets a summary of every row in place of the preview.
 
@@ -78,7 +78,7 @@ drill: dtk where 5fa6aeae75bd region = eu  |  dtk top 5fa6aeae75bd amount 10  | 
 
 dtk reads Bash output and whole-file `Read` of data files. Detection is strict: when dtk is not sure, the output passes through untouched.
 
-- **Rows and columns:** JSON Lines, JSON arrays, objects that wrap one big array, CSV/TSV (`;` and `|` too, and pandas `to_csv()` with its index), bordered tables (polars, psql, MySQL, SQLite, Markdown, rich), aligned tables (pandas `to_string()`), `ps aux`, `ps -ef`, `df -h`, logfmt, access logs, `docker compose logs`, and plain text logs whose lines start with a timestamp (CI, application, syslog).
+- **Rows and columns:** JSON Lines, JSON arrays, objects that wrap one big array, CSV/TSV (`;` and `|` too, and pandas `to_csv()` with its index), bordered tables (polars, psql, MySQL, SQLite, Markdown, rich), aligned tables (pandas `to_string()`, and `groupby().agg()`, `pivot_table` and Series output with a MultiIndex), `ps aux`, `ps -ef`, `df -h`, logfmt, access logs, `docker compose logs`, and plain text logs whose lines start with a timestamp (CI, application, syslog).
 - **Data as other tools print it:** a Python list of dicts (`print(df.to_dict("records"))`), pandas `to_json(orient="split")`, a printed number matrix, delimited text with no header (`psql -t -A`, `sqlite3 -list`), one-block-per-row output (`psql -x`, `sqlite3 -line`, MySQL `\G`), and a page that is one HTML table (`df.to_html()`).
 - **An outline:** a JSON document that is not a table (`cargo metadata`, `terraform show -json`). It lists each key with its size, the merged shape of the records in each array, and a `jaq` command to read any part.
 
@@ -154,11 +154,11 @@ min_outline_tokens = 4000  # smallest JSON document worth an outline
 
 ## How it is checked
 
-192 tests, plus the A/B script. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (63 files detected as expected, 30 rejected). A test that lists the facts a summary must keep and checks them (1657 of 1657 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
+202 tests, plus the A/B script. Real output of pandas, numpy, polars, sqlite3, rich, jq, git, `gh`, `ps` and CI logs, and messy and wide data sets (71 files detected as expected, 30 rejected). A test that lists the facts a summary must keep and checks them (1854 of 1854 kept). dtk's statistics and its drill-down commands compared with `qsv`, `awk` and plain sorting. Fuzzing. The real rtk binary. CI on macOS, Linux and Windows, and a test of every install route against each release. Details: [docs/PLAN-0.5.0.md](docs/PLAN-0.5.0.md).
 
 ## Limits
 
-- Aligned text is a heuristic, and a wrong guess puts values under the wrong name. So dtk refuses what it cannot read safely: pandas `print(df)` (columns hidden behind `...`), `to_string()` with a datetime column, and tables whose column names contain spaces (`netstat`, `lsof`). Print data with `df.to_csv()` or `df.to_json(orient="records", lines=True)`.
+- Aligned text is a heuristic, and a wrong guess puts values under the wrong name. So dtk refuses what it cannot read safely: pandas `print(df)` (columns hidden behind `...`), `to_string()` with a datetime column, and tables whose column names contain spaces (`netstat`, `lsof`). A MultiIndex is read when pandas prints the line of index names, which it does for named levels (`groupby` always has them). Print data with `df.to_csv()` or `df.to_json(orient="records", lines=True)`.
 - Inputs above 128 MB are skipped.
 - dtk is a separate program that calls rtk, not an rtk plugin: a plugin needs a custom rtk build and would see only the first 30,000 characters of a large output.
 - Claude Code only. Windows has an x86_64 build and no ARM64 build.

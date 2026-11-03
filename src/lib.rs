@@ -11,6 +11,7 @@
 mod foreign;
 pub mod lean;
 mod logs;
+mod multiindex;
 pub mod outline;
 pub mod table;
 mod textcols;

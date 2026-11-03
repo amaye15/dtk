@@ -12,6 +12,7 @@ checks every entry.
 How the files were made (tool and version on 2026-11-02):
 
 - `csv_*`, `tsv_*`, `jsonl_*`, `json_array_*`, `pandas_*`: pandas 3.0 on seeded random orders data
+- `pandas_groupby_*.txt`, `pandas_series_multiindex.txt`, `pandas_pivot_multiindex.txt`, `pandas_groupby_single_key_two_level_header.txt`, `pandas_set_index_named.txt`: pandas 3.0 `groupby().agg()`, a Series with a MultiIndex, and `pivot_table` with MultiIndex rows and columns, printed with `to_string()` or `print()` (a repeated index label is left blank); the expected rows and headers come from the pandas frames, not from dtk
 - `polars_orders.txt`: polars 2.1 `print(df)` with the row limit lifted
 - `sqlite_*`: `sqlite3 -header -box|-table|-markdown|-column|-csv|-json` (SQLite 3.50)
 - `tabulate_*`: tabulate 0.10, ten table formats
@@ -24,6 +25,7 @@ How the files were made (tool and version on 2026-11-02):
 - `psql_expanded.txt`, `mysql_vertical.txt`: synthetic, in the layout of `psql -x` and MySQL `\G`; `sqlite_line.txt` is `sqlite3 -line`; `pandas_table.html` is `df.to_html()`
 - `sensor_readings.csv`: synthetic time series, one row every 5 minutes with a three-hour outage after row 149; `temp_c` and `temp_f` are the same measurement
 - `messy_orders.csv`: synthetic orders with what real data has: `N/A`, `-` and `?` in a number column, `$1,234.56`, `45.3%` and `1,234` formatted numbers, `MM/DD/YYYY` dates, two outliers and three repeated rows
+- `small_values.csv`: synthetic p-values, rates, losses and learning rates between 1e-8 and 0.1, as in statistics and machine learning (a summary that rounds to four decimals shows them as 0)
 - `wide_features.csv`: 60 numeric feature columns, as in a machine-learning data set
 - `ps_aux.txt`, `ps_ef.txt`, `df_h.txt`: synthetic, in the layout of macOS `ps aux`, `ps -ef` and `df -h` (a free-text
   last column; the real outputs on the author's machine were checked by hand and are not committed)

@@ -84,6 +84,9 @@ pub fn detect(text: &str) -> Option<Table> {
         return None;
     }
     let cleaned = clean(text);
+    // The spaces before the first line align it with the columns under it: pandas output with a
+    // MultiIndex is read by position, so that one line must keep them.
+    let aligned = cleaned.trim_start_matches(['\n', '\r']).trim_end();
     let text = skip_comment_lines(cleaned.trim());
     if text.len() < 200 {
         return None;
@@ -121,6 +124,7 @@ pub fn detect(text: &str) -> Option<Table> {
         .or_else(|| crate::logs::parse_logfmt(text))
         .or_else(|| parse_bordered(text))
         .or_else(|| parse_delimited(text))
+        .or_else(|| crate::multiindex::parse_multiindex(aligned))
         .or_else(|| parse_aligned(text))
         .or_else(|| crate::textcols::parse_tail_text(text))
         .or_else(|| crate::foreign::parse_number_grid(text))
@@ -807,8 +811,16 @@ fn parse_aligned(text: &str) -> Option<Table> {
     for (i, s) in split.iter().enumerate().skip(1) {
         if s.len() == m {
             rows.push(s.clone());
-        } else if notes.len() < 5 {
-            notes.push(lines[i].trim().to_string());
+        } else {
+            // A line with more cells than the rows is not a footer. It is a row, and `m` is the
+            // count of the rows that lost a blank cell (pandas leaves a repeated index label
+            // blank). Dropping the wide lines would drop real rows and a whole column.
+            if s.len() > m {
+                return None;
+            }
+            if notes.len() < 5 {
+                notes.push(lines[i].trim().to_string());
+            }
         }
     }
     if rows.len() < MIN_ROWS || (counts.len() - rows.len()) * 20 > rows.len() {
@@ -966,6 +978,30 @@ pub mod tests {
         assert_eq!(t.format, Format::Grid);
         assert_eq!(t.headers, ["c0", "c1", "c2"]);
         assert_eq!(t.rows.len(), 41);
+    }
+
+    #[test]
+    fn a_table_whose_rows_lost_a_blank_index_cell_is_refused() {
+        // pandas leaves a repeated MultiIndex label blank, so all but the first row of a group
+        // have one cell fewer. Without the line of index names the layout is not known, and
+        // reading the short rows as the table would drop the group's first row and a column.
+        let mut s = String::from("                  amount_sum  qty   n\n");
+        for g in 0..4 {
+            for p in 0..30 {
+                let region = if p == 0 {
+                    format!("r{g}")
+                } else {
+                    String::new()
+                };
+                s.push_str(&format!(
+                    "{region:<6} sku_{p:03}  {:>10.2}  {:>3} {:>3}\n",
+                    1000.0 + (g * 30 + p) as f64,
+                    10 + p,
+                    3 + p % 7
+                ));
+            }
+        }
+        assert!(parse_aligned(&s).is_none());
     }
 
     #[test]
