@@ -154,16 +154,16 @@ fn exclude_commands_still_match_what_the_user_typed() {
     }
 }
 
-#[test]
-fn output_that_rtk_cut_is_left_alone() {
-    need_rtk!();
-    let dir = workdir("cut");
+/// A document that rtk's jq filter cut, with the sandbox home that holds rtk's saved copy.
+fn rtk_cut_document(name: &str) -> (PathBuf, PathBuf) {
+    let dir = workdir(name);
     let json = dir.join("big.json");
     let items: Vec<String> = (0..2000)
         .map(|i| format!("{{\"id\":{i},\"name\":\"n{i}\",\"score\":{}}}", i * 3))
         .collect();
     fs::write(&json, format!("[{}]", items.join(","))).unwrap();
-    // rtk's jq filter cuts a long document and adds "... (N lines truncated)" and a pointer.
+    // rtk's jq filter cuts a long document and adds "... (N lines truncated)" and a pointer to
+    // the rest, which it keeps.
     let mut c = Command::new("rtk");
     c.args(["jq", "."]).arg(&json);
     with_home(&mut c, &dir);
@@ -174,7 +174,27 @@ fn output_that_rtk_cut_is_left_alone() {
     );
     let shown = dir.join("cut.txt");
     fs::write(&shown, &cut).unwrap();
+    (dir, shown)
+}
+
+#[test]
+fn output_that_rtk_cut_is_summarized_from_rtks_saved_copy() {
+    need_rtk!();
+    let (dir, shown) = rtk_cut_document("cut");
     let out = explain(&dir, &shown, "rtk jq . big.json");
+    assert!(
+        out.contains("decision:  APPLY") && out.contains("covers all 2000 rows"),
+        "dtk should read rtk's saved copy of the whole document:\n{out}"
+    );
+}
+
+#[test]
+fn output_that_rtk_cut_is_left_alone_when_its_saved_copy_is_out_of_reach() {
+    need_rtk!();
+    let (_, shown) = rtk_cut_document("cut-gone");
+    // Another home has none of rtk's saved outputs, so there is nothing to recover.
+    let elsewhere = workdir("cut-elsewhere");
+    let out = explain(&elsewhere, &shown, "rtk jq . big.json");
     assert!(
         !out.contains("decision:  APPLY"),
         "dtk summarized a document that rtk had cut:\n{out}"

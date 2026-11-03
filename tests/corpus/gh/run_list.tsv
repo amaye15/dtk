@@ -1,0 +1,100 @@
+completed	success	README: the full 24-question check at 0.13.1	ci	main	push	41590945310	1m43s	2026-11-03T06:36:26Z
+completed	success	winget manifests for v0.13.1 (local; the community PR is still at 0.5.0)	ci	main	push	41590912659	1m55s	2026-11-03T06:36:07Z
+completed	success	install test	install test	main	workflow_dispatch	41590737262	1m23s	2026-11-03T06:34:28Z
+completed	success	Stop reading documents and lists as tables; header cells that are dat…	release	v0.13.1	push	41590214463	3m54s	2026-11-03T06:29:36Z
+completed	success	Stop reading documents and lists as tables; header cells that are dat…	ci	main	push	41590205406	1m45s	2026-11-03T06:29:31Z
+completed	success	0.13.1: stop reading documents and lists as tables	ci	release-0.13.1	pull_request	41589835413	1m19s	2026-11-03T06:25:55Z
+completed	success	0.13.1: stop reading documents and lists as tables	release	release-0.13.1	pull_request	41589835400	3m4s	2026-11-03T06:25:55Z
+completed	success	Stop reading documents and lists as tables; header cells that are dat…	ci	release-0.13.1	push	41589828529	1m48s	2026-11-03T06:25:51Z
+completed	success	install test	install test	main	workflow_dispatch	41588734195	1m33s	2026-11-03T06:15:21Z
+completed	success	Read MCP tool results and data with text around it (0.13.0) (#10)	release	v0.13.0	push	41588313769	3m40s	2026-11-03T06:11:18Z
+completed	success	Read MCP tool results and data with text around it (0.13.0) (#10)	ci	main	push	41588306539	1m45s	2026-11-03T06:11:14Z
+completed	success	0.13.0: read MCP tool results, and data with text around it	ci	release-0.13	pull_request	41587922797	1m31s	2026-11-03T06:07:35Z
+completed	success	0.13.0: read MCP tool results, and data with text around it	release	release-0.13	pull_request	41587922564	3m20s	2026-11-03T06:07:35Z
+completed	success	Compare the kept prose without regard to CRLF (Git on Windows convert…	ci	release-0.13	push	41587914102	1m53s	2026-11-03T06:07:30Z
+completed	success	0.13.0: read MCP tool results, and data with text around it	release	release-0.13	pull_request	41587545019	2m58s	2026-11-03T06:03:55Z
+completed	failure	0.13.0: read MCP tool results, and data with text around it	ci	release-0.13	pull_request	41587544980	1m22s	2026-11-03T06:03:55Z
+completed	failure	Read MCP tool results and data with text around it (0.13.0)	ci	release-0.13	push	41587538978	1m41s	2026-11-03T06:03:51Z
+completed	success	winget manifests for v0.12.0 (local; the community PR is still at 0.5.0)	ci	main	push	41581896746	1m17s	2026-11-03T05:06:04Z
+completed	success	install test	install test	main	workflow_dispatch	41581710468	1m21s	2026-11-03T05:04:14Z
+completed	success	The installers register the hook; read more of the ways pandas prints…	release	v0.12.0	push	41581306795	3m34s	2026-11-03T05:00:12Z
+completed	success	The installers register the hook; read more of the ways pandas prints…	ci	main	push	41581298752	1m30s	2026-11-03T05:00:08Z
+completed	failure	The installers register the hook; read more of the ways pandas prints…	install test	main	push	41581298650	1m18s	2026-11-03T05:00:08Z
+completed	success	0.12.0: the installers register the hook; read more of the ways pandas prints data	ci	release-0.12	pull_request	41580922072	1m36s	2026-11-03T04:55:51Z
+completed	success	0.12.0: the installers register the hook; read more of the ways pandas prints data	release	release-0.12	pull_request	41580922066	3m58s	2026-11-03T04:55:51Z
+completed	success	Install registers the hook; read more pandas output (0.12.0)	ci	release-0.12	push	41580917206	1m51s	2026-11-03T04:55:48Z
+completed	success	winget manifests for v0.11.0 (local; the community PR is still at 0.5.0)	ci	main	push	41571799495	1m47s	2026-11-03T03:22:20Z
+completed	success	install test	install test	main	workflow_dispatch	41571603095	1m11s	2026-11-03T03:20:21Z
+completed	success	Read pandas MultiIndex output; keep the digits of small numbers (0.11…	release	v0.11.0	push	41571165543	3m41s	2026-11-03T03:15:59Z
+completed	success	Read pandas MultiIndex output; keep the digits of small numbers (0.11…	ci	main	push	41571152561	1m33s	2026-11-03T03:15:52Z
+completed	success	0.11.0: read pandas MultiIndex output; keep the digits of small numbers	release	release-0.11	pull_request	41570759420	3m35s	2026-11-03T03:12:05Z
+completed	success	0.11.0: read pandas MultiIndex output; keep the digits of small numbers	ci	release-0.11	pull_request	41570759365	3m20s	2026-11-03T03:12:05Z
+completed	success	Read pandas MultiIndex output; keep the digits of small numbers (0.11.0)	ci	release-0.11	push	41570738835	1m22s	2026-11-03T03:11:54Z
+completed	success	install test	install test	main	workflow_dispatch	41551439800	1m32s	2026-11-03T00:14:36Z
+completed	success	winget manifests for v0.10.0 (local; the community PR is still at 0.5.0)	ci	main	push	41551422075	1m46s	2026-11-03T00:14:27Z
+completed	success	0.10.0: fewer tokens, more information (nested JSON, columns that say…	release	v0.10.0	push	41551041285	2m46s	2026-11-03T00:11:25Z
+completed	success	0.10.0: fewer tokens, more information (nested JSON, columns that say…	ci	main	push	41550797780	1m50s	2026-11-03T00:09:26Z
+completed	success	0.10.0: fewer tokens, more information (nested JSON, columns that say nothing, extremes rows)	ci	leaner-summaries	pull_request	41550352271	1m47s	2026-11-03T00:05:56Z
+completed	success	0.10.0: fewer tokens, more information (nested JSON, columns that say nothing, extremes rows)	release	leaner-summaries	pull_request	41550352089	3m5s	2026-11-03T00:05:56Z
+completed	success	0.10.0: fewer tokens, more information	ci	leaner-summaries	push	41550344093	1m13s	2026-11-03T00:05:52Z
+completed	success	install test	install test	main	workflow_dispatch	41541760258	1m21s	2026-11-02T22:59:07Z
+completed	success	winget manifests for v0.9.0 (local; the community PR is still at 0.5.0)	ci	main	push	41541742452	2m12s	2026-11-02T22:58:59Z
+completed	success	0.9.0: group means in the automatic summary; rtk's pipeline kept off …	release	v0.9.0	push	41541272378	3m19s	2026-11-02T22:55:23Z
+completed	success	0.9.0: group means in the automatic summary; rtk's pipeline kept off …	ci	main	push	41541050398	1m26s	2026-11-02T22:53:45Z
+completed	success	0.9.0: group means in the automatic summary; rtk's pipeline kept off dtk's own commands	release	automatic-breakdowns	pull_request	41540489536	3m51s	2026-11-02T22:49:37Z
+completed	success	0.9.0: group means in the automatic summary; rtk's pipeline kept off dtk's own commands	ci	automatic-breakdowns	pull_request	41540489488	2m43s	2026-11-02T22:49:37Z
+completed	success	0.9.0: group means in the automatic summary; rtk's pipeline kept off …	ci	automatic-breakdowns	push	41540480737	2m1s	2026-11-02T22:49:33Z
+completed	success	install test	install test	main	workflow_dispatch	41535659549	5m59s	2026-11-02T22:15:17Z
+completed	success	winget manifests for v0.8.0 (local; the community PR is still at 0.5.0)	ci	main	push	41535633034	1m43s	2026-11-02T22:15:08Z
+completed	success	0.8.0: dtk group, time cadence and gaps, correlated columns	release	v0.8.0	push	41533079261	1m6s	2026-11-02T22:13:41Z
+completed	success	0.8.0: dtk group, time cadence and gaps, correlated columns	ci	main	push	41532756579	2m1s	2026-11-02T21:55:41Z
+completed	success	0.8.0: dtk group, time cadence and gaps, correlated columns	ci	analytics	pull_request	41532069339	1m38s	2026-11-02T21:51:00Z
+completed	success	0.8.0: dtk group, time cadence and gaps, correlated columns	release	analytics	pull_request	41532068995	4m24s	2026-11-02T21:51:00Z
+completed	success	0.8.0: dtk group, time cadence and gaps, correlated columns	ci	analytics	push	41532061111	2m28s	2026-11-02T21:50:57Z
+completed	success	install test	install test	main	workflow_dispatch	41520388309	31s	2026-11-02T20:49:44Z
+completed	success	winget manifests for v0.7.0 (local; the community PR is still at 0.5.0)	ci	main	push	41520363293	11m17s	2026-11-02T20:33:57Z
+completed	success	0.7.0: pandas to_csv index, Python repr, split JSON, number grids, he…	release	v0.7.0	push	41519713044	3m54s	2026-11-02T20:29:49Z
+completed	success	0.7.0: pandas to_csv index, Python repr, split JSON, number grids, he…	ci	main	push	41518786038	5m56s	2026-11-02T20:23:40Z
+completed	success	0.7.0: pandas to_csv index, Python repr, split JSON, number grids, headerless text, record blocks, HTML tables, slash dates	release	more-shapes	pull_request	41517026065	5m51s	2026-11-02T20:12:08Z
+completed	success	0.7.0: pandas to_csv index, Python repr, split JSON, number grids, headerless text, record blocks, HTML tables, slash dates	ci	more-shapes	pull_request	41517026055	2m26s	2026-11-02T20:12:08Z
+completed	success	0.7.0: more data shapes, docs and model-test cases	ci	more-shapes	push	41517017859	11m20s	2026-11-02T20:12:04Z
+completed	success	install test	install test	main	schedule	41454800117	58s	2026-11-02T13:38:58Z
+completed	success	install test	install test	main	workflow_dispatch	41420686023	1m22s	2026-11-02T09:26:40Z
+completed	success	winget manifests for v0.6.0 (local; the community PR is still at 0.5.0)	ci	main	push	41420664965	1m30s	2026-11-02T09:26:31Z
+completed	success	0.6.0: real-world columns, data-quality notes, wide tables, built-in …	release	v0.6.0	push	41420156500	3m18s	2026-11-02T09:22:50Z
+completed	success	0.6.0: real-world columns, data-quality notes, wide tables, built-in …	ci	main	push	41419930227	1m30s	2026-11-02T09:21:11Z
+completed	success	0.6.0: real-world columns, data-quality notes, wide tables, built-in drill-down	release	data-quality	pull_request	41419463265	2m57s	2026-11-02T09:17:47Z
+completed	success	0.6.0: real-world columns, data-quality notes, wide tables, built-in drill-down	ci	data-quality	pull_request	41419463224	1m36s	2026-11-02T09:17:47Z
+completed	success	0.6.0: drill-down without qsv or jaq, wide tables, a corrected model …	ci	data-quality	push	41419457251	1m33s	2026-11-02T09:17:44Z
+completed	success	README: shorter, with an optional tools section	ci	main	push	41405796519	1m33s	2026-11-02T07:21:39Z
+completed	success	README: lead with a real example and the measured results, add a quic…	ci	main	push	41405225507	1m21s	2026-11-02T07:16:27Z
+completed	success	install test	install test	main	workflow_dispatch	41404367283	1m26s	2026-11-02T07:08:36Z
+completed	success	winget manifests: schema 1.12.0, one version folder, and the test pic…	ci	main	push	41404358531	1m23s	2026-11-02T07:08:31Z
+completed	success	winget manifests: schema 1.12.0, one version folder, and the test pic…	install test	main	push	41404358524	1m13s	2026-11-02T07:08:31Z
+completed	success	install test	install test	main	workflow_dispatch	41404014704	1m10s	2026-11-02T07:05:20Z
+completed	success	winget manifests for v0.5.0	ci	main	push	41404005522	1m25s	2026-11-02T07:05:15Z
+completed	success	0.5.0: rtk compatibility fixes, retention proof, ps/log/JSON-document…	release	v0.5.0	push	41403664178	2m52s	2026-11-02T07:02:01Z
+completed	success	0.5.0: rtk compatibility fixes, retention proof, ps/log/JSON-document…	ci	main	push	41403420625	1m31s	2026-11-02T06:59:54Z
+completed	success	0.5.0: rtk compatibility fixes, retention proof, ps/log/JSON-document formats	release	v0.5.0	pull_request	41403022157	3m35s	2026-11-02T06:55:51Z
+completed	success	0.5.0: rtk compatibility fixes, retention proof, ps/log/JSON-document formats	ci	v0.5.0	pull_request	41403022076	1m34s	2026-11-02T06:55:51Z
+completed	success	tests/outline.rs: read the saved document through the path as dtk pri…	ci	v0.5.0	push	41403016497	1m27s	2026-11-02T06:55:48Z
+completed	failure	0.5.0: rtk compatibility fixes, retention proof, ps/log/JSON-document formats	ci	v0.5.0	pull_request	41402526893	1m28s	2026-11-02T06:51:04Z
+completed	success	0.5.0: rtk compatibility fixes, retention proof, ps/log/JSON-document formats	release	v0.5.0	pull_request	41402526798	3m56s	2026-11-02T06:51:04Z
+completed	failure	0.5.0: version, changelog with the measured results, plan and proof	ci	v0.5.0	push	41402520823	1m23s	2026-11-02T06:51:00Z
+completed	success	install test	install test	main	workflow_dispatch	41378815892	1m3s	2026-11-02T02:38:27Z
+completed	success	install.ps1: read the checksum files as text; install test: judge dtk…	install test	main	push	41378809931	1m7s	2026-11-02T02:38:23Z
+completed	success	install.ps1: read the checksum files as text; install test: judge dtk…	ci	main	push	41378809811	1m9s	2026-11-02T02:38:23Z
+completed	failure	install test	install test	main	workflow_dispatch	41378568607	1m13s	2026-11-02T02:35:43Z
+completed	success	winget manifests for v0.4.0	ci	main	push	41378563752	1m11s	2026-11-02T02:35:40Z
+completed	success	Install methods: Windows, deb, rpm, installers, uninstall (0.4.0)	release	v0.4.0	push	41378201009	3m14s	2026-11-02T02:31:36Z
+completed	failure	Install methods: Windows, deb, rpm, installers, uninstall (0.4.0)	install test	main	push	41378055025	1m4s	2026-11-02T02:30:02Z
+completed	success	Install methods: Windows, deb, rpm, installers, uninstall (0.4.0)	ci	main	push	41378055003	1m20s	2026-11-02T02:30:02Z
+completed	success	Install methods: Windows, deb, rpm, installers, uninstall	ci	install-methods	pull_request	41377966806	1m20s	2026-11-02T02:29:00Z
+completed	success	Install methods: Windows, deb, rpm, installers, uninstall	release	install-methods	pull_request	41377966798	3m15s	2026-11-02T02:29:00Z
+completed	success	0.4.0: install guide, winget generator, install-test workflow, changelog	ci	install-methods	push	41377962934	1m27s	2026-11-02T02:28:57Z
+completed	success	Install methods: Windows, deb, rpm, installers, uninstall	release	install-methods	pull_request	41377704434	3m20s	2026-11-02T02:26:03Z
+completed	success	Install methods: Windows, deb, rpm, installers, uninstall	ci	install-methods	pull_request	41377704367	1m18s	2026-11-02T02:26:02Z
+completed	success	Release workflow: check the removed .deb on the file system, not in b…	ci	install-methods	push	41377700151	1m13s	2026-11-02T02:26:00Z
+completed	failure	Install methods: Windows, deb, rpm, installers, uninstall	release	install-methods	pull_request	41377311545	3m20s	2026-11-02T02:21:45Z
+completed	success	Install methods: Windows, deb, rpm, installers, uninstall	ci	install-methods	pull_request	41377311529	1m8s	2026-11-02T02:21:45Z
+completed	success	Add install methods: Windows zip, deb, rpm, install.ps1, upgraded ins…	ci	install-methods	push	41377305909	1m14s	2026-11-02T02:21:41Z

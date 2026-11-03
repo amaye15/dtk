@@ -507,6 +507,7 @@ pub fn wants_raw(cmd: &str) -> bool {
 }
 
 /// What came in: the text of a tool result, and where it came from.
+#[derive(Clone, Copy)]
 pub struct Input<'a> {
     /// `Bash`, `Read` or `MCP`.
     pub tool: &'a str,
@@ -541,7 +542,29 @@ pub struct Verdict {
     pub reason: String,
 }
 
-pub fn evaluate(inp: &Input, cfg: &Config, write: bool) -> Verdict {
+pub fn evaluate(shown: &Input, cfg: &Config, write: bool) -> Verdict {
+    // rtk may have cut a long output (`rtk uv run python report.py` keeps fifty lines) and saved
+    // the whole of it. If dtk can read that, it is that output that dtk looks at.
+    // Not for a request that dtk will leave alone anyway (`head`, an exclusion, `DTK_DISABLED`):
+    // reading rtk's copy would be work for nothing.
+    let typed_cmd = crate::rtk::plain_command(shown.subject);
+    let left_alone = std::env::var("DTK_DISABLED").is_ok_and(|x| x == "1")
+        || wants_raw(shown.subject)
+        || wants_raw(&typed_cmd)
+        || cfg.is_excluded(shown.subject)
+        || cfg.is_excluded(&typed_cmd);
+    let recovered = if shown.tool == "Bash" && !shown.persisted && !left_alone {
+        crate::rtk::recover(shown.text)
+    } else {
+        None
+    };
+    let inp = &match &recovered {
+        Some(full) => Input {
+            text: full,
+            ..*shown
+        },
+        None => *shown,
+    };
     let tokens_full = est_tokens(inp.text);
     let mut v = Verdict {
         table: None,
@@ -550,6 +573,9 @@ pub fn evaluate(inp: &Input, cfg: &Config, write: bool) -> Verdict {
         tokens_full,
         baseline: if inp.persisted {
             STUB_TOKENS
+        } else if recovered.is_some() {
+            // What the model would see is rtk's cut output.
+            est_tokens(shown.text)
         } else {
             tokens_full
         },
@@ -591,8 +617,14 @@ pub fn evaluate(inp: &Input, cfg: &Config, write: bool) -> Verdict {
         return v;
     }
     // A table may have a few lines of prose around it; they stay, word for word.
-    let found = table::detect(inp.text)
+    // `gh` prints tab-separated lines with no header, and the command names the fields. That is
+    // better evidence than the loose readers have: a three-column listing looks like a table
+    // whose first row is the header.
+    let found = (inp.tool == "Bash")
+        .then(|| dtk::ghcli::parse(&typed, inp.text))
+        .flatten()
         .map(|t| (t, 0, inp.text.len()))
+        .or_else(|| table::detect(inp.text).map(|t| (t, 0, inp.text.len())))
         .or_else(|| table::detect_wrapped(inp.text).map(|w| (w.table, w.start, w.end)));
     let Some((table, start, end)) = found else {
         if inp.tool != "MCP" {
@@ -645,6 +677,26 @@ pub fn evaluate(inp: &Input, cfg: &Config, write: bool) -> Verdict {
                 v.tokens_full, cfg.min_tokens
             ),
         )
+    } else if recovered.is_some() {
+        // rtk left a few rows. The summary covers all of them, and may be bigger than the few
+        // rows were: that is more information, not more noise. Up to 400 tokens more is fine.
+        if v.after > v.baseline * 13 / 10 + 400 {
+            (
+                false,
+                format!(
+                    "rtk cut this output to {} tokens and the summary of the whole ({}) is much bigger",
+                    v.baseline, v.after
+                ),
+            )
+        } else {
+            (
+                true,
+                format!(
+                    "rtk cut this output to {} tokens; the summary ({}) covers all {rows} rows, read from rtk's saved copy",
+                    v.baseline, v.after
+                ),
+            )
+        }
     } else if v.after * 10 > v.tokens_full * 7 {
         (
             false,

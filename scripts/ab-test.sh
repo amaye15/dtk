@@ -83,6 +83,10 @@ W="$HERE/tests/corpus/wrapped"
 truth_wrap=$(sed -n 2p "$W/status_line_json_array.txt" | jaq '[.[] | select(.status=="fail")] | length')
 truth_wrap_db=$(sed -n 4p "$W/database_mcp_wrapper.txt" | jaq -r 'max_by(.amount) | .id')
 
+# A script run with `uv run`: rtk rewrites the command and cuts the output to about fifty rows.
+UVS="$HERE/tests/corpus/scripts/print_orders.py"
+truth_uv=$(python3 "$UVS" | awk -F, 'NR>1 {n[$3]++} END {for (r in n) print n[r], r}' | sort -nr | head -1 | awk '{print $2" "$1}')
+
 # name | file | question | expected words (all must appear in the answer)
 CASES=(
 "csv|$C/csv_orders.csv|Which region has the most orders, and how many orders does it have?|$truth_csv"
@@ -108,16 +112,18 @@ CASES=(
 "datetime frame|$C/pandas_to_string_datetime_spaces.txt|This is print(df.to_string()) of a pandas DataFrame. How many rows have the label Credit Card? Give the number.|$truth_dt"
 "text + json|$W/status_line_json_array.txt|This output is a line of text and then a JSON array of rows. How many rows have status fail? Give the number.|$truth_wrap"
 "db wrapper|$W/database_mcp_wrapper.txt|This is a database server's answer: warning text around a JSON array of rows. Which id has the largest amount? Give the id.|$truth_wrap_db"
+"uv run script|CMD:uv run --no-project python $UVS|This prints a CSV of orders (order_id, customer, region, amount, status). Which region has the most orders, and how many orders does it have?|$truth_uv"
 "split json|$C/pandas_split.json|This is a pandas DataFrame as JSON (columns, then data rows). How many rows have ok equal to false? Give the number.|$truth_split"
 )
 
 run_one() { # question file disabled -> prints "tokens|turns|first_tokens|answer"
   local q="$1" file="$2" off="$3" out="$WORK/run.$$.jsonl"
-  ( cd "$WORK/proj" && DTK_DISABLED="$off" "$CLAUDE_BIN" -p "Run this bash command: cat $file   Then answer in one short line: $q" \
+  local cmd="cat $file"; case "$file" in CMD:*) cmd="${file#CMD:}";; esac
+  ( cd "$WORK/proj" && DTK_DISABLED="$off" "$CLAUDE_BIN" -p "Run this bash command: $cmd   Then answer in one short line: $q" \
       --model "$MODEL" --allowedTools Bash --setting-sources project \
       --output-format stream-json --verbose < /dev/null > "$out" 2>/dev/null )
   if ! grep -q '"type":"result"' "$out" 2>/dev/null; then
-    ( cd "$WORK/proj" && DTK_DISABLED="$off" "$CLAUDE_BIN" -p "Run this bash command: cat $file   Then answer in one short line: $q" \
+    ( cd "$WORK/proj" && DTK_DISABLED="$off" "$CLAUDE_BIN" -p "Run this bash command: $cmd   Then answer in one short line: $q" \
         --model "$MODEL" --allowedTools Bash --setting-sources project \
         --output-format stream-json --verbose < /dev/null > "$out" 2>/dev/null )
   fi

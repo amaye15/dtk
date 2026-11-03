@@ -1,0 +1,11 @@
+11	0.13.1: stop reading documents and lists as tables	release-0.13.1	MERGED	2026-11-03T06:25:52Z
+10	0.13.0: read MCP tool results, and data with text around it	release-0.13	MERGED	2026-11-03T06:03:51Z
+9	0.12.0: the installers register the hook; read more of the ways pandas prints data	release-0.12	MERGED	2026-11-03T04:55:48Z
+8	0.11.0: read pandas MultiIndex output; keep the digits of small numbers	release-0.11	MERGED	2026-11-03T03:12:01Z
+7	0.10.0: fewer tokens, more information (nested JSON, columns that say nothing, extremes rows)	leaner-summaries	MERGED	2026-11-03T00:05:52Z
+6	0.9.0: group means in the automatic summary; rtk's pipeline kept off dtk's own commands	automatic-breakdowns	MERGED	2026-11-02T22:49:33Z
+5	0.8.0: dtk group, time cadence and gaps, correlated columns	analytics	MERGED	2026-11-02T21:50:57Z
+4	0.7.0: pandas to_csv index, Python repr, split JSON, number grids, headerless text, record blocks, HTML tables, slash dates	more-shapes	MERGED	2026-11-02T20:12:04Z
+3	0.6.0: real-world columns, data-quality notes, wide tables, built-in drill-down	data-quality	MERGED	2026-11-02T09:17:44Z
+2	0.5.0: rtk compatibility fixes, retention proof, ps/log/JSON-document formats	v0.5.0	MERGED	2026-11-02T06:51:00Z
+1	Install methods: Windows, deb, rpm, installers, uninstall	install-methods	MERGED	2026-11-02T02:21:41Z

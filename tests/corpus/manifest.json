@@ -1336,6 +1336,140 @@
       "before": "Fetching page 1 of 1...\n",
       "payload_ends_with": "\": \"retry\"}\n",
       "after": ""
+    },
+    {
+      "file": "wrapped/uv_run_cold_cache.txt",
+      "format": "table",
+      "rows": 400,
+      "cols": 5,
+      "headers": [
+        "idx",
+        "order_id",
+        "region",
+        "amount",
+        "qty"
+      ],
+      "before": "Downloading scipy (19.5MiB)\nDownloading fonttools (3.0MiB)\nDownloading pillow (4.6MiB)\nDownloading numpy (5.2MiB)\nDownloading matplotlib (8.9MiB)\nDownloading pandas (10.7MiB)\n Downloaded fonttools\n Downloaded pillow\n Downloaded numpy\n Downloaded matplotlib\n Downloaded pandas\n Downloaded scipy\nInstalled 13 packages in 79ms\n",
+      "payload_ends_with": "",
+      "after": ""
+    }
+  ],
+  "gh": [
+    {
+      "file": "gh/run_list.tsv",
+      "command": "gh run list -R amaye15/dtk --limit 100",
+      "rows": 100,
+      "headers": [
+        "status",
+        "conclusion",
+        "title",
+        "workflow",
+        "branch",
+        "event",
+        "id",
+        "elapsed",
+        "created"
+      ],
+      "format": "tsv"
+    },
+    {
+      "file": "gh/pr_list.tsv",
+      "command": "gh pr list -R amaye15/dtk --state all --limit 100",
+      "rows": 11,
+      "headers": [
+        "number",
+        "title",
+        "branch",
+        "state",
+        "created"
+      ],
+      "format": "tsv"
+    },
+    {
+      "file": "gh/pr_checks.tsv",
+      "command": "gh pr checks 11 -R amaye15/dtk",
+      "rows": 16,
+      "headers": [
+        "name",
+        "state",
+        "elapsed",
+        "url",
+        "description"
+      ],
+      "format": "tsv"
+    },
+    {
+      "file": "gh/release_list.tsv",
+      "command": "gh release list -R amaye15/dtk --limit 100",
+      "rows": 15,
+      "headers": [
+        "title",
+        "status",
+        "tag",
+        "published"
+      ],
+      "format": "tsv"
+    },
+    {
+      "file": "gh/repo_list.tsv",
+      "command": "gh repo list amaye15 --limit 100",
+      "rows": 37,
+      "headers": [
+        "name",
+        "description",
+        "visibility",
+        "updated"
+      ],
+      "format": "tsv"
+    },
+    {
+      "file": "gh/run_log_failed.tsv",
+      "command": "gh run view 41587544980 -R amaye15/dtk --log-failed",
+      "rows": 335,
+      "headers_start": [
+        "job",
+        "step",
+        "ts"
+      ],
+      "format": "text-log"
+    },
+    {
+      "file": "gh/issue_list.tsv",
+      "command": "gh issue list -R owner/repo --state all --limit 30",
+      "rows": 30,
+      "headers": [
+        "number",
+        "state",
+        "title",
+        "labels",
+        "updated"
+      ],
+      "format": "tsv"
+    },
+    {
+      "file": "gh/search_issues.tsv",
+      "command": "gh search issues token --limit 20",
+      "rows": 20,
+      "headers": [
+        "repo",
+        "number",
+        "state",
+        "title",
+        "labels",
+        "updated"
+      ],
+      "format": "tsv"
+    },
+    {
+      "file": "gh/label_list.tsv",
+      "command": "gh label list -R owner/repo",
+      "rows": 25,
+      "headers": [
+        "name",
+        "description",
+        "color"
+      ],
+      "format": "tsv"
     }
   ]
 }

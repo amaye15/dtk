@@ -701,3 +701,99 @@ fn prose_around_a_table_is_kept_when_the_table_is_summarized() {
     );
     assert!(shown.contains("300 rows x 4 cols") && shown.ends_with("plan the next step.\n"));
 }
+
+#[test]
+fn gh_output_is_read_by_its_command_before_the_loose_readers() {
+    let home = temp_home("gh");
+    // Three columns and no header: the loose TSV reader would take the first row for the header.
+    let text: String = (0..25)
+        .map(|i| format!("label-{i}\tSomething isn't working\t#3c6f{:02x}\n", i))
+        .collect::<String>()
+        .repeat(10);
+    let ev = |cmd: &str| {
+        json!({"hook_event_name": "PostToolUse", "tool_name": "Bash",
+               "tool_input": {"command": cmd},
+               "tool_response": {"stdout": text.clone(), "stderr": "", "interrupted": false, "isImage": false}})
+        .to_string()
+    };
+    let (_, out, _) = run(
+        &home,
+        &["hook", "claude"],
+        &ev("gh label list -R a/b --limit 100"),
+        &[],
+    );
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let shown = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
+        .as_str()
+        .unwrap();
+    assert!(
+        shown.contains("cols: name:str description:str color:str"),
+        "{shown}"
+    );
+    // The same text under another command is not claimed by the gh reader.
+    let (_, out, _) = run(&home, &["hook", "claude"], &ev("cat labels.tsv"), &[]);
+    if let Ok(v) = serde_json::from_str::<Value>(&out) {
+        let shown = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
+            .as_str()
+            .unwrap_or("");
+        assert!(
+            !shown.contains("cols: name:str description:str color:str"),
+            "{shown}"
+        );
+    }
+}
+
+#[test]
+fn data_that_rtk_cut_is_summarized_from_its_tee_file() {
+    // What `rtk uv run python report.py` prints for 800 rows: fifty lines and a pointer. rtk keeps
+    // the whole output in its tee folder, and dtk reads it from there.
+    let home = temp_home("tee");
+    let tee = home.join(".local/share/rtk/tee");
+    std::fs::create_dir_all(&tee).unwrap();
+    let rows: Vec<String> = (0..800)
+        .map(|i| {
+            format!(
+                "{i},user_{},{},{}.5",
+                i % 97,
+                ["us", "eu", "ap"][i % 3],
+                i * 7 % 500
+            )
+        })
+        .collect();
+    let full = format!("id,name,region,amount\n{}\n", rows.join("\n"));
+    std::fs::write(tee.join("1793697113_uv-run-stdout.log"), &full).unwrap();
+    let shown = format!(
+        "id,name,region,amount\n{}\n... (751 lines omitted)\n{}\n[see remaining: tail -n +26 \"$HOME/.local/share/rtk/tee/1793697113_uv-run-stdout.log\"]\n",
+        rows[..24].join("\n"),
+        rows[775..].join("\n")
+    );
+    let resp = json!({"stdout": shown, "stderr": "", "interrupted": false, "isImage": false});
+    let (_, out, _) = run(
+        &home,
+        &["hook", "claude"],
+        &event("Bash", resp.clone()),
+        &[],
+    );
+    let v: Value = serde_json::from_str(&out).expect("dtk answered");
+    let s = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
+        .as_str()
+        .unwrap();
+    assert!(s.contains("800 rows x 4 cols"), "{s}");
+    assert!(
+        !s.contains("see remaining"),
+        "rtk's pointer is replaced by a summary of the whole"
+    );
+    // A request for rows (`| head`) is left alone even when rtk's copy is there to read.
+    let headed = json!({
+        "hook_event_name": "PostToolUse", "tool_name": "Bash",
+        "tool_input": {"command": "rtk uv run python report.py | head -n 60"},
+        "tool_response": resp.clone(),
+    })
+    .to_string();
+    let (_, out, _) = run(&home, &["hook", "claude"], &headed, &[]);
+    assert_eq!(out, "", "the model asked for these rows");
+    // The same output with no saved copy is left alone, as before.
+    std::fs::remove_file(tee.join("1793697113_uv-run-stdout.log")).unwrap();
+    let (_, out, _) = run(&home, &["hook", "claude"], &event("Bash", resp), &[]);
+    assert_eq!(out, "");
+}

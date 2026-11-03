@@ -6,6 +6,8 @@
 //! - `positive`: must be detected with this format, row count, column count and headers.
 //! - `negative`: must be rejected. A false positive replaces real output with a summary.
 //! - `either`: real output where either answer is fine, but a detected table must be well formed.
+//! - `gh`: output of the GitHub CLI without a terminal. It has no header, so the command that made
+//!   it names the columns; the same text under another command is not read.
 //! - `wrapped`: a table with a few lines of prose around it. The plain reader finds nothing (or
 //!   something else), `detect_wrapped` finds the table, and the prose is kept word for word.
 //!
@@ -180,6 +182,51 @@ fn every_wrapped_fixture_is_found_and_its_prose_is_kept() {
                 "{file}: the plain reader makes a different table of it: {:?}",
                 t.headers
             ));
+        }
+    }
+    assert!(failures.is_empty(), "\n{}\n", failures.join("\n"));
+}
+
+#[test]
+fn every_gh_fixture_is_read_by_its_command() {
+    let (dir, m) = corpus();
+    let mut failures = Vec::new();
+    for e in m["gh"].as_array().unwrap() {
+        let file = e["file"].as_str().unwrap();
+        let command = e["command"].as_str().unwrap();
+        let text = read(&dir, file);
+        let Some(t) = dtk::ghcli::parse(command, &text) else {
+            failures.push(format!("{file}: not read under `{command}`"));
+            continue;
+        };
+        check_well_formed(file, &t);
+        if t.format.name() != e["format"].as_str().unwrap() {
+            failures.push(format!("{file}: format {}", t.format.name()));
+        }
+        if t.rows.len() != e["rows"].as_u64().unwrap() as usize {
+            failures.push(format!("{file}: {} rows", t.rows.len()));
+        }
+        if let Some(h) = e.get("headers").and_then(Value::as_array) {
+            let want: Vec<&str> = h.iter().map(|x| x.as_str().unwrap()).collect();
+            if t.headers != want {
+                failures.push(format!("{file}: headers {:?}", t.headers));
+            }
+        }
+        if let Some(h) = e.get("headers_start").and_then(Value::as_array) {
+            let want: Vec<&str> = h.iter().map(|x| x.as_str().unwrap()).collect();
+            if t.headers[..want.len()] != want[..] {
+                failures.push(format!("{file}: headers {:?}", t.headers));
+            }
+        }
+        // A command that shapes the output (--jq, --json, --template) is not evidence.
+        for flag in ["--jq .", "--json id", "--template x"] {
+            if dtk::ghcli::parse(&format!("{command} {flag}"), &text).is_some() {
+                failures.push(format!("{file}: read under a shaped command ({flag})"));
+            }
+        }
+        // A command of another kind, or none, is not evidence either.
+        if dtk::ghcli::parse("cat file.tsv", &text).is_some() {
+            failures.push(format!("{file}: read under cat"));
         }
     }
     assert!(failures.is_empty(), "\n{}\n", failures.join("\n"));

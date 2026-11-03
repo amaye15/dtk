@@ -193,8 +193,50 @@ pub struct Wrapped {
 const WRAP_LINES: usize = 6;
 const WRAP_LINE_CHARS: usize = 300;
 
+/// Progress lines of a package manager (`uv`, `pip`) that come before a script's own output when
+/// stderr is merged into stdout (`uv run script.py 2>&1`): there can be a dozen of them, and
+/// they say nothing about the data.
+const CHATTER_LINES: usize = 80;
+
+fn is_chatter(line: &str) -> bool {
+    let l = line.trim();
+    const STARTS: [&str; 22] = [
+        "Downloading ",
+        "Downloaded ",
+        "Resolved ",
+        "Prepared ",
+        "Installed ",
+        "Uninstalled ",
+        "Audited ",
+        "Using CPython",
+        "Using Python",
+        "Creating virtual environment",
+        "Activate with",
+        "Building ",
+        "Built ",
+        "Updating ",
+        "Collecting ",
+        "Using cached ",
+        "Installing ",
+        "Successfully installed",
+        "Requirement already satisfied",
+        "[notice]",
+        "warning:",
+        "Fetching ",
+    ];
+    if STARTS.iter().any(|s| l.starts_with(s)) {
+        return true;
+    }
+    // ` + numpy==2.5.4`, ` - old==1.0`, ` ~ pkg==2.0`
+    let b = line.as_bytes();
+    b.len() > 3 && b[0] == b' ' && b"+-~".contains(&b[1]) && b[2] == b' ' && l.contains("==")
+}
+
 fn is_prose_block(s: &str) -> bool {
-    s.lines().count() <= WRAP_LINES && s.lines().all(|l| l.chars().count() <= WRAP_LINE_CHARS)
+    let (chatter, prose): (Vec<&str>, Vec<&str>) = s.lines().partition(|l| is_chatter(l));
+    prose.len() <= WRAP_LINES
+        && chatter.len() <= CHATTER_LINES
+        && s.lines().all(|l| l.chars().count() <= WRAP_LINE_CHARS)
 }
 
 /// Where the first JSON value in `s` ends, as a byte offset. `s` starts with `[` or `{`.
@@ -204,8 +246,8 @@ fn json_value_end(s: &str) -> Option<usize> {
     Some(it.byte_offset())
 }
 
-/// Do ten lines in a row have the same number (one or more) of some delimiter, or the same
-/// number (two or more) of gaps of two spaces? Cheap evidence that a table starts here.
+/// Do ten lines in a row have the same number (one or more) of some delimiter, or do most of them
+/// hold two or more wide gaps? Cheap evidence that a table starts here.
 fn looks_tabular(rest: &str) -> bool {
     let lines: Vec<&str> = rest
         .lines()
@@ -222,7 +264,25 @@ fn looks_tabular(rest: &str) -> bool {
     [',', '\t', ';', '|']
         .iter()
         .any(|d| same(&|l: &str| l.matches(*d).count(), 1))
-        || same(&|l: &str| l.trim().split("  ").count() - 1, 2)
+        // Padded columns: most lines hold at least two gaps of two spaces or more.
+        || lines.iter().filter(|l| wide_gaps(l) >= 2).count() > MIN_ROWS - 2
+}
+
+/// How many runs of two spaces or more are inside the line (not at its ends).
+fn wide_gaps(line: &str) -> usize {
+    let mut runs = 0;
+    let mut run = 0;
+    for ch in line.trim().chars() {
+        if ch == ' ' {
+            run += 1;
+        } else {
+            if run >= 2 {
+                runs += 1;
+            }
+            run = 0;
+        }
+    }
+    runs
 }
 
 /// Finds a table that has prose around it. Only tried when `detect` finds nothing in the text
@@ -235,12 +295,12 @@ pub fn detect_wrapped(text: &str) -> Option<Wrapped> {
     for (i, b) in text.bytes().enumerate() {
         if b == b'\n' {
             starts.push(i + 1);
-            if starts.len() > WRAP_LINES + 1 {
+            if starts.len() > WRAP_LINES + CHATTER_LINES + 1 {
                 break;
             }
         }
     }
-    for (p, &off) in starts.iter().enumerate().take(WRAP_LINES + 1) {
+    for (p, &off) in starts.iter().enumerate() {
         if p > 0 && !is_prose_block(&text[..off]) {
             return None;
         }
@@ -416,7 +476,7 @@ pub(crate) fn from_keyed_root(format: Format, root: &Value) -> Option<Table> {
 
 /// Removes what makes a table unreadable to a parser but invisible to a person: a byte-order mark
 /// and terminal colour codes (`jq -C`, `rich`, `ls --color`).
-fn clean(text: &str) -> std::borrow::Cow<'_, str> {
+pub(crate) fn clean(text: &str) -> std::borrow::Cow<'_, str> {
     let text = text.trim_start_matches('\u{feff}');
     if !text.contains('\u{1b}') {
         return std::borrow::Cow::Borrowed(text);
@@ -1212,6 +1272,49 @@ pub mod tests {
         // Seven lines after the data.
         let after = "\nAnother line.".repeat(7);
         assert!(detect_wrapped(&format!("{data}{after}\n")).is_none());
+    }
+
+    #[test]
+    fn package_manager_chatter_does_not_count_as_prose() {
+        // `uv run script.py 2>&1` on a cold cache: a dozen lines of progress, then the frame.
+        let mut text = String::new();
+        for p in [
+            "scipy",
+            "fonttools",
+            "pillow",
+            "numpy",
+            "matplotlib",
+            "pandas",
+        ] {
+            text.push_str(&format!("Downloading {p} (4.6MiB)\n"));
+        }
+        for p in [
+            "fonttools",
+            "pillow",
+            "numpy",
+            "matplotlib",
+            "pandas",
+            "scipy",
+        ] {
+            text.push_str(&format!(" Downloaded {p}\n"));
+        }
+        text.push_str("Installed 13 packages in 79ms\n + numpy==2.5.4\n");
+        text.push_str("     order_id region  amount  qty\n");
+        for i in 0..30 {
+            text.push_str(&format!(
+                "{i:<4} {:>8} {:>6} {:>7.2} {:>4}\n",
+                100 + i,
+                ["us", "eu"][i % 2],
+                i as f64 * 1.5,
+                i % 9
+            ));
+        }
+        let w = detect_wrapped(&text).expect("a table after the chatter");
+        assert_eq!(w.table.rows.len(), 30);
+        assert!(text[..w.start].starts_with("Downloading scipy"));
+        // Prose is still limited to a few lines, chatter or not.
+        let prose = "A sentence of text.\n".repeat(9);
+        assert!(detect_wrapped(&format!("{prose}{}", &text[w.start..])).is_none());
     }
 
     #[test]
