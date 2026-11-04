@@ -221,6 +221,11 @@ fn simplify_call(name: &str, args: &str) -> Value {
                 return Value::String(s);
             }
         }
+        "datetime" | "date" | "time" => {
+            if let Some(s) = clock_text(name, inner) {
+                return Value::String(s);
+            }
+        }
         "int64" | "int32" | "int16" | "int8" | "uint8" | "uint16" | "uint32" | "uint64"
         | "float64" | "float32" | "float16" | "bool_" | "bool" | "int" | "float" => {
             let mut p = Py {
@@ -235,6 +240,54 @@ fn simplify_call(name: &str, args: &str) -> Value {
         _ => {}
     }
     Value::String(format!("{name}({args})"))
+}
+
+/// `datetime.datetime(2025, 1, 1, 0, 37)` as `2025-01-01 00:37:00`, `datetime.date(2025, 1, 1)` as
+/// `2025-01-01`, `datetime.time(10, 5)` as `10:05:00`: what a driver returns for a date column.
+/// Anything with another kind of argument (`tzinfo=...`) stays as source text.
+fn clock_text(name: &str, args: &str) -> Option<String> {
+    let n: Vec<u32> = args
+        .split(',')
+        .map(|a| a.trim().parse().ok())
+        .collect::<Option<_>>()?;
+    let at = |i: usize| n.get(i).copied().unwrap_or(0);
+    let date_ok = |y: u32, m: u32, d: u32| {
+        y > 0 && y < 10_000 && (1..=12).contains(&m) && (1..=31).contains(&d)
+    };
+    let time_ok = |h: u32, m: u32, s: u32, us: u32| h < 24 && m < 60 && s < 60 && us < 1_000_000;
+    let fraction = |us: u32| {
+        if us > 0 {
+            format!(".{us:06}")
+        } else {
+            String::new()
+        }
+    };
+    let kind = name.rsplit('.').next().unwrap_or(name);
+    match kind {
+        "date" if n.len() == 3 && date_ok(n[0], n[1], n[2]) => {
+            Some(format!("{:04}-{:02}-{:02}", n[0], n[1], n[2]))
+        }
+        "datetime"
+            if (3..=7).contains(&n.len())
+                && date_ok(n[0], n[1], n[2])
+                && time_ok(at(3), at(4), at(5), at(6)) =>
+        {
+            Some(format!(
+                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}{}",
+                n[0],
+                n[1],
+                n[2],
+                at(3),
+                at(4),
+                at(5),
+                fraction(at(6))
+            ))
+        }
+        "time" if (1..=4).contains(&n.len()) && time_ok(at(0), at(1), at(2), at(3)) => Some(
+            format!("{:02}:{:02}:{:02}{}", at(0), at(1), at(2), fraction(at(3))),
+        ),
+        _ => None,
+    }
 }
 
 fn records_from_value(v: Value) -> Option<Vec<Map<String, Value>>> {
@@ -281,7 +334,9 @@ pub fn parse_python_repr(text: &str) -> Option<Table> {
     let t = text.trim();
     let b = t.as_bytes();
     // Only text that is a list or dict of container things, and not JSON (which parsed earlier).
-    let list_of_containers = b.first() == Some(&b'[') && matches!(b.get(1), Some(b'{' | b'['));
+    // A list of tuples is what `cursor.fetchall()` prints.
+    let list_of_containers =
+        b.first() == Some(&b'[') && matches!(b.get(1), Some(b'{' | b'[' | b'('));
     if !(list_of_containers || b.first() == Some(&b'{')) {
         return None;
     }
@@ -447,7 +502,11 @@ fn list_of_lists(format: Format, root: &Value) -> Option<Table> {
         format,
         headers: generic_headers(w),
         rows,
-        notes: Vec::new(),
+        // A list of lists or tuples (`cursor.fetchall()`) has no column names; the model must
+        // not take `c4` for a name from the data.
+        notes: vec![
+            "no column names in this output: c0, c1, ... are the positions of the values".into(),
+        ],
     })
 }
 
@@ -874,12 +933,41 @@ mod tests {
         let n = 20;
         let a: Vec<String> = (0..n).map(|i| i.to_string()).collect();
         let b: Vec<String> = (0..n)
-            .map(|i| format!("datetime.datetime(2026, 1, {}, 0, 0)", i % 28 + 1))
+            .map(|i| format!("Money(currency='EUR', cents={})", i * 100))
             .collect();
         let text = format!("{{'a': [{}], 'b': [{}]}}", a.join(", "), b.join(", "));
         let t = parse_python_repr(&text).expect("dict of lists");
         assert_eq!(t.rows.len(), 20);
-        assert_eq!(t.rows[2][1], "datetime.datetime(2026, 1, 3, 0, 0)");
+        assert_eq!(t.rows[2][1], "Money(currency='EUR', cents=200)");
+    }
+
+    #[test]
+    fn reads_the_dates_that_a_database_driver_returns() {
+        let rows: Vec<String> = (0..20)
+            .map(|i| {
+                format!(
+                    "(datetime.datetime(2026, 1, {d}, 9, 5, 7), datetime.date(2026, 2, {d}), datetime.time(10, 5), {i}.5)",
+                    d = i % 28 + 1
+                )
+            })
+            .collect();
+        let t = parse_python_repr(&format!("[{}]", rows.join(", "))).expect("a list of tuples");
+        assert_eq!(
+            t.rows[2][..3],
+            ["2026-01-03 09:05:07", "2026-02-03", "10:05:00"]
+        );
+        // Microseconds are kept; a time zone, or a number out of range, is not a plain date.
+        assert_eq!(
+            clock_text("datetime.datetime", "2026, 1, 3, 9, 5, 7, 250"),
+            Some("2026-01-03 09:05:07.000250".to_string())
+        );
+        assert_eq!(clock_text("datetime.date", "2026, 13, 3"), None);
+        assert_eq!(clock_text("datetime.datetime", "2026, 1, 3, 25, 0"), None);
+        assert_eq!(
+            clock_text("datetime.datetime", "2026, 1, 3, tzinfo=utc"),
+            None
+        );
+        assert_eq!(clock_text("datetime.time", "10, 5, 7, 1, 2"), None);
     }
 
     #[test]

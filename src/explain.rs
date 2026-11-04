@@ -306,6 +306,61 @@ fn samples() -> Vec<Sample> {
             outputs.join(",")
         ),
     });
+    // What a data script prints: a list of tuples (`cursor.fetchall()`), a Spark log, and a wide
+    // pandas frame that was printed in two blocks of columns.
+    let tuples: Vec<String> = (0..260)
+        .map(|i| format!("({i}, 'user_{}', {}.5, None)", i % 7, i * 3))
+        .collect();
+    out.push(Sample {
+        name: "list of tuples",
+        format: "python-repr",
+        text: format!("[{}]", tuples.join(", ")),
+    });
+    let mut s = String::new();
+    for i in 0..180 {
+        let level = ["INFO", "INFO", "INFO", "WARN"][i % 4];
+        s.push_str(&format!(
+            "26/07/13 22:{:02}:{:02} {level} Executor: Running task {i}.0 in stage 0.0\n",
+            i / 60,
+            i % 60
+        ));
+        if i % 45 == 44 {
+            s.push_str(
+                "java.io.IOException: failed\n\tat org.apache.spark.Task.run(Task.scala:147)\n",
+            );
+        }
+    }
+    out.push(Sample {
+        name: "Spark log",
+        format: "text-log",
+        text: s,
+    });
+    let mut s = String::new();
+    for (b, cols) in [(0, 0..6), (1, 6..12)] {
+        s.push_str("   ");
+        for c in cols.clone() {
+            s.push_str(&format!("  {:>8}", format!("feat_{c:02}")));
+        }
+        s.push_str(if b == 0 { "  \\\n" } else { "\n" });
+        for r in 0..120 {
+            s.push_str(&format!("{r:<3}"));
+            for c in cols.clone() {
+                s.push_str(&format!(
+                    "  {:>8.3}",
+                    ((r * 7 + c * 13) % 100) as f64 / 7.0 - 3.0
+                ));
+            }
+            s.push('\n');
+        }
+        if b == 0 {
+            s.push('\n');
+        }
+    }
+    out.push(Sample {
+        name: "wide frame in blocks of columns",
+        format: "table",
+        text: s,
+    });
     out
 }
 
@@ -426,6 +481,60 @@ pub fn verify() -> i32 {
         "leaves source code alone",
         v.table.is_none(),
         "code was taken for a table",
+    );
+    // A long build log becomes a digest, and a fetched web page becomes its text.
+    let mut build = String::new();
+    for i in 0..500 {
+        build.push_str(&format!("   Compiling crate_{} v0.{}.1\n", i, i % 9));
+    }
+    build.push_str("warning: unused variable: `x`\n --> src/lib.rs:3:9\n");
+    build.push_str("error[E0425]: cannot find value `y` in this scope\n --> src/main.rs:8:5\n");
+    build.push_str("error: could not compile `app` (bin \"app\") due to 1 previous error\n");
+    let v = evaluate(
+        &Input {
+            tool: "Bash",
+            subject: "cargo build",
+            text: &build,
+            file: None,
+            persisted: false,
+        },
+        &cfg,
+        false,
+    );
+    let shown = v.rendered.as_ref().map_or("", |r| r.text.as_str());
+    t.check(
+        "turns a long build log into a digest",
+        v.applies && shown.starts_with("[dtk] log digest") && shown.contains("E0425"),
+        &v.reason,
+    );
+    let mut page = String::from(
+        "<!DOCTYPE html><html><head><title>Guide</title><style>p{color:red}</style><script>var a=1;</script></head><body><nav><a href=\"/\">Home</a></nav><h1>Guide</h1>",
+    );
+    for i in 0..220 {
+        page.push_str(&format!(
+            "<div class=\"row\"><p>Paragraph {i} of the guide, with <a href=\"/doc/{i}\">a link</a> and some words.</p></div>"
+        ));
+    }
+    page.push_str("</body></html>");
+    let v = evaluate(
+        &Input {
+            tool: "Bash",
+            subject: "curl -s https://example.com/docs",
+            text: &page,
+            file: None,
+            persisted: false,
+        },
+        &cfg,
+        false,
+    );
+    let shown = v.rendered.as_ref().map_or("", |r| r.text.as_str());
+    t.check(
+        "turns a fetched web page into its text",
+        v.applies
+            && shown.starts_with("[dtk] web page")
+            && shown.contains("Paragraph 0 ")
+            && shown.contains("dtk html"),
+        &v.reason,
     );
     let csv = &samples()[1].text;
     let v = evaluate(

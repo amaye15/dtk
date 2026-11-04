@@ -381,10 +381,41 @@ fn clock(b: &[u8], i: usize) -> Option<usize> {
     Some(j)
 }
 
+/// A date that Java and Hadoop loggers write, with the space after it: `26/07/13 ` (log4j's
+/// `yy/MM/dd`, the default in Spark), `07/13/2026 `, and `13-Jul-2026 ` (`java.util.logging`,
+/// Tomcat). Returns where the clock starts. A date with no clock after it is not a timestamp.
+fn short_date(b: &[u8], i: usize) -> Option<usize> {
+    let end = if digits(b, i, 2)
+        && b.get(i + 2) == Some(&b'/')
+        && digits(b, i + 3, 2)
+        && b.get(i + 5) == Some(&b'/')
+    {
+        if digits(b, i + 6, 4) {
+            i + 10
+        } else if digits(b, i + 6, 2) {
+            i + 8
+        } else {
+            return None;
+        }
+    } else if digits(b, i, 2)
+        && b.get(i + 2) == Some(&b'-')
+        && b.get(i + 6) == Some(&b'-')
+        && digits(b, i + 7, 4)
+        && b.get(i + 3..i + 6)
+            .and_then(|m| std::str::from_utf8(m).ok())
+            .is_some_and(|m| MONTHS.contains(&m))
+    {
+        i + 11
+    } else {
+        return None;
+    };
+    (b.get(end) == Some(&b' ')).then_some(end + 1)
+}
+
 /// The length in bytes of the timestamp a line starts with, brackets included, or `None`.
 /// Forms: `2026-11-02T10:00:00.123Z`, `2026-11-02 10:00:00,123 +0100`, `2026/11/02 10:00:00`,
-/// `Nov  2 10:00:00` (syslog), `11-02 10:00:00.123` (logcat), `[10:00:00]`, and any of these in
-/// square brackets.
+/// `Nov  2 10:00:00` (syslog), `11-02 10:00:00.123` (logcat), `26/07/13 22:58:59` (Spark),
+/// `13-Jul-2026 22:58:59.123` (Tomcat), `[10:00:00]`, and any of these in square brackets.
 fn leading_timestamp(line: &str) -> Option<usize> {
     let b = line.as_bytes();
     let open = usize::from(b.first() == Some(&b'['));
@@ -417,6 +448,8 @@ fn leading_timestamp(line: &str) -> Option<usize> {
         && b.get(i + 5) == Some(&b' ')
     {
         clock(b, i + 6)?
+    } else if let Some(at) = short_date(b, i) {
+        clock(b, at)?
     } else if line.get(i..i + 3).is_some_and(|m| MONTHS.contains(&m)) && b.get(i + 3) == Some(&b' ')
     {
         // `Nov  2 10:00:00` or `Nov 12 10:00:00`
@@ -664,6 +697,10 @@ mod text_log_tests {
             ("11-02 10:00:00.123  1234 I Tag", 18),
             ("[2026-11-02 10:00:00] x", 21),
             ("[10:00:00.5] x", 12),
+            ("26/07/13 22:58:59 INFO SparkContext: x", 17),
+            ("07/13/2026 22:58:59,123 INFO x", 23),
+            ("13-Jul-2026 22:58:59.123 INFO [main] x", 24),
+            ("[26/07/13 22:58:59] x", 19),
         ] {
             assert_eq!(leading_timestamp(line), Some(len), "{line}");
         }
@@ -679,6 +716,11 @@ mod text_log_tests {
             "version 2026-11-02T10:00:00Z later",
             "[note] 2026-11-02T10:00:00Z",
             "1.2.3 10:00:00",
+            "26/07/13 is a date with no time",
+            "1/2/3 10:00:00",
+            "13-Jul-2026 is a date with no time",
+            "13-Foo-2026 22:58:59",
+            "26/07/1 22:58:59",
         ] {
             assert_eq!(leading_timestamp(line), None, "{line}");
         }

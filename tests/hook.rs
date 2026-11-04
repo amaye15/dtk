@@ -1010,3 +1010,174 @@ fn a_log_that_rtk_cut_gets_a_digest_of_all_of_it_from_rtks_saved_copy() {
         "rtk's pointer is replaced by the digest"
     );
 }
+
+// ---- a list of tuples, as `cursor.fetchall()` prints it ----------------------------------------
+
+/// The facts of the two fixtures were worked out in Python from the rows that sqlite3 returned
+/// (the table `orders`: 240 rows; `datetime`, `date`, `Decimal`, `bool` and `None` values).
+#[test]
+fn a_list_of_tuples_is_read_whole_with_its_dates_and_decimals() {
+    for name in ["python_fetchall_tuples.txt", "python_fetchall_pprint.txt"] {
+        let home = temp_home("fetchall");
+        let text = std::fs::read_to_string(format!(
+            "{}/tests/corpus/positive/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+        let ev = json!({"hook_event_name": "PostToolUse", "tool_name": "Bash",
+                        "tool_input": {"command": "python report.py"},
+                        "tool_response": {"stdout": text, "stderr": "", "interrupted": false, "isImage": false}})
+        .to_string();
+        let (code, out, _) = run(&home, &["hook", "claude"], &ev, &[]);
+        assert_eq!(code, 0);
+        let v: Value = serde_json::from_str(&out).unwrap_or_else(|_| panic!("{name}: no summary"));
+        let s = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
+            .as_str()
+            .unwrap();
+        for fact in [
+            "240 rows x 7 cols",
+            "c0: 1..240",
+            "c1: 41 distinct",
+            "c2: 2025-03-01 08:52:01..2025-03-07 12:15:02",
+            "c3: 2025-03-02..2025-03-11 | nulls 26",
+            "c4: 5.61..998.51 mean 497.744",
+            "c5: true 192, false 48",
+            "nulls 48",
+            "no column names in this output",
+        ] {
+            assert!(s.contains(fact), "{name}: `{fact}` is not in\n{s}");
+        }
+        // The first row is the first tuple, with the date objects as dates.
+        assert!(
+            s.contains("1,cust_001,2025-03-01 08:52:01,2025-03-03,597.94,true,repeat customer"),
+            "{name}:\n{s}"
+        );
+        // Nothing is lost: the stored copy has every row.
+        let csv = std::fs::read_to_string(data_path(s)).unwrap();
+        assert_eq!(csv.lines().count(), 241, "{name}: header and 240 rows");
+    }
+}
+
+#[test]
+fn a_python_date_call_that_is_not_plain_stays_as_it_was_written() {
+    // A time zone, or a number out of range, is not made into a date: the source text stays.
+    let rows: String = (1..=40)
+        .map(|i| {
+            format!(
+                "(datetime.datetime(2025, 1, {}, 0, 0, tzinfo=datetime.timezone.utc), {i}.5)",
+                i % 28 + 1
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let home = temp_home("fetchall-tz");
+    let ev = json!({"hook_event_name": "PostToolUse", "tool_name": "Bash",
+                    "tool_input": {"command": "python report.py"},
+                    "tool_response": {"stdout": format!("[{rows}]"), "stderr": "", "interrupted": false, "isImage": false}})
+    .to_string();
+    let (_, out, _) = run(&home, &["hook", "claude"], &ev, &[]);
+    if let Ok(v) = serde_json::from_str::<Value>(&out) {
+        let s = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
+            .as_str()
+            .unwrap();
+        assert!(
+            s.contains("tzinfo=datetime.timezone.utc"),
+            "the time zone was dropped:\n{s}"
+        );
+    }
+}
+
+// ---- a Spark and Maven log: `yy/MM/dd HH:mm:ss` and stack traces --------------------------------
+
+/// A real run of a Maven test suite that starts Spark (paths and addresses scrubbed). The facts
+/// were counted in Python: 156 records, 153 INFO, 2 ERROR, 1 WARN; 104 lines of stack trace and
+/// 14 Maven lines belong to the records above them.
+#[test]
+fn a_spark_log_is_a_table_of_records_with_its_stack_traces_kept() {
+    let home = temp_home("spark");
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/corpus/logs/spark_maven_test_run.log"
+    ))
+    .unwrap();
+    let ev = json!({"hook_event_name": "PostToolUse", "tool_name": "Bash",
+                    "tool_input": {"command": "mvn -q test"},
+                    "tool_response": {"stdout": text, "stderr": "", "interrupted": false, "isImage": false}})
+    .to_string();
+    let (code, out, _) = run(&home, &["hook", "claude"], &ev, &[]);
+    assert_eq!(code, 0);
+    let v: Value = serde_json::from_str(&out).expect("the log is summarized");
+    let s = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
+        .as_str()
+        .unwrap();
+    for fact in [
+        "text-log: 156 rows x 3 cols",
+        "info 153, error 2, warn 1",
+        "2 errors, 1 warning",
+        "Executor: Exception in task 0.0 in stage 0.0",
+        "Task 0 in stage 0.0 failed 1 times; aborting job",
+    ] {
+        assert!(s.contains(fact), "`{fact}` is not in\n{s}");
+    }
+    // Nothing is lost: the stored copy has the stack trace and the Maven results.
+    let csv = std::fs::read_to_string(data_path(s)).unwrap();
+    for kept in [
+        "Task.run(Task.scala:147)",
+        "Tests run: 4, Failures: 0",
+        "Tests run: 3, Failures: 0",
+    ] {
+        assert!(csv.contains(kept), "`{kept}` was dropped");
+    }
+}
+
+// ---- a small table that gets a summary must keep its data reachable ---------------------------
+
+/// 60 rows is the limit for showing a table whole as CSV. A wide frame of 60 rows whose CSV is
+/// hardly smaller than the printed frame gets the statistics summary instead. That summary says
+/// that all of the data is on disk, so the data must be there, and the summary must say where.
+#[test]
+fn a_small_table_that_gets_a_summary_has_its_full_data_saved() {
+    let home = temp_home("small-summary");
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/corpus/frames/wide_frame_wrapped.txt"
+    ))
+    .unwrap();
+    let ev = json!({"hook_event_name": "PostToolUse", "tool_name": "Bash",
+                    "tool_input": {"command": "python eda.py"},
+                    "tool_response": {"stdout": text, "stderr": "", "interrupted": false, "isImage": false}})
+    .to_string();
+    let (code, out, _) = run(&home, &["hook", "claude"], &ev, &[]);
+    assert_eq!(code, 0);
+    let v: Value = serde_json::from_str(&out).expect("summarized");
+    let s = v["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
+        .as_str()
+        .unwrap();
+    assert!(
+        s.contains("statistics over all rows"),
+        "this fixture is meant to get the summary:\n{s}"
+    );
+    assert!(
+        s.lines().any(|l| l.starts_with("data: ")),
+        "the summary does not say where the data is:\n{s}"
+    );
+    let csv = std::fs::read_to_string(data_path(s)).unwrap();
+    assert_eq!(csv.lines().count(), 61, "the header and all 60 rows");
+    assert!(
+        csv.contains(",5042,"),
+        "the row that the summary does not show"
+    );
+    // The drill-down commands in the summary can reach it.
+    assert!(s.contains("drill:"), "{s}");
+}
+
+/// The file named on the `data:` line of a summary. The path is in single quotes when it holds a
+/// character that a shell would not take as it is (a Windows temporary folder does).
+fn data_path(summary: &str) -> String {
+    let line = summary
+        .lines()
+        .find_map(|l| l.strip_prefix("data: "))
+        .unwrap_or_else(|| panic!("no data line in\n{summary}"));
+    let path = line.strip_suffix(" (csv, header row)").unwrap_or(line);
+    path.trim_matches('\'').to_string()
+}
