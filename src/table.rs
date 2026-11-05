@@ -269,7 +269,7 @@ const CHATTER_LINES: usize = 80;
 
 fn is_chatter(line: &str) -> bool {
     let l = line.trim();
-    const STARTS: [&str; 22] = [
+    const STARTS: &[&str] = &[
         "Downloading ",
         "Downloaded ",
         "Resolved ",
@@ -292,8 +292,33 @@ fn is_chatter(line: &str) -> bool {
         "[notice]",
         "warning:",
         "Fetching ",
+        // What Spark and the JVM print to stderr when a session starts.
+        "WARNING: ",
+        "Using Spark's default log4j profile",
+        "Setting default log level",
+        "To adjust logging level",
+        "[Stage ",
     ];
     if STARTS.iter().any(|s| l.starts_with(s)) {
+        return true;
+    }
+    // `/path/x.py:127: FutureWarning: ...` and the line of source under it, which Python prints
+    // to stderr: `  require_minimum_pandas_version()`.
+    if l.contains(".py:") && l.contains("Warning") {
+        return true;
+    }
+    if line.starts_with("  ") && l.ends_with(')') && l.contains('(') && !l.contains("  ") {
+        return true;
+    }
+    // A log4j line: `26/11/06 07:59:22 WARN NativeCodeLoader: ...`
+    let b = l.as_bytes();
+    if b.len() > 24
+        && [2, 5, 11, 14].iter().all(|&i| matches!(b[i], b'/' | b':'))
+        && b[8] == b' '
+        && [&b" INFO "[..], &b" WARN "[..], &b" ERROR "[..]]
+            .iter()
+            .any(|lv| b[17..].starts_with(lv))
+    {
         return true;
     }
     // ` + numpy==2.5.4`, ` - old==1.0`, ` ~ pkg==2.0`
@@ -547,6 +572,55 @@ pub(crate) fn from_keyed_root(format: Format, root: &Value) -> Option<Table> {
 /// and terminal colour codes (`jq -C`, `rich`, `ls --color`).
 pub(crate) fn clean(text: &str) -> std::borrow::Cow<'_, str> {
     let text = text.trim_start_matches('\u{feff}');
+    let plain = strip_escapes(text);
+    match collapse_redraws(&plain) {
+        Some(shown) => std::borrow::Cow::Owned(shown),
+        None => plain,
+    }
+}
+
+/// Is `part` a version of a progress bar that was drawn and then drawn over (`\r`)? A bar has a
+/// percentage, a rate or bar characters, or a count of stages; a part that is only spaces is the
+/// bar being wiped. Anything else before a `\r` could be data, so it is left alone.
+fn is_redrawn(part: &str) -> bool {
+    part.trim().is_empty()
+        || part.contains('%')
+        || part.contains("it/s")
+        || part.contains("s/it")
+        || part.contains(['█', '▏', '▎', '▍', '▌', '▋', '▊', '▉'])
+        || part.trim_start().starts_with("[Stage ")
+}
+
+/// A program that redraws one line (tqdm, Spark's stage bar, pip) writes `\r` between the
+/// versions, and a terminal shows the last. Only that is kept, so that a table printed right after
+/// the bar has its own header at the start of the line. `None` when no line is like that.
+fn collapse_redraws(text: &str) -> Option<String> {
+    if !text.contains('\r') {
+        return None;
+    }
+    let mut changed = false;
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let (body, end) = match line.strip_suffix("\r\n") {
+            Some(b) => (b, "\r\n"),
+            None => match line.strip_suffix('\n') {
+                Some(b) => (b, "\n"),
+                None => (line, ""),
+            },
+        };
+        match body.rfind('\r') {
+            Some(at) if body[..at].split('\r').all(is_redrawn) => {
+                out.push_str(&body[at + 1..]);
+                changed = true;
+            }
+            _ => out.push_str(body),
+        }
+        out.push_str(end);
+    }
+    changed.then_some(out)
+}
+
+fn strip_escapes(text: &str) -> std::borrow::Cow<'_, str> {
     if !text.contains('\u{1b}') {
         return std::borrow::Cow::Borrowed(text);
     }
@@ -646,6 +720,70 @@ fn split_bordered(line: &str) -> Vec<String> {
     cells
 }
 
+/// A column type as DuckDB prints it under the name of a column: `int64`, `varchar`, `decimal(18,3)`,
+/// `int32[]`, `struct(a int)`.
+fn is_type_name(cell: &str) -> bool {
+    const TYPES: [&str; 48] = [
+        "tinyint",
+        "smallint",
+        "integer",
+        "bigint",
+        "hugeint",
+        "utinyint",
+        "usmallint",
+        "uinteger",
+        "ubigint",
+        "uhugeint",
+        "int",
+        "int1",
+        "int2",
+        "int4",
+        "int8",
+        "int16",
+        "int32",
+        "int64",
+        "int128",
+        "uint8",
+        "uint16",
+        "uint32",
+        "uint64",
+        "uint128",
+        "float",
+        "float32",
+        "float64",
+        "real",
+        "double",
+        "decimal",
+        "numeric",
+        "varchar",
+        "string",
+        "text",
+        "blob",
+        "boolean",
+        "bool",
+        "date",
+        "time",
+        "timestamp",
+        "interval",
+        "uuid",
+        "json",
+        "bit",
+        "enum",
+        "list",
+        "struct",
+        "map",
+    ];
+    let c = cell.trim().to_ascii_lowercase();
+    let word: String = c
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+        .collect();
+    let rest = &c[word.len()..];
+    let base = word.strip_prefix('u').filter(|w| TYPES.contains(w));
+    (TYPES.contains(&word.as_str()) || word.starts_with("timestamp") || base.is_some())
+        && (rest.is_empty() || rest.starts_with(['(', '[', ' ']))
+}
+
 /// Tables with borders. A rule line is required, which keeps shell pipelines and prose out.
 fn parse_bordered(text: &str) -> Option<Table> {
     let lines: Vec<&str> = text.lines().collect();
@@ -676,6 +814,26 @@ fn parse_bordered(text: &str) -> Option<Table> {
     if let Some(k) = rule {
         i = k + 1;
     }
+    // DuckDB prints the type of each column in a row of its own under the header, and a rule
+    // under that row. It is metadata, not data: it is kept as a note, with the column names.
+    if rule.is_none() {
+        if let (Some(types), Some(next)) = (lines.get(header_at + 1), lines.get(header_at + 2)) {
+            let cells = split_bordered(types);
+            if is_content(types)
+                && is_border(next)
+                && cells.len() == headers.len()
+                && cells.iter().all(|c| is_type_name(c))
+            {
+                let pairs: Vec<String> = headers
+                    .iter()
+                    .zip(&cells)
+                    .map(|(h, c)| format!("{h} {c}"))
+                    .collect();
+                notes.push(format!("column types as printed: {}", pairs.join(", ")));
+                i = header_at + 2;
+            }
+        }
+    }
     let mut rows = Vec::new();
     let mut bad = 0usize;
     for l in &lines[i..] {
@@ -689,9 +847,14 @@ fn parse_bordered(text: &str) -> Option<Table> {
             continue;
         }
         let cells = split_bordered(l);
-        if cells.iter().all(|c| c == "…" || c == "...") {
-            if notes.len() < 5 {
-                notes.push("(the printer elided rows here)".to_string());
+        // `…` and `...` (polars, rich), and `·` (DuckDB, in three rows) stand for rows left out.
+        if cells
+            .iter()
+            .all(|c| matches!(c.as_str(), "…" | "..." | "·" | "⋮" | "⋯"))
+        {
+            let note = "(the printer elided rows here)".to_string();
+            if notes.len() < 5 && !notes.contains(&note) {
+                notes.push(note);
             }
         } else if cells.len() == headers.len() {
             rows.push(cells);

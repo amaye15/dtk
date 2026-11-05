@@ -16,6 +16,7 @@ pub mod lean;
 mod logs;
 mod multiindex;
 pub mod outline;
+pub mod request;
 pub mod skeleton;
 pub mod table;
 mod textcols;

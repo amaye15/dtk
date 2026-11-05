@@ -31,6 +31,8 @@ pub struct Config {
     pub html_pages: bool,
     /// Also convert a whole HTML file that is read with the Read tool, when it is a page.
     pub html_reads: bool,
+    /// A summary adds the rows that hold a word of the request as a whole cell.
+    pub request_rows: bool,
     pub min_tokens: usize,
     pub budget: usize,
     pub min_persisted_rows: usize,
@@ -45,6 +47,7 @@ impl Default for Config {
             min_digest_tokens: 3000,
             html_pages: true,
             html_reads: true,
+            request_rows: true,
             min_tokens: 1200,
             budget: 2500,
             min_persisted_rows: 30,
@@ -61,7 +64,7 @@ pub fn path() -> Option<PathBuf> {
 pub fn default_file() -> String {
     let d = Config::default();
     format!(
-        "# dtk configuration. Delete a line to get its default back.\n\n[hooks]\n# Leave these alone. \"^text\" matches the start of a command (a file path for Read, a tool name such as mcp__db__query for MCP);\n# any other text matches anywhere in it.\nexclude_commands = []\n# A log that Claude Code saved to a file (build and test output) becomes a digest of the whole.\ndigest_logs = true\n# A web page that was fetched (curl, wget) becomes its text; the page is saved for `dtk html`.\nhtml_pages = true\n# A big HTML page that is read with Read, or returned by an MCP tool, becomes its text too.\nhtml_reads = true\n\n[thresholds]\nmin_tokens = {}        # smallest output worth replacing (estimated tokens)\nbudget = {}            # largest summary\nmin_persisted_rows = {}  # fewest rows for output that Claude Code saved to a file\nmin_outline_tokens = {}  # smallest JSON document (not a table) worth an outline\nmin_digest_tokens = {}   # smallest log worth a digest when Claude Code did not save it to a file (0: never)\n",
+        "# dtk configuration. Delete a line to get its default back.\n\n[hooks]\n# Leave these alone. \"^text\" matches the start of a command (a file path for Read, a tool name such as mcp__db__query for MCP);\n# any other text matches anywhere in it.\nexclude_commands = []\n# A log that Claude Code saved to a file (build and test output) becomes a digest of the whole.\ndigest_logs = true\n# A web page that was fetched (curl, wget) becomes its text; the page is saved for `dtk html`.\nhtml_pages = true\n# A big HTML page that is read with Read, or returned by an MCP tool, becomes its text too.\nhtml_reads = true\n# A summary adds the rows that hold a word of your request (an id, a name) as a whole cell.\nrequest_rows = true\n\n[thresholds]\nmin_tokens = {}        # smallest output worth replacing (estimated tokens)\nbudget = {}            # largest summary\nmin_persisted_rows = {}  # fewest rows for output that Claude Code saved to a file\nmin_outline_tokens = {}  # smallest JSON document (not a table) worth an outline\nmin_digest_tokens = {}   # smallest log worth a digest when Claude Code did not save it to a file (0: never)\n",
         d.min_tokens, d.budget, d.min_persisted_rows, d.min_outline_tokens, d.min_digest_tokens
     )
 }
@@ -90,6 +93,11 @@ impl Config {
                 c.html_reads = d
                     .as_bool()
                     .ok_or("hooks.html_reads must be true or false")?;
+            }
+            if let Some(d) = h.get("request_rows") {
+                c.request_rows = d
+                    .as_bool()
+                    .ok_or("hooks.request_rows must be true or false")?;
             }
             if let Some(d) = h.get("html_pages") {
                 c.html_pages = d

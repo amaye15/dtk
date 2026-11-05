@@ -28,7 +28,7 @@ fn expected(name: &str) -> Vec<Vec<String>> {
 }
 
 fn same_cell(printed: &str, written: &str) -> bool {
-    let null = |s: &str| matches!(s.trim(), "" | "NaN" | "nan" | "None");
+    let null = |s: &str| matches!(s.trim(), "" | "NaN" | "nan" | "None" | "NULL");
     if null(printed) || null(written) {
         return null(printed) && null(written);
     }
@@ -178,5 +178,169 @@ fn dots_that_are_not_a_hidden_column_change_nothing() {
             "{:?}",
             t.notes
         );
+    }
+}
+
+fn same_row(got: &[String], want: &[String]) -> bool {
+    got.len() == want.len() && got.iter().zip(want).all(|(g, w)| same_cell(g, w))
+}
+
+/// DuckDB prints the type of each column in a row under the header, and shows only some of the
+/// rows of a long result, with three rows of dots between them and a line that says how many rows
+/// there are. The type row and the dots are not data. The CSV is DuckDB's own (`COPY ... (header)`).
+#[test]
+fn a_duckdb_table_is_read_without_its_type_row_and_its_dots() {
+    let want = expected("duckdb_orders");
+    let all = detect(&fixture("duckdb_box_all.txt")).expect("the whole result is read");
+    assert_eq!(all.headers, want[0]);
+    assert_eq!(all.rows.len(), 300, "the type row is not a row");
+    for (r, (got, w)) in all.rows.iter().zip(&want[1..]).enumerate() {
+        assert!(same_row(got, w), "row {r}: {got:?} and {w:?}");
+    }
+    assert!(
+        all.notes
+            .iter()
+            .any(|n| n.starts_with("column types as printed: id int64, customer varchar")),
+        "{:?}",
+        all.notes
+    );
+
+    // `show(max_rows=20)`: ten rows, three rows of dots, ten rows.
+    let part = detect(&fixture("duckdb_box_elided.txt")).expect("the part is read");
+    assert_eq!(part.rows.len(), 20, "the dots are not rows");
+    let expected_rows: Vec<&Vec<String>> = want[1..11].iter().chain(&want[291..301]).collect();
+    for (r, (got, w)) in part.rows.iter().zip(expected_rows).enumerate() {
+        assert!(same_row(got, w), "row {r}: {got:?} and {w:?}");
+    }
+    assert!(
+        part.notes.iter().any(|n| n.contains("300 rows (20 shown)")),
+        "{:?}",
+        part.notes
+    );
+    assert!(
+        part.notes.iter().any(|n| n.contains("elided rows")),
+        "{:?}",
+        part.notes
+    );
+    // The numbers of the first column are numbers: a dot in it would make it text.
+    let ids: Vec<&str> = part.rows.iter().map(|r| r[0].as_str()).collect();
+    assert!(ids.iter().all(|i| i.parse::<u32>().is_ok()), "{ids:?}");
+}
+
+/// Real PySpark output (Spark 4, pandas 3). `show()` is a boxed table. `toPandas().to_string()`
+/// came with eleven lines of warnings in front of it (the command had `2>&1`), and Spark's stage
+/// bar, drawn with `\r` on the very line where the table's header starts. The CSV is the data that
+/// made both.
+#[test]
+fn real_spark_output_is_read_with_its_warnings_and_its_progress_bar() {
+    let want = expected("spark_orders");
+    let shown = detect(&fixture("spark_show.txt")).expect("show() is read");
+    assert_eq!(shown.headers, want[0]);
+    assert_eq!(shown.rows.len(), 300);
+    for (r, (got, w)) in shown.rows.iter().zip(&want[1..]).enumerate() {
+        assert!(same_row(got, w), "show() row {r}: {got:?} and {w:?}");
+    }
+
+    let text = fixture("spark_pandas_with_warnings.txt");
+    assert!(text.contains('\r'), "the progress bar is in the fixture");
+    // The fixture comes from a real run; dtk reads it through `detect_wrapped` as the hook does.
+    let table = detect(&text)
+        .or_else(|| dtk::table::detect_wrapped(&text).map(|w| w.table))
+        .expect("the table after the warnings is read");
+    assert_eq!(
+        table.headers[1..],
+        want[0][..],
+        "the names of the columns are the table's"
+    );
+    assert_eq!(table.rows.len(), 300);
+    for (r, (got, w)) in table.rows.iter().zip(&want[1..]).enumerate() {
+        assert!(same_row(&got[1..], w), "row {r}: {got:?} and {w:?}");
+    }
+}
+
+/// Lines of text in front of a table must never become its header. Before 0.20.0 the second
+/// line of Spark's warnings was taken for the header of 300 rows, and the columns were called
+/// `Using`, `Spark's`, `default`.
+#[test]
+fn words_in_front_of_a_table_are_never_its_column_names() {
+    let mut text = String::from(
+        "Using Spark's default log4j profile: org/apache/spark/log4j2-defaults.properties\n\
+         Setting default log level to WARN and nothing else\n\
+         To adjust logging level use sc.setLogLevel(newLevel) for everything here\n",
+    );
+    text.push_str("     id  customer     region  amount\n");
+    for i in 0..60 {
+        text.push_str(&format!(
+            "{i:>3}   {i:>3}  cust_{i:03}  us-east  {}.50\n",
+            i * 3
+        ));
+    }
+    for table in [
+        detect(&text),
+        dtk::table::detect_wrapped(&text).map(|w| w.table),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        assert!(
+            !table
+                .headers
+                .iter()
+                .any(|h| h == "Using" || h == "Spark's" || h == "default"),
+            "{:?}",
+            table.headers
+        );
+        assert!(
+            table.headers.iter().any(|h| h == "customer"),
+            "{:?}",
+            table.headers
+        );
+    }
+}
+
+/// A progress bar that was drawn over leaves its last version, as in a terminal. A carriage return
+/// inside a cell is data and stays.
+#[test]
+fn a_progress_bar_is_collapsed_and_a_return_in_a_cell_is_not() {
+    let mut bar = String::from(
+        "\r  0%|          | 0/100 [00:00<?, ?it/s]\r 50%|█████     | 50/100 [00:01<00:01, 49it/s]\r100%|██████████| 100/100 [00:02<00:00, 49it/s]\n",
+    );
+    bar.push_str("id,name,amount,region\n");
+    for i in 0..60 {
+        bar.push_str(&format!(
+            "{i},user_{},{}.5,{}\n",
+            i % 7,
+            i * 3,
+            ["us", "eu", "ap"][i % 3]
+        ));
+    }
+    let table = detect(&bar).or_else(|| dtk::table::detect_wrapped(&bar).map(|w| w.table));
+    assert_eq!(table.expect("the CSV after the bar is read").rows.len(), 60);
+
+    let mut quoted = String::from("id,note,amount,region\n");
+    for i in 0..60 {
+        quoted.push_str(&format!(
+            "{i},\"line one\rline two {i}\",{}.5,{}\n",
+            i * 3,
+            ["us", "eu", "ap"][i % 3]
+        ));
+    }
+    let t = detect(&quoted).expect("a CSV with a return in a cell");
+    assert_eq!(
+        t.rows[7][1], "line one\rline two 7",
+        "the cell is as it was written"
+    );
+}
+
+/// `print(df.collect())` in Spark prints a list of `Row(id=1, customer='cust_001', ...)`. The
+/// names of the columns are in the text, and the table has them.
+#[test]
+fn a_list_of_spark_rows_is_a_table_with_the_names_of_the_columns() {
+    let want = expected("spark_orders");
+    let table = detect(&fixture("spark_collect.txt")).expect("the Rows are read");
+    assert_eq!(table.headers, want[0]);
+    assert_eq!(table.rows.len(), 300);
+    for (r, (got, w)) in table.rows.iter().zip(&want[1..]).enumerate() {
+        assert!(same_row(got, w), "row {r}: {got:?} and {w:?}");
     }
 }
