@@ -66,6 +66,11 @@ taken in 16 sessions and cost about 7% more. A deterministic digest of the same 
   blocks of columns" makes the model distrust a summary that contradicts it, and the test then
   measures that, not dtk. A weaker model (Haiku) may also offer to read a file instead of reading
   it; run a stronger one (Sonnet) before calling a result a defect.
+- **Measured and rejected, so that nobody tries it again without a harder test:** a table shown
+  whole as Markdown instead of CSV (`scripts/format-test.sh`: 7 questions, 3 runs, Haiku, 40 rows).
+  Both forms were right 21 of 21 times and Markdown cost 27% more tokens, so CSV stays. The test
+  was at its ceiling: a harder question or a bigger table could separate the forms, and then the
+  script is the place to start. A smaller-model message was rejected the same way (see rule 4).
 - **Compare old and new builds over real data before a release:** every big output of the history
   and every text file in the projects. The release must change only what it is meant to change.
 - **Report weak spots honestly.** dtk helps the data-heavy minority of tool output. Say what it
