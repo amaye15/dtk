@@ -1230,6 +1230,78 @@ const PROFILES: [Profile; 3] = [
 
 /// Renders the lean view. Summary mode tries smaller profiles until it fits `budget` tokens.
 pub fn render(t: &Table, ctx: &Ctx, budget: usize) -> Rendered {
+    render_for(t, ctx, budget, &[])
+}
+
+/// The most rows that a summary adds because they carry a word of the request.
+const MAX_REQUEST_ROWS: usize = 8;
+
+/// The rows that hold one of `keys` (the words of a request, see `request::keys`) as a whole cell,
+/// each with what matched, as `(column = value, row)`. A summary shows few rows, and the row that a
+/// model asked for by its key is usually not one of them.
+///
+/// A match must mean "this row". So only a text column counts, or a column of whole numbers that
+/// are all different (an id): the word `3` is not a request for the rows with a quantity of 3.
+/// A key that matches more than a fifth of the rows (at least two) names nothing and is skipped.
+/// Cells are compared as written, ignoring the case of ASCII letters, with the spaces cut off.
+fn request_rows(t: &Table, info: &[ColInfo], keys: &[String]) -> Vec<(String, usize)> {
+    if keys.is_empty() || t.rows.is_empty() {
+        return Vec::new();
+    }
+    let n = t.rows.len();
+    let eligible: Vec<usize> = (0..t.headers.len())
+        .filter(|&c| match info[c].kind {
+            Kind::Str => true,
+            Kind::Int => {
+                let all: std::collections::HashSet<&str> =
+                    t.rows.iter().map(|r| r[c].trim()).collect();
+                all.len() == n
+            }
+            _ => false,
+        })
+        .collect();
+    // hits[k] = (column, row) pairs in which a whole cell is key k.
+    let mut hits: Vec<Vec<(usize, usize)>> = vec![Vec::new(); keys.len()];
+    for &c in &eligible {
+        for (r, row) in t.rows.iter().enumerate() {
+            let cell = row[c].trim();
+            if cell.is_empty() || cell.len() > 80 {
+                continue;
+            }
+            for (k, key) in keys.iter().enumerate() {
+                if cell.len() == key.len() && cell.eq_ignore_ascii_case(key) {
+                    hits[k].push((c, r));
+                }
+            }
+        }
+    }
+    let limit = (n / 5).max(2);
+    let mut out: Vec<(String, usize)> = Vec::new();
+    for h in hits.iter().filter(|h| !h.is_empty()) {
+        let mut rows: Vec<usize> = h.iter().map(|&(_, r)| r).collect();
+        rows.sort_unstable();
+        rows.dedup();
+        if rows.len() > limit {
+            continue;
+        }
+        let (c, r0) = h[0];
+        let label = format!("{} = {}", t.headers[c], trunc(t.rows[r0][c].trim(), 40));
+        for r in rows {
+            if !out.iter().any(|(_, x)| *x == r) {
+                out.push((label.clone(), r));
+                if out.len() >= MAX_REQUEST_ROWS {
+                    return out;
+                }
+            }
+        }
+    }
+    out
+}
+
+/// `render`, with the words of the request that produced the output. A row that holds one of them
+/// as a whole cell is added to a summary (never to a table that is shown whole). With no word, or
+/// no row that matches, the result is exactly that of `render`.
+pub fn render_for(t: &Table, ctx: &Ctx, budget: usize, keys: &[String]) -> Rendered {
     let n = t.rows.len();
     let cols = t.headers.len();
     let mut fallback: Option<String> = None;
@@ -1257,9 +1329,10 @@ pub fn render(t: &Table, ctx: &Ctx, budget: usize) -> Rendered {
         fallback = Some(text);
     }
     let info = analyze(t);
+    let wanted = request_rows(t, &info, keys);
     let mut last = String::new();
     for p in PROFILES.iter() {
-        last = summary(t, &info, ctx, p);
+        last = summary(t, &info, ctx, p, &wanted);
         if est_tokens(&last) <= budget {
             break;
         }
@@ -1766,7 +1839,13 @@ fn duplicate_note(t: &Table) -> Option<String> {
     })
 }
 
-fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
+fn summary(
+    t: &Table,
+    info: &[ColInfo],
+    ctx: &Ctx,
+    p: &Profile,
+    wanted: &[(String, usize)],
+) -> String {
     let n = t.rows.len();
     let cols = t.headers.len();
     let mut out = String::new();
@@ -1994,6 +2073,25 @@ fn summary(t: &Table, info: &[ColInfo], ctx: &Ctx, p: &Profile) -> String {
         let rows: Vec<&Vec<String>> = picked.iter().map(|(_, r)| &t.rows[*r]).collect();
         out.push_str(&format!(
             "extremes ({}):\n{}\n",
+            labels.join("; "),
+            show(&rows)
+        ));
+    }
+    // The rows that hold a word of the request as a whole cell, when they are not shown yet.
+    let asked: Vec<&(String, usize)> = wanted
+        .iter()
+        .filter(|(_, r)| !shown_rows(*r) && !picked.iter().any(|(_, p)| p == r))
+        .collect();
+    if !asked.is_empty() {
+        let mut labels: Vec<&str> = Vec::new();
+        for (l, _) in &asked {
+            if !labels.contains(&l.as_str()) {
+                labels.push(l.as_str());
+            }
+        }
+        let rows: Vec<&Vec<String>> = asked.iter().map(|(_, r)| &t.rows[*r]).collect();
+        out.push_str(&format!(
+            "matches for words in your request ({}):\n{}\n",
             labels.join("; "),
             show(&rows)
         ));

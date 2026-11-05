@@ -98,6 +98,8 @@ Q="$WORK/frames"
 # needs them joined. (A lookup of one other row needs the drill-down, which Sonnet runs and Haiku
 # often does not: see the changelog for 0.18.0.)
 truth_block=$(qsv sort -s amount -N -R "$Q/wide_frame_wrapped.expected.csv" | qsv select order_id,f07 | sed -n 2p | tr ',' ' ')
+# A row found by its key in a frame that got the summary: the answer is in no head, tail or extreme.
+truth_lookup_frame=$(qsv search -s order_id '^5042$' "$Q/wide_frame_wrapped.expected.csv" | qsv select status,f07 | sed -n 2p | tr ',' ' ')
 truth_hidden=$(qsv frequency -s region -l 1 "$Q/columns_hidden_by_pandas.expected.csv" | sed -n 2p | awk -F, '{print $2" "$3}')
 truth_corr=$(python3 - "$F/corr_wrapped.expected.csv" <<'PY'
 import csv, sys
@@ -148,6 +150,7 @@ CASES=(
 "split json|$C/pandas_split.json|This is a pandas DataFrame as JSON (columns, then data rows). How many rows have ok equal to false? Give the number.|$truth_split"
 "key lookup|$C/csv_orders.csv|Which region and status does the order with order_id $lookup_id have? Give both.|$truth_lookup"
 "wrapped frame|$F/wide_frame_wrapped.txt|This is the output of print(df) for a pandas DataFrame of orders. Look at the row with the largest amount: what are its order_id and its f07 value?|$truth_block"
+"frame lookup|$F/wide_frame_wrapped.txt|This is the output of print(df) for a pandas DataFrame of orders. What are the status and the f07 value of the row with order_id 5042?|$truth_lookup_frame"
 "hidden columns|$F/columns_hidden_by_pandas.txt|This is the output of print(df) for a pandas DataFrame of orders. Which region has the most rows, and how many?|$truth_hidden"
 "corr matrix|$F/corr_wrapped.txt|This is the output of print(df.corr()) for a pandas DataFrame: a correlation matrix. Which two different features have the highest absolute correlation? Give both names.|$truth_corr"
 "fetchall|$C/python_fetchall_tuples.txt|This is print(cursor.fetchall()) of the table orders (id, customer, placed, shipped, amount, paid, note). Which id has the largest amount, and what is that amount?|$truth_fetch"

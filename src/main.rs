@@ -28,7 +28,7 @@ usage:
   dtk verify               built-in self-test of detection and decisions, then doctor
   dtk rows|top|count|where|stats|get FILE ...
                            read more of the data behind a summary (see `dtk rows --help`)
-  dtk explain [FILE|-] [--command CMD] [--read] [--saved]
+  dtk explain [FILE|-] [--command CMD] [--request TEXT] [--read] [--saved]
                            say whether dtk would summarize this output, and why
   dtk discover [--all | --since DAYS] [--limit N] [--json] [--gaps] [--dump DIR]
                            scan your Claude Code history for tables dtk would have summarized;

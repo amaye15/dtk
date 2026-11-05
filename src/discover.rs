@@ -299,6 +299,7 @@ fn scan_file(path: &Path, cfg: &Config, t: &mut Totals, dump: Option<&Path>) {
                     text: &text,
                     file: file.as_deref(),
                     persisted,
+                    keys: &[],
                 },
                 cfg,
                 false,

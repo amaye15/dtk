@@ -188,6 +188,11 @@ impl<'a> Py<'a> {
                 self.ws();
                 if self.s.get(self.i) == Some(&b'(') {
                     let args = self.call_args()?;
+                    // `Row(id=1, name='a')` (Spark), a namedtuple, a dataclass: a call whose
+                    // arguments are all `name=value` is a record, and its names are the columns.
+                    if let Some(record) = keyword_args(args, depth) {
+                        return Some(Value::Object(record));
+                    }
                     return Some(simplify_call(name, args));
                 }
                 match name {
@@ -200,6 +205,41 @@ impl<'a> Py<'a> {
             }
         }
     }
+}
+
+/// The arguments of a call as a record, when every one is `name=value`.
+fn keyword_args(args: &str, depth: usize) -> Option<Map<String, Value>> {
+    let mut p = Py {
+        s: args.as_bytes(),
+        text: args,
+        i: 0,
+    };
+    let mut record = Map::new();
+    loop {
+        p.ws();
+        if p.i >= args.len() {
+            break;
+        }
+        let key = p.ident()?;
+        if key.contains('.') {
+            return None;
+        }
+        p.ws();
+        if p.s.get(p.i) != Some(&b'=') || p.s.get(p.i + 1) == Some(&b'=') {
+            return None;
+        }
+        p.i += 1;
+        let v = p.value(depth + 1)?;
+        record.insert(key.to_string(), v);
+        p.ws();
+        if p.i >= args.len() {
+            break;
+        }
+        if !p.eat(b',') {
+            return None;
+        }
+    }
+    (!record.is_empty()).then_some(record)
 }
 
 /// `Timestamp('2026-01-01 00:00:00')` is its text, `np.float64(1.5)` is the number, and any other
@@ -334,9 +374,16 @@ pub fn parse_python_repr(text: &str) -> Option<Table> {
     let t = text.trim();
     let b = t.as_bytes();
     // Only text that is a list or dict of container things, and not JSON (which parsed earlier).
-    // A list of tuples is what `cursor.fetchall()` prints.
+    // A list of tuples is what `cursor.fetchall()` prints, and a list of `Row(...)` is what
+    // Spark's `collect()` prints.
+    let list_of_calls = b.first() == Some(&b'[')
+        && b.get(1).is_some_and(u8::is_ascii_alphabetic)
+        && t[1..]
+            .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '.'))
+            .next()
+            .is_some_and(|w| !w.is_empty() && t[1 + w.len()..].starts_with('('));
     let list_of_containers =
-        b.first() == Some(&b'[') && matches!(b.get(1), Some(b'{' | b'[' | b'('));
+        list_of_calls || (b.first() == Some(&b'[') && matches!(b.get(1), Some(b'{' | b'[' | b'(')));
     if !(list_of_containers || b.first() == Some(&b'{')) {
         return None;
     }
@@ -698,7 +745,16 @@ fn headerless_with(text: &str, d: u8) -> Option<Table> {
     if !(3..=200).contains(&w) || same * 50 < recs.len() * 49 {
         return None;
     }
-    recs.retain(|r| r.len() == w);
+    // A line with another width is not a row (a line of text before the data). It is kept as a
+    // note, not dropped without a word.
+    let mut notes: Vec<String> = Vec::new();
+    let sep = (d as char).to_string();
+    recs.retain(|r| {
+        if r.len() != w && notes.len() < 5 {
+            notes.push(r.join(&sep));
+        }
+        r.len() == w
+    });
     // `| 1 | 2 |`: a field before the first delimiter and after the last, empty on every line, is a
     // drawn table (Markdown, psql), whether or not it has its rule line.
     if recs
@@ -722,12 +778,29 @@ fn headerless_with(text: &str, d: u8) -> Option<Table> {
     if numeric_cols * 3 < w || numeric_cols == 0 {
         return None;
     }
-    // The first line is data too, not a header: a header row would have been read already.
+    // A first row of names above columns of numbers is a header, not data: the columns would be
+    // called c0, c1, ... and their real names would be a row of text in the middle of the numbers.
+    // Another reader takes the table, with the text above it as prose.
+    let numbers_below = |c: usize| {
+        recs[1..]
+            .iter()
+            .filter(|r| parse_number(&r[c]).is_some())
+            .count()
+            * 100
+            >= (recs.len() - 1) * 95
+    };
+    let names_on_top = recs[0]
+        .iter()
+        .all(|c| !c.trim().is_empty() && parse_number(c).is_none())
+        && (0..w).any(numbers_below);
+    if names_on_top {
+        return None;
+    }
     Some(Table {
         format: Format::Headerless,
         headers: generic_headers(w),
         rows: recs,
-        notes: Vec::new(),
+        notes,
     })
 }
 
@@ -933,12 +1006,12 @@ mod tests {
         let n = 20;
         let a: Vec<String> = (0..n).map(|i| i.to_string()).collect();
         let b: Vec<String> = (0..n)
-            .map(|i| format!("Money(currency='EUR', cents={})", i * 100))
+            .map(|i| format!("Money('EUR', {})", i * 100))
             .collect();
         let text = format!("{{'a': [{}], 'b': [{}]}}", a.join(", "), b.join(", "));
         let t = parse_python_repr(&text).expect("dict of lists");
         assert_eq!(t.rows.len(), 20);
-        assert_eq!(t.rows[2][1], "Money(currency='EUR', cents=200)");
+        assert_eq!(t.rows[2][1], "Money('EUR', 200)");
     }
 
     #[test]
@@ -968,6 +1041,69 @@ mod tests {
             None
         );
         assert_eq!(clock_text("datetime.time", "10, 5, 7, 1, 2"), None);
+    }
+
+    #[test]
+    fn a_first_row_of_names_above_numbers_is_a_header_not_data() {
+        // A line of text with a comma, then a CSV: the CSV has its header.
+        let mut s = String::from("Loaded the rows, took a while\nid,name,amount,region\n");
+        for i in 0..60 {
+            s.push_str(&format!(
+                "{i},user_{},{}.5,{}\n",
+                i % 7,
+                i * 3,
+                ["us", "eu", "ap"][i % 3]
+            ));
+        }
+        assert!(
+            parse_headerless(&s).is_none(),
+            "the header row was taken for data"
+        );
+    }
+
+    #[test]
+    fn a_line_of_another_width_is_a_note_and_not_dropped_in_silence() {
+        // `psql -t -A` rows have no header. One line of text has another number of fields.
+        let mut s = String::from("took 2s | then went on | and on | and on\n");
+        for i in 0..60 {
+            s.push_str(&format!("{i}|user_{}|{}.5\n", i % 7, i * 3));
+        }
+        let t = parse_headerless(&s).expect("rows without a header");
+        assert_eq!(t.rows.len(), 60);
+        assert_eq!(t.notes, ["took 2s | then went on | and on | and on"]);
+    }
+
+    #[test]
+    fn a_call_with_only_name_value_arguments_is_a_record() {
+        // A namedtuple, a dataclass and Spark's Row all print like this.
+        let rows: Vec<String> = (0..20)
+            .map(|i| {
+                format!(
+                    "Order(id={i}, name='user_{}', amount={}.5, tags=None)",
+                    i % 5,
+                    i * 3
+                )
+            })
+            .collect();
+        let t = parse_python_repr(&format!("[{}]", rows.join(", "))).expect("a list of records");
+        assert_eq!(t.headers, ["id", "name", "amount", "tags"]);
+        assert_eq!(t.rows.len(), 20);
+        assert_eq!(t.rows[3][..3], ["3", "user_3", "9.5"]);
+    }
+
+    #[test]
+    fn calls_with_other_arguments_and_lists_of_words_are_not_records() {
+        // Positional arguments are values, not names: they stay as they were.
+        let rows: Vec<String> = (0..20)
+            .map(|i| format!("Money('EUR', {})", i * 100))
+            .collect();
+        assert!(parse_python_repr(&format!("[{}]", rows.join(", "))).is_none());
+        // A comparison is not an argument with a name.
+        let cmp: Vec<String> = (0..20).map(|i| format!("Check(a=={i})")).collect();
+        assert!(parse_python_repr(&format!("[{}]", cmp.join(", "))).is_none());
+        // A log line in brackets is not a list.
+        assert!(parse_python_repr("[INFO] started the job and went on for a long time").is_none());
+        assert!(parse_python_repr("[note] see the file").is_none());
     }
 
     #[test]

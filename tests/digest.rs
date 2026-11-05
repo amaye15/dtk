@@ -113,3 +113,37 @@ fn nothing_that_is_not_a_log_gets_a_digest() {
     }
     assert!(checked > 40, "only {checked} files were checked");
 }
+
+/// A real `dbt build` (dbt 1.12 with DuckDB): a seed whose test fails, and so 123 nodes that dbt
+/// skips. The counts are made from the lines of the log with plain string work.
+#[test]
+fn a_dbt_build_names_the_failing_test_where_it_is_and_the_totals() {
+    let text = log("dbt_build_failed_test.log");
+    let d = digest(&text, Some("/tmp/dbt.log")).expect("a build log");
+    let skipped = text
+        .lines()
+        .filter(|l| l.contains("] SKIP ") || l.contains(" SKIP "))
+        .count();
+    assert_eq!(skipped, 123, "the log has 123 skipped nodes");
+    assert!(d.contains("Done. PASS=3 WARN=0 ERROR=1 SKIP=123"), "{d}");
+    assert!(
+        d.contains("accepted_values_orders_status__paid__refunded"),
+        "the failing test is named:\n{d}"
+    );
+    assert!(
+        d.contains("Got 1 result, configured to fail if != 0"),
+        "{d}"
+    );
+    // The lines of the failure in the full output are in the digest.
+    for n in line_numbers(&text, |l| {
+        l.contains("FAIL 1 accepted_values") || l.contains("[ERROR]: in test")
+    }) {
+        assert!(d.contains(&n.to_string()), "line {n} is not in\n{d}");
+    }
+    assert!(
+        est_tokens(&d) * 4 < est_tokens(&text),
+        "{} -> {}",
+        est_tokens(&text),
+        est_tokens(&d)
+    );
+}

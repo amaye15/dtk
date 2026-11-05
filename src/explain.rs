@@ -10,16 +10,18 @@ use std::fs;
 use std::io::Read;
 use std::path::Path;
 
-/// `dtk explain [FILE|-] [--command CMD] [--read] [--mcp TOOL] [--saved]`
+/// `dtk explain [FILE|-] [--command CMD] [--request TEXT] [--read] [--mcp TOOL] [--saved]`
 pub fn explain(args: &[String]) -> i32 {
     let mut file: Option<&str> = None;
     let mut command: Option<&str> = None;
     let (mut read, mut saved) = (false, false);
     let mut mcp: Option<&str> = None;
+    let mut request: Option<&str> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--command" => command = it.next().map(String::as_str),
+            "--request" => request = it.next().map(String::as_str),
             "--read" => read = true,
             "--mcp" => mcp = it.next().map(String::as_str),
             "--saved" => saved = true,
@@ -98,6 +100,9 @@ pub fn explain(args: &[String]) -> i32 {
             return 0;
         }
     }
+    let keys = request
+        .map(|r| dtk::request::keys(&[r]))
+        .unwrap_or_default();
     let v = evaluate(
         &Input {
             tool,
@@ -105,6 +110,7 @@ pub fn explain(args: &[String]) -> i32 {
             text: &text,
             file: path.as_deref(),
             persisted: saved,
+            keys: &keys,
         },
         &cfg,
         false,
@@ -335,6 +341,36 @@ fn samples() -> Vec<Sample> {
         format: "text-log",
         text: s,
     });
+    // DuckDB's box: a row of types under the header, and a result that is cut with dots.
+    let mut s = String::from("┌───────┬──────────┬────────┐\n│  id   │ customer │ amount │\n│ int64 │ varchar  │ double │\n├───────┼──────────┼────────┤\n");
+    for i in 0..120 {
+        s.push_str(&format!(
+            "│ {i:>5} │ cust_{:03} │ {:>6}.5 │\n",
+            i % 40,
+            i * 3
+        ));
+    }
+    s.push_str("└───────┴──────────┴────────┘\n");
+    out.push(Sample {
+        name: "DuckDB table with its type row",
+        format: "table",
+        text: s,
+    });
+    // Spark's `df.collect()`: a list of Row(name=value, ...).
+    let rows: Vec<String> = (0..200)
+        .map(|i| {
+            format!(
+                "Row(id={i}, customer='cust_{:03}', amount={}.5, note=None)",
+                i % 40,
+                i * 3
+            )
+        })
+        .collect();
+    out.push(Sample {
+        name: "Spark rows",
+        format: "python-repr",
+        text: format!("[{}]", rows.join(", ")),
+    });
     let mut s = String::new();
     for (b, cols) in [(0, 0..6), (1, 6..12)] {
         s.push_str("   ");
@@ -442,6 +478,7 @@ pub fn skeleton(args: &[String]) -> i32 {
             text: &text,
             file: None,
             persisted: false,
+            keys: &[],
         },
         &cfg,
         false,
@@ -482,6 +519,7 @@ pub fn verify() -> i32 {
                 text: &s.text,
                 file: None,
                 persisted: false,
+                keys: &[],
             },
             &cfg,
             false,
@@ -523,6 +561,7 @@ pub fn verify() -> i32 {
             text: &messy,
             file: None,
             persisted: false,
+            keys: &[],
         },
         &cfg,
         false,
@@ -543,6 +582,7 @@ pub fn verify() -> i32 {
             text: &prose,
             file: None,
             persisted: false,
+            keys: &[],
         },
         &cfg,
         false,
@@ -561,6 +601,7 @@ pub fn verify() -> i32 {
             text: &code,
             file: None,
             persisted: false,
+            keys: &[],
         },
         &cfg,
         false,
@@ -569,6 +610,42 @@ pub fn verify() -> i32 {
         "leaves source code alone",
         v.table.is_none(),
         "code was taken for a table",
+    );
+    // A summary adds the row that the request names, and nothing else changes.
+    let mut orders = String::from("id,customer,region,amount\n");
+    for i in 0..300 {
+        orders.push_str(&format!(
+            "{},cust_{:03},{},{}.5\n",
+            1000 + i,
+            i % 40,
+            ["us", "eu", "ap"][i % 3],
+            i * 3
+        ));
+    }
+    let asked = dtk::request::keys(&["Look up order 1150 for me"]);
+    let ask = |keys: &[String]| {
+        let v = evaluate(
+            &Input {
+                tool: "Bash",
+                subject: "python report.py",
+                text: &orders,
+                file: None,
+                persisted: false,
+                keys,
+            },
+            &cfg,
+            false,
+        );
+        v.rendered.map_or(String::new(), |r| r.text)
+    };
+    let (plain, with_request) = (ask(&[]), ask(&asked));
+    t.check(
+        "adds the row that the request names, and no other change",
+        with_request.contains("matches for words in your request (id = 1150)")
+            && with_request.lines().any(|l| l.starts_with("1150,cust_"))
+            && !plain.contains("matches for words")
+            && ask(&dtk::request::keys(&["nothing matches qqzzxx"])) == plain,
+        &with_request,
     );
     // A long build log becomes a digest, and a fetched web page becomes its text.
     let mut build = String::new();
@@ -585,6 +662,7 @@ pub fn verify() -> i32 {
             text: &build,
             file: None,
             persisted: false,
+            keys: &[],
         },
         &cfg,
         false,
@@ -611,6 +689,7 @@ pub fn verify() -> i32 {
             text: &page,
             file: None,
             persisted: false,
+            keys: &[],
         },
         &cfg,
         false,
@@ -632,6 +711,7 @@ pub fn verify() -> i32 {
             text: csv,
             file: None,
             persisted: false,
+            keys: &[],
         },
         &cfg,
         false,
@@ -652,6 +732,7 @@ pub fn verify() -> i32 {
             text: csv,
             file: None,
             persisted: false,
+            keys: &[],
         },
         &strict,
         false,
@@ -669,6 +750,7 @@ pub fn verify() -> i32 {
             text: &small,
             file: None,
             persisted: false,
+            keys: &[],
         },
         &cfg,
         false,
@@ -685,6 +767,7 @@ pub fn verify() -> i32 {
             text: csv,
             file: Some(Path::new("/tmp/big.csv")),
             persisted: true,
+            keys: &[],
         },
         &cfg,
         false,

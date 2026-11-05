@@ -188,6 +188,59 @@ fn under_claude_dir(p: &Path) -> bool {
     }
 }
 
+/// The words of the request that this tool result answers: those of `texts` (the command), the
+/// description that the model wrote for the tool call, and the last thing the user typed.
+///
+/// Only for an output big enough to be replaced: a small one is never summarized, so nothing would
+/// use the words, and the transcript is not read. The transcript is read only when it is under
+/// `~/.claude`, and only its end. Any failure means no words, and then nothing changes.
+fn request_keys(ev: &Value, texts: &[&str], cfg: &Config, output: &str) -> Vec<String> {
+    if !cfg.request_rows || output.len() < cfg.min_tokens * 4 {
+        return Vec::new();
+    }
+    let mut all: Vec<String> = texts.iter().map(|s| s.to_string()).collect();
+    if let Some(d) = ev["tool_input"]["description"].as_str() {
+        all.push(d.to_string());
+    }
+    if let Some(p) = ev["transcript_path"].as_str().map(PathBuf::from) {
+        if under_claude_dir(&p) {
+            if let Some(r) = transcript_request(&p) {
+                all.push(r);
+            }
+        }
+    }
+    let refs: Vec<&str> = all.iter().map(String::as_str).collect();
+    dtk::request::keys(&refs)
+}
+
+/// What the user last typed, from the end of the transcript: the last 256 KB, then more, up to
+/// 8 MB, until a request is found (a long tool result can lie between it and the end).
+fn transcript_request(path: &Path) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = fs::File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    for window in [256u64 << 10, 1 << 20, 4 << 20, 8 << 20] {
+        let from = len.saturating_sub(window);
+        f.seek(SeekFrom::Start(from)).ok()?;
+        let mut buf = Vec::new();
+        (&mut f).take(window).read_to_end(&mut buf).ok()?;
+        let text = String::from_utf8_lossy(&buf);
+        // The first line is cut when the window does not start at the file's start.
+        let text = if from > 0 {
+            text.split_once('\n').map_or("", |(_, rest)| rest)
+        } else {
+            &text
+        };
+        if let Some(r) = dtk::request::last_user_request(text) {
+            return Some(r);
+        }
+        if from == 0 {
+            return None;
+        }
+    }
+    None
+}
+
 /// A long path (Claude Code keeps big outputs deep under `~/.claude/projects/...`) would be
 /// repeated in several lines of a summary. Give it a short name in the store: a symlink.
 fn short_path(target: &Path, ext: &str, write: bool) -> String {
@@ -230,6 +283,7 @@ pub fn build(
     persisted: Option<&Path>,
     write: bool,
     budget: usize,
+    keys: &[String],
 ) -> Rendered {
     let mut ctx = Ctx {
         bytes: text.len(),
@@ -238,18 +292,18 @@ pub fn build(
     };
     if t.rows.len() > lean::LOSSLESS_ROWS {
         save_data(&mut ctx, t, text, persisted, write);
-        return lean::render(t, &ctx, budget);
+        return lean::render_for(t, &ctx, budget, keys);
     }
     // A table of up to 60 rows is shown whole as CSV when that is clearly smaller than the source.
     // When it is not (a wide table, or heavy cells), `render` gives the statistics summary, and the
     // summary says that all of the data is on disk: so it has to be there, and the summary has to
     // say where.
-    let shown = lean::render(t, &ctx, budget);
+    let shown = lean::render_for(t, &ctx, budget, keys);
     if shown.lossless {
         return shown;
     }
     save_data(&mut ctx, t, text, persisted, write);
-    lean::render(t, &ctx, budget)
+    lean::render_for(t, &ctx, budget, keys)
 }
 
 /// Saves the full data of `t` as CSV (and the source text of JSON) and records where in `ctx`.
@@ -446,6 +500,7 @@ fn handle_mcp(ev: &Value, name: &str) -> Option<String> {
     let text = mcp_text(resp)?;
     let live = is_live();
     let cfg = Config::load().0;
+    let keys = request_keys(ev, &[], &cfg, &text);
     let v = evaluate(
         &Input {
             tool: "MCP",
@@ -453,6 +508,7 @@ fn handle_mcp(ev: &Value, name: &str) -> Option<String> {
             text: &text,
             file: None,
             persisted: false,
+            keys: &keys,
         },
         &cfg,
         live,
@@ -535,6 +591,9 @@ pub struct Input<'a> {
     pub file: Option<&'a Path>,
     /// Claude Code saved the output to a file and shows the model only a short preview.
     pub persisted: bool,
+    /// The words of the request that this output answers (`request::keys`). A summary adds the
+    /// rows that hold one of them as a whole cell. Empty means: no request is known.
+    pub keys: &'a [String],
 }
 
 /// What dtk makes of an [`Input`]. The hook, `explain`, `verify` and `discover` all use this one
@@ -691,6 +750,7 @@ pub fn evaluate(shown: &Input, cfg: &Config, write: bool) -> Verdict {
         if wrapped { None } else { inp.file },
         write,
         cfg.budget,
+        inp.keys,
     );
     if wrapped {
         rendered.text = format!(
@@ -1036,6 +1096,7 @@ fn handle_read(ev: &Value) -> Option<String> {
     let text = file.get("content")?.as_str()?;
     let live = is_live();
     let cfg = Config::load().0;
+    let keys = request_keys(ev, &[], &cfg, text);
     let v = evaluate(
         &Input {
             tool: "Read",
@@ -1043,6 +1104,7 @@ fn handle_read(ev: &Value) -> Option<String> {
             text,
             file: Some(Path::new(path)),
             persisted: false,
+            keys: &keys,
         },
         &cfg,
         live,
@@ -1095,6 +1157,7 @@ fn handle_bash(ev: &Value) -> Option<String> {
     };
     let live = is_live();
     let cfg = Config::load().0;
+    let keys = request_keys(ev, &[command], &cfg, &text);
     let v = evaluate(
         &Input {
             tool: "Bash",
@@ -1102,6 +1165,7 @@ fn handle_bash(ev: &Value) -> Option<String> {
             text: &text,
             file: persisted.as_deref(),
             persisted: persisted.is_some(),
+            keys: &keys,
         },
         &cfg,
         live,
@@ -1202,6 +1266,7 @@ pub fn view(arg: Option<&str>) -> i32 {
         if wrapped { None } else { path.as_deref() },
         true,
         Config::load().0.budget,
+        &[],
     );
     let shown = format!("{}{}{}", &text[..start], r.text, &text[end..]);
     println!("{shown}");

@@ -157,6 +157,9 @@ pub fn parse_tail_text(text: &str) -> Option<Table> {
     None
 }
 
+/// The lines right after the header that must all be rows.
+const LEADING_ROWS: usize = 3;
+
 fn try_headers(lines: &[&str], start: usize, headers: Vec<String>) -> Option<Table> {
     let n = headers.len();
     if n < 3 || !valid_header(&headers) {
@@ -169,18 +172,26 @@ fn try_headers(lines: &[&str], start: usize, headers: Vec<String>) -> Option<Tab
         .map(|l| l.trim().to_string())
         .collect();
     let mut bad = 0usize;
-    for l in body {
+    let mut bad_at_start = false;
+    for (k, l) in body.iter().enumerate() {
         match split_capped(l, n) {
             Some(cells) if cells[..n - 1].iter().all(|c| c.chars().count() <= 40) => {
                 rows.push(cells)
             }
             _ => {
                 bad += 1;
+                bad_at_start |= k < LEADING_ROWS;
                 if notes.len() < 5 {
                     notes.push(l.trim().to_string());
                 }
             }
         }
+    }
+    // The rows follow their header at once. A line that is followed by a few lines of other text
+    // and then by rows is a line of text (a warning, a title), and the words in it would become
+    // the names of the columns.
+    if bad_at_start {
+        return None;
     }
     if rows.len() < MIN_ROWS || bad * 20 > rows.len() {
         return None;
