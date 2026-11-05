@@ -361,8 +361,10 @@ fn the_audit_finds_a_table_that_shows_fewer_rows_than_it_says() {
 #[test]
 fn the_audit_finds_a_command_that_does_not_answer() {
     let home = temp_home("teeth-drill");
+    // dtk writes the path with forward slashes, also on Windows (`shell_quote`).
+    let bin = BIN.replace('\\', "/");
     let summary = format!(
-        "[dtk] table: 3 rows x 2 cols, 1KB (the full data is on disk)\ndrill: {BIN} where deadbeef0000 a = 1  |  (also rows: dtk rows --help)\n"
+        "[dtk] table: 3 rows x 2 cols, 1KB (the full data is on disk)\ndrill: {bin} where deadbeef0000 a = 1  |  (also rows: dtk rows --help)\n"
     );
     let bad = audit(&summary, &home);
     assert!(bad.iter().any(|b| b.contains("does not answer")), "{bad:?}");
