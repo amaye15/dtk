@@ -37,6 +37,18 @@ struct Totals {
     by_format: BTreeMap<String, usize>,
     top: Vec<(i64, String)>,
     left_alone: Vec<String>,
+    /// Big outputs that dtk left alone and that look like neither source code nor prose.
+    gaps: Vec<Gap>,
+    dumped: usize,
+}
+
+/// A big output that dtk made nothing of. It may be data in a shape that dtk does not read yet.
+struct Gap {
+    tokens: usize,
+    head: String,
+    subject: String,
+    first_line: String,
+    lines: usize,
 }
 
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -76,7 +88,96 @@ fn result_text(content: &Value) -> String {
     }
 }
 
-fn scan_file(path: &Path, cfg: &Config, t: &mut Totals) {
+/// The program that a command runs, for grouping: `cd x && rtk grep a b` is `grep`, and
+/// `/usr/bin/top -l 1` is `top`. A tool of an MCP server stays whole.
+fn command_head(subject: &str) -> String {
+    if subject.starts_with("mcp__") {
+        return subject.to_string();
+    }
+    let typed = crate::rtk::plain_command(subject);
+    let mut rest = typed.trim();
+    // `cd dir && cmd`, `cd dir; cmd`, and `NAME=value cmd`.
+    loop {
+        let before = rest;
+        if let Some((first, tail)) = rest.split_once(['&', ';']) {
+            if first.trim_start().starts_with("cd ") {
+                rest = tail.trim_start_matches(['&', ';', ' ']);
+            }
+        }
+        let word = rest.split_whitespace().next().unwrap_or("");
+        if word.contains('=') && !word.starts_with(['/', '.']) {
+            rest = rest[rest.find(word).unwrap_or(0) + word.len()..].trim_start();
+        }
+        if rest == before {
+            break;
+        }
+    }
+    let word = rest.split_whitespace().next().unwrap_or("?");
+    let word = word.rsplit(['/', '\\']).next().unwrap_or(word);
+    match word {
+        "for" | "while" | "until" | "if" | "{" | "(" | "&&" | "||" | "" => {
+            "(shell script)".to_string()
+        }
+        w => w.to_string(),
+    }
+}
+
+/// Does the text look like source code, markup or prose? dtk is not for those: the lines are what
+/// the model asked for. A text is one of them when many of its lines begin as code or markup do,
+/// or when many of them read as sentences.
+fn source_or_prose(text: &str) -> bool {
+    const STARTS: [&str; 30] = [
+        "//",
+        "#!",
+        "#include",
+        "#[",
+        "#define",
+        "use ",
+        "import ",
+        "from ",
+        "fn ",
+        "pub ",
+        "def ",
+        "class ",
+        "mod ",
+        "package ",
+        "impl ",
+        "struct ",
+        "enum ",
+        "const ",
+        "let ",
+        "var ",
+        "function ",
+        "return ",
+        "```",
+        "/*",
+        "* ",
+        "<",
+        "{",
+        "}",
+        "# ",
+        "---",
+    ];
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim_start)
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines.is_empty() {
+        return true;
+    }
+    let code = lines
+        .iter()
+        .filter(|l| STARTS.iter().any(|s| l.starts_with(s)))
+        .count();
+    let sentences = lines
+        .iter()
+        .filter(|l| l.split_whitespace().count() >= 8 && l.ends_with(['.', ':', '?']))
+        .count();
+    code * 10 > lines.len() || sentences * 10 > lines.len() * 3
+}
+
+fn scan_file(path: &Path, cfg: &Config, t: &mut Totals, dump: Option<&Path>) {
     let Ok(f) = fs::File::open(path) else { return };
     let mut rd = BufReader::new(f);
     let mut line = String::new();
@@ -202,7 +303,38 @@ fn scan_file(path: &Path, cfg: &Config, t: &mut Totals) {
                 cfg,
                 false,
             );
-            let Some(found) = &v.detected else { continue };
+            if let Some(dir) = dump {
+                if v.tokens_full >= cfg.min_tokens
+                    && fs::write(dir.join(format!("h{:05}.txt", t.dumped)), &text).is_ok()
+                {
+                    t.dumped += 1;
+                }
+            }
+            let Some(found) = &v.detected else {
+                if !v.applies && v.tokens_full >= cfg.min_tokens && !source_or_prose(&text) {
+                    t.gaps.push(Gap {
+                        tokens: v.tokens_full,
+                        head: command_head(subject),
+                        subject: subject
+                            .split_whitespace()
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                            .chars()
+                            .take(70)
+                            .collect(),
+                        first_line: text
+                            .lines()
+                            .find(|l| !l.trim().is_empty())
+                            .unwrap_or("")
+                            .trim()
+                            .chars()
+                            .take(80)
+                            .collect(),
+                        lines: text.lines().count(),
+                    });
+                }
+                continue;
+            };
             t.tables += 1;
             *t.by_format.entry(found.name.to_string()).or_default() += 1;
             if !v.applies {
@@ -255,9 +387,13 @@ fn scan_file(path: &Path, cfg: &Config, t: &mut Totals) {
     }
 }
 
-/// `dtk discover [--all | --since DAYS] [--limit N] [--json]`
+const USAGE: &str =
+    "usage: dtk discover [--all | --since DAYS] [--limit N] [--json] [--gaps] [--dump DIR]";
+
+/// `dtk discover [--all | --since DAYS] [--limit N] [--json] [--gaps] [--dump DIR]`
 pub fn run(args: &[String]) -> i32 {
     let (mut days, mut limit, mut json_out) = (Some(30u64), 8usize, false);
+    let (mut gaps_only, mut dump): (bool, Option<PathBuf>) = (false, None);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -265,10 +401,24 @@ pub fn run(args: &[String]) -> i32 {
             "--since" => days = it.next().and_then(|v| v.parse().ok()).or(days),
             "--limit" => limit = it.next().and_then(|v| v.parse().ok()).unwrap_or(limit),
             "--json" => json_out = true,
+            "--gaps" => gaps_only = true,
+            "--dump" => match it.next() {
+                Some(d) => dump = Some(PathBuf::from(d)),
+                None => {
+                    eprintln!("dtk discover: --dump needs a folder\n{USAGE}");
+                    return 2;
+                }
+            },
             other => {
-                eprintln!("dtk discover: unknown option {other}\nusage: dtk discover [--all | --since DAYS] [--limit N] [--json]");
+                eprintln!("dtk discover: unknown option {other}\n{USAGE}");
                 return 2;
             }
+        }
+    }
+    if let Some(d) = &dump {
+        if let Err(e) = fs::create_dir_all(d) {
+            eprintln!("dtk discover: cannot create {}: {e}", d.display());
+            return 1;
         }
     }
     let Some(root) = home().map(|h| h.join(".claude/projects")) else {
@@ -286,9 +436,19 @@ pub fn run(args: &[String]) -> i32 {
     let cfg = Config::load().0;
     let mut t = Totals::default();
     for f in &files {
-        scan_file(f, &cfg, &mut t);
+        scan_file(f, &cfg, &mut t, dump.as_deref());
     }
     t.top.sort_by_key(|x| std::cmp::Reverse(x.0));
+    if let Some(d) = &dump {
+        eprintln!(
+            "dtk discover: wrote {} big outputs to {} (they are your own tool output: keep them private)",
+            t.dumped,
+            d.display()
+        );
+    }
+    if gaps_only {
+        return print_gaps(&t, limit, json_out);
+    }
     if json_out {
         let v = json!({
             "sessions": t.files, "tool_results": t.results, "bash": t.bash, "read": t.read, "mcp": t.mcp,
@@ -348,5 +508,69 @@ pub fn run(args: &[String]) -> i32 {
             println!("  {}. {l}", i + 1);
         }
     }
+    0
+}
+
+/// `dtk discover --gaps`: the big outputs that dtk left alone and that are not source code or
+/// prose. Each is data in a shape that dtk may not read yet, or output that is not worth reading.
+fn print_gaps(t: &Totals, limit: usize, json_out: bool) -> i32 {
+    let mut by_head: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    for g in &t.gaps {
+        let e = by_head.entry(g.head.as_str()).or_default();
+        e.0 += 1;
+        e.1 += g.tokens;
+    }
+    let mut heads: Vec<(&str, (usize, usize))> = by_head.into_iter().collect();
+    heads.sort_by_key(|h| std::cmp::Reverse((h.1).1));
+    // The same output twice (a command that was run again) is one entry, with how many times.
+    let mut once: Vec<(&Gap, usize)> = Vec::new();
+    for g in &t.gaps {
+        match once.iter_mut().find(|(o, _)| {
+            o.subject == g.subject && o.tokens == g.tokens && o.first_line == g.first_line
+        }) {
+            Some(e) => e.1 += 1,
+            None => once.push((g, 1)),
+        }
+    }
+    once.sort_by_key(|(g, n)| std::cmp::Reverse(g.tokens * n));
+    let biggest = once;
+    let total: usize = t.gaps.iter().map(|g| g.tokens).sum();
+    if json_out {
+        let v = json!({
+            "gaps": t.gaps.len(), "est_tokens": total,
+            "by_command": heads.iter().map(|(h, (n, tok))| json!({"command": h, "outputs": n, "est_tokens": tok})).collect::<Vec<_>>(),
+            "biggest": biggest.iter().take(limit).map(|(g, n)| json!({
+                "est_tokens": g.tokens, "times": n, "command": g.subject, "lines": g.lines, "first_line": g.first_line,
+            })).collect::<Vec<_>>(),
+        });
+        println!("{v}");
+        return 0;
+    }
+    println!(
+        "dtk discover --gaps: {} big outputs ({} est. tokens) that dtk left alone and that look like neither source code nor prose",
+        t.gaps.len(),
+        total
+    );
+    if t.gaps.is_empty() {
+        return 0;
+    }
+    println!("by command:");
+    for (h, (n, tok)) in heads.iter().take(limit) {
+        println!("  {h:<18} {n:>4} outputs  {tok:>8} est. tokens");
+    }
+    println!("biggest:");
+    for (g, n) in biggest.iter().take(limit) {
+        let times = if *n > 1 {
+            format!("  x{n}")
+        } else {
+            String::new()
+        };
+        println!(
+            "  {:>7} tok  {} lines{times}  {}",
+            g.tokens, g.lines, g.subject
+        );
+        println!("              first line: {}", g.first_line);
+    }
+    println!("If one of these is data, `dtk skeleton FILE` makes a copy of its layout with no values, for a bug report.");
     0
 }

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.19.0
+
+Guards, and a way for anyone to show dtk an output that it should read. No reader changes: dtk reads and summarizes exactly what 0.18.0 does (7,396 real files compared, no difference).
+
+- **A check that a summary only promises what a reader can reach** (`tests/claims.rs`). It runs the real binary on every fixture and checks each promise: "the full data is on disk" names a file and the file exists; the numbers in `N rows x M cols` are the saved CSV's; every `dtk` command in `drill:` and `more:` answers; a saved page can be read. The audit has tests of its own for each kind of broken promise. With the 0.17.0 behaviour put back, it fails on 6 fixtures (`ps aux`, `ps -ef`, two `gh` JSON outputs, a syslog and a correlation matrix), so that bug touched more kinds of output than was known when it was fixed in 0.18.0.
+- **`scripts/compare-builds.sh OLD NEW PATH...`** says what two builds make differently of the same files, and fails on a difference that was not expected (`--allow REGEX`). A release lists every difference in its changelog. It is the comparison that was done by hand for 0.17.0 and 0.18.0.
+- **`dtk discover --gaps`** lists the big outputs that dtk left alone and that look like neither source code nor prose, grouped by command, with repeats counted. It is a list of places to look, not of faults: on a real 30-day history it found 255 outputs, and many are long log lines. **`dtk discover --dump DIR`** writes the big outputs as files, for `compare-builds.sh`; they are your own output, so keep them private.
+- **`dtk skeleton FILE`** prints the layout of an output with every value taken out: each digit is `9`, each lowercase letter `a`, each uppercase letter `A`; punctuation, spacing and line breaks stay, so the columns still line up. The first 40 lines and the last 5 are kept. It also says what dtk makes of the output. Attach it to an issue (there is a template) when dtk should have read an output and did not: no value leaves your machine. `--keep-header` keeps the first line, the column names, as they are.
+- Checked by: the claims audit and its own tests; the comparison script run on fake builds that disagree and over 7,396 real files; `--gaps` and `--dump` on a transcript that holds a table, source code, prose and an unread layout; and a test that no letter or digit of any of the 100 fixtures, and of a planted secret, is left in a skeleton.
+
 ## 0.18.0
 
 More of the data that data work prints, found by running dtk over every big output of a real 60-day history and over real output of pandas, `sqlite3` and Spark. A comparison of the old and the new build over all 1,745 outputs of that history shows one change: the Spark log below. No output was newly taken for data by mistake.

@@ -131,7 +131,8 @@ All of this is tested against the real rtk binary (`tests/rtk_real.rs`, `tests/r
 | `dtk mode shadow`, `dtk mode live` | Shadow decides and logs but changes no output. Live replaces output (the default). |
 | `dtk doctor`, `dtk verify` | Check the setup. `verify` also runs built-in checks of every format. They exit 1 on a warning. |
 | `dtk explain FILE --command CMD` | Say whether dtk would summarize this output, and why. |
-| `dtk discover [--since DAYS]` | Scan your Claude Code history for output dtk would have replaced. Changes nothing. |
+| `dtk discover [--since DAYS]` | Scan your Claude Code history for output dtk would have replaced. Changes nothing. `--gaps` lists big outputs that dtk left alone and that may be data in a shape it does not read yet (source code and prose are filtered out). `--dump DIR` writes the big outputs as files. |
+| `dtk skeleton FILE` | The layout of an output with every value taken out (digits `9`, letters `a` or `A`), with what dtk makes of it. Attach it to an issue when dtk should have read an output and did not: no value leaves your machine. |
 | `dtk rows`, `top`, `count`, `group`, `where`, `stats`, `get` | Read more of the data behind a summary: rows, the largest values, value counts, mean/sum/min/max per group, a filter, column statistics, a part of a JSON document. `dtk rows --help` has the syntax. |
 | `dtk html ID WHAT` | Read more of a web page that dtk saved: `text [FROM [COUNT]]`, `headings`, `links [N]`, `tables [N]`, `json [N]` (embedded JSON), `grep WORD`. |
 | `dtk view FILE`, `dtk gain [--json]`, `dtk config [--create]` | Show a summary, the decision log totals (with rtk's), or the settings. |
