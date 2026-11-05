@@ -30,8 +30,13 @@ usage:
                            read more of the data behind a summary (see `dtk rows --help`)
   dtk explain [FILE|-] [--command CMD] [--read] [--saved]
                            say whether dtk would summarize this output, and why
-  dtk discover [--all | --since DAYS] [--limit N] [--json]
-                           scan your Claude Code history for tables dtk would have summarized
+  dtk discover [--all | --since DAYS] [--limit N] [--json] [--gaps] [--dump DIR]
+                           scan your Claude Code history for tables dtk would have summarized;
+                           --gaps lists big outputs it left alone that may be data in a shape it
+                           does not read yet; --dump DIR writes the big outputs as files
+  dtk skeleton [FILE|-] [--keep-header] [--command CMD] [--head N] [--tail N]
+                           the layout of an output with every value taken out (digits 9, letters
+                           a or A), to send with a bug report; read it before you send it
   dtk config [--create]    show the settings in use, or write a default config file
   dtk mode [shadow|live]   show or set the mode (shadow = log only, change nothing)
   dtk gain [--json]        totals from the decision log, with rtk's totals beside them
@@ -152,6 +157,7 @@ fn main() -> ExitCode {
         Some("doctor") => i32::from(doctor::run() > 0),
         Some("explain") => explain::explain(&args[1..]),
         Some("verify") => explain::verify(),
+        Some("skeleton") => explain::skeleton(&args[1..]),
         Some("discover") => discover::run(&args[1..]),
         Some("config") => config_command(&args[1..]),
         Some("init") => init::run(&args[1..]),

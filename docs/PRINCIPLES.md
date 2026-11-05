@@ -100,3 +100,6 @@ It runs on macOS, Linux and Windows (CI), and installs by script, Homebrew, Scoo
   `src/html.rs`: web pages. `src/query.rs`: the drill-down commands.
 - `src/rtk.rs`: everything about rtk. `src/init.rs`, `doctor.rs`: setup.
 - `tests/corpus`: real outputs of real tools and what must be made of each.
+- `tests/claims.rs`: runs the real binary on every fixture and checks each promise a summary makes
+  (the file exists, the counts are the file's, the commands answer). `scripts/compare-builds.sh`
+  compares two builds over real files before a release.

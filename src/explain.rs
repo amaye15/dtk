@@ -381,6 +381,94 @@ impl Tally {
     }
 }
 
+/// `dtk skeleton [FILE|-] [--keep-header] [--command CMD] [--head N] [--tail N]`: the layout of an
+/// output with its values taken out, and what dtk makes of the output, for a bug report.
+pub fn skeleton(args: &[String]) -> i32 {
+    const USAGE: &str =
+        "usage: dtk skeleton [FILE|-] [--keep-header] [--command CMD] [--head N] [--tail N]";
+    let mut file: Option<&str> = None;
+    let mut command = "mytool";
+    let mut opts = dtk::skeleton::Options::default();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--keep-header" => opts.keep_header = true,
+            "--command" => match it.next() {
+                Some(c) => command = c,
+                None => {
+                    eprintln!("dtk skeleton: --command needs a command\n{USAGE}");
+                    return 2;
+                }
+            },
+            "--head" | "--tail" => {
+                let Some(n) = it.next().and_then(|v| v.parse::<usize>().ok()) else {
+                    eprintln!("dtk skeleton: {a} needs a number\n{USAGE}");
+                    return 2;
+                };
+                if a == "--head" {
+                    opts.head = n;
+                } else {
+                    opts.tail = n;
+                }
+            }
+            other if file.is_none() && !other.starts_with("--") => file = Some(other),
+            other => {
+                eprintln!("dtk skeleton: unexpected argument {other}\n{USAGE}");
+                return 2;
+            }
+        }
+    }
+    let text = match file {
+        Some(p) if p != "-" => match fs::read(p) {
+            Ok(b) => String::from_utf8_lossy(&b).to_string(),
+            Err(e) => {
+                eprintln!("dtk: cannot read {p}: {e}");
+                return 1;
+            }
+        },
+        _ => {
+            let mut s = String::new();
+            if std::io::stdin().read_to_string(&mut s).is_err() {
+                return 1;
+            }
+            s
+        }
+    };
+    let (cfg, _) = Config::load();
+    let v = evaluate(
+        &Input {
+            tool: "Bash",
+            subject: command,
+            text: &text,
+            file: None,
+            persisted: false,
+        },
+        &cfg,
+        false,
+    );
+    let reads_as = v.detected.as_ref().map_or("nothing".to_string(), |d| {
+        format!("{}, {} rows x {} cols", d.name, d.rows, d.cols)
+    });
+    println!(
+        "dtk skeleton (dtk {}): {} lines, {:.1}KB. Every digit is 9, every lowercase letter a, every uppercase letter A; punctuation, spacing and line breaks are kept{}.",
+        env!("CARGO_PKG_VERSION"),
+        text.lines().count(),
+        text.len() as f64 / 1024.0,
+        if opts.keep_header { ", except the first line" } else { "" }
+    );
+    println!(
+        "dtk reads this output as: {reads_as}; {}",
+        if v.applies {
+            "it would replace the output".to_string()
+        } else {
+            format!("it leaves the output alone ({})", v.reason)
+        }
+    );
+    println!("---");
+    print!("{}", dtk::skeleton::skeleton(&text, &opts));
+    0
+}
+
 /// `dtk verify`: built-in checks of the detection and the decision, then the setup checks.
 pub fn verify() -> i32 {
     let cfg = Config::default();
