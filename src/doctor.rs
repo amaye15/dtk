@@ -203,6 +203,10 @@ pub fn run() -> i32 {
             "dtk is not on the PATH of this shell: summaries use its full path in the commands they suggest",
         );
     }
+    // Other agents that are installed on this machine (dtk's hook for Claude Code is above).
+    for (tag, text) in crate::agents::status() {
+        line(tag, &text);
+    }
     let (cfg, error) = crate::config::Config::load();
     let cfg_path = crate::config::path();
     match (error, cfg_path.as_ref().is_some_and(|p| p.exists())) {

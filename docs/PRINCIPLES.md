@@ -84,6 +84,15 @@ dtk's own drill-down commands. Any error means the output passes through (fail o
 A new reader must pass the negative corpus: **no file in this repository that is not data may be
 taken for data** (`tests/digest.rs`, `tests/corpus.rs`).
 
+### 5c. Any agent, and no change to what an agent's rules read
+dtk is for any agent harness, not only Claude Code. One decision function (`hook::handle`) serves all
+of them; each agent gets a thin translation of its event and its reply (`src/harness.rs`), and
+nothing else. **Do not rewrite a command** to put dtk in front of it: the text of the command is what
+an agent's allow and deny rules read, and a rewrite can stop a deny rule from matching. Replace the
+result after the command ran. Where an agent cannot do that, give a rule or `dtk run`, and say that it
+is not automatic. **Say what was tried with the real program** and what was written from
+documentation; never claim more than the tests show. Every adapter fails open and exits with 0.
+
 ### 6. One small program
 Pure Rust, one binary, few dependencies (`serde_json`, `csv`, `sha2`, `toml`), Rust 1.80 and newer.
 It runs on macOS, Linux and Windows (CI), and installs by script, Homebrew, Scoop, winget, Cargo,

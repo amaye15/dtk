@@ -1,11 +1,14 @@
+mod agents;
 mod config;
 mod discover;
 mod doctor;
 mod explain;
+mod harness;
 mod hook;
 mod init;
 mod query;
 mod rtk;
+mod runcmd;
 
 use std::process::ExitCode;
 
@@ -28,6 +31,11 @@ usage:
   dtk verify               built-in self-test of detection and decisions, then doctor
   dtk rows|top|count|where|stats|get FILE ...
                            read more of the data behind a summary (see `dtk rows --help`)
+  dtk run [--request TEXT] -c 'CMD' | -- PROG ARGS...
+                           run a command and print its output as the hook would summarize it;
+                           for any agent that can rewrite a command (the exit code is kept)
+  dtk filter [--command CMD] [--request TEXT]
+                           the same for text on standard input: `cmd | dtk filter`
   dtk explain [FILE|-] [--command CMD] [--request TEXT] [--read] [--saved]
                            say whether dtk would summarize this output, and why
   dtk discover [--all | --since DAYS] [--limit N] [--json] [--gaps] [--dump DIR]
@@ -157,6 +165,8 @@ fn main() -> ExitCode {
         Some("doctor") => i32::from(doctor::run() > 0),
         Some("explain") => explain::explain(&args[1..]),
         Some("verify") => explain::verify(),
+        Some("run") => runcmd::run(&args[1..]),
+        Some("filter") => runcmd::filter(&args[1..]),
         Some("skeleton") => explain::skeleton(&args[1..]),
         Some("discover") => discover::run(&args[1..]),
         Some("config") => config_command(&args[1..]),

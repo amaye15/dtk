@@ -223,6 +223,23 @@ pub fn removal_hint(exe: &std::path::Path) -> String {
 }
 
 pub fn run(args: &[String]) -> i32 {
+    // Another agent: `dtk init --agent codex`.
+    if let Some(i) = args.iter().position(|a| a == "--agent") {
+        let Some(agent) = args.get(i + 1).map(String::as_str) else {
+            eprintln!("usage: dtk init --agent claude|codex|gemini|copilot|opencode|cursor|rules");
+            return 2;
+        };
+        if agent == "claude" {
+            let rest: Vec<String> = args
+                .iter()
+                .enumerate()
+                .filter(|(k, _)| *k != i && *k != i + 1)
+                .map(|(_, a)| a.clone())
+                .collect();
+            return run(&rest);
+        }
+        return crate::agents::init(agent, args);
+    }
     let uninstall = args.iter().any(|a| a == "--uninstall");
     let no_rtk = args.iter().any(|a| a == "--no-rtk");
     if !args.iter().any(|a| a == "--global") && !uninstall {
@@ -415,6 +432,13 @@ pub fn run(args: &[String]) -> i32 {
             backup.display()
         );
         println!("dtk: restart Claude Code (or start a new session) to load it");
+        // Other agents on this machine: dtk says how to connect them and does not change their
+        // configuration by itself (see docs/HARNESSES.md).
+        for (tag, text) in crate::agents::status() {
+            if tag == "--" {
+                println!("dtk: {text}");
+            }
+        }
     }
     for n in notes {
         println!("dtk: {n}");

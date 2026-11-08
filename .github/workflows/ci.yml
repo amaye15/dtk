@@ -19,6 +19,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      # The OpenCode plugin is TypeScript, and its test runs it with Node (22.18 or later).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
       # The tests that compare dtk with other tools (G4) and with the real rtk (G5) need those
       # tools. Without them the tests print SKIPPED, so they are installed here.
