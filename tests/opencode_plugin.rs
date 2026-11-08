@@ -1,7 +1,8 @@
-//! The OpenCode plugin, run with Node as OpenCode would call it (see `tests/opencode_plugin.mjs`).
+//! The OpenCode plugin and the Pi extension, run with Node as each agent would call them (see
+//! `tests/opencode_plugin.mjs` and `tests/pi_extension.mjs`).
 //!
 //! It needs Node 22.18 or later, which runs TypeScript as it is. Without it the test says so and
-//! passes: the real OpenCode is tried by `scripts/opencode-test.sh`.
+//! passes: the real OpenCode is tried by `scripts/opencode-test.sh`. Pi was not run.
 
 #![cfg(unix)]
 
@@ -10,6 +11,15 @@ use std::process::Command;
 
 #[test]
 fn the_plugin_changes_a_result_only_when_dtk_answers() {
+    run_node("opencode_plugin.mjs", 18);
+}
+
+#[test]
+fn the_pi_extension_changes_a_result_only_when_dtk_answers() {
+    run_node("pi_extension.mjs", 14);
+}
+
+fn run_node(script: &str, at_least: usize) {
     let version = Command::new("node")
         .arg("-p")
         .arg("process.features.typescript || 'no'")
@@ -26,7 +36,7 @@ fn the_plugin_changes_a_result_only_when_dtk_answers() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let out = Command::new("node")
         .arg("--no-warnings")
-        .arg(root.join("tests/opencode_plugin.mjs"))
+        .arg(root.join("tests").join(script))
         .env("DTK_BIN", env!("CARGO_BIN_EXE_dtk"))
         .env("DTK_ROOT", root)
         .env_remove("DTK_DISABLED")
@@ -39,7 +49,7 @@ fn the_plugin_changes_a_result_only_when_dtk_answers() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        text.lines().filter(|l| l.starts_with("ok")).count() >= 18,
+        text.lines().filter(|l| l.starts_with("ok")).count() >= at_least,
         "{text}"
     );
 }

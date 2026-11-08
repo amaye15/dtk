@@ -535,7 +535,8 @@ pub fn init(agent: &str, args: &[String]) -> i32 {
 }
 
 /// An agent that dtk can connect with by itself: where it keeps its files, the program that it is
-/// (when the name is one that no other program uses), and how to tell that dtk is in it.
+/// (only when no other well-known program has the same name: `kilo` is also a text editor, and
+/// `hermes` is also a JavaScript engine), and how to tell that dtk is in it.
 struct Spec {
     name: &'static str,
     dir: fn() -> Option<PathBuf>,
@@ -588,7 +589,7 @@ fn specs() -> Vec<Spec> {
         Spec {
             name: "kilo",
             dir: kilo_dir,
-            program: Some("kilo"),
+            program: None,
             registered: |d| d.join("plugin").join("dtk.ts").is_file(),
         },
         Spec {
@@ -600,7 +601,7 @@ fn specs() -> Vec<Spec> {
         Spec {
             name: "hermes",
             dir: hermes_dir,
-            program: Some("hermes"),
+            program: None,
             registered: |d| d.join("plugins").join("dtk").join("__init__.py").is_file(),
         },
     ]

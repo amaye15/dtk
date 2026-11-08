@@ -30,9 +30,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Run install.sh (Claude Code's folder exists)
+      - name: Run install.sh (the folders of Claude Code, Codex CLI and OpenCode exist)
         run: |
-          mkdir -p "$HOME/.claude"
+          mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.config/opencode"
           DTK_INSTALL_DIR="$RUNNER_TEMP/bin" sh ./install.sh
       - name: The installer registered the hook
         run: |
@@ -40,17 +40,23 @@ jobs:
           dtk doctor | tee doctor.txt
           grep -q "PostToolUse hook registered" doctor.txt
           test -f "$HOME/.claude/settings.json"
-          # running the installer again is an update: still one hook
+          # the other agents on the machine are registered too
+          grep -q 'dtk hook codex' "$HOME/.codex/hooks.json"
+          test -f "$HOME/.config/opencode/plugins/dtk.ts"
+          grep -q "codex: dtk is registered" doctor.txt
+          # running the installer again is an update: still one hook in each
           DTK_INSTALL_DIR="$RUNNER_TEMP/bin" sh ./install.sh
           test "$(grep -c 'dtk hook claude' "$HOME/.claude/settings.json")" -eq 1
-      - name: No registration without Claude Code's folder, or with DTK_NO_INIT=1
+          test "$(grep -c 'dtk hook codex' "$HOME/.codex/hooks.json")" -eq 1
+      - name: No registration without any agent's folder, or with DTK_NO_INIT=1
         run: |
           for mode in nofolder noinit; do
             h="$RUNNER_TEMP/home-$mode"; mkdir -p "$h"
-            [ "$mode" = noinit ] && mkdir -p "$h/.claude"
+            [ "$mode" = noinit ] && mkdir -p "$h/.claude" "$h/.codex"
             if [ "$mode" = noinit ]; then export DTK_NO_INIT=1; else unset DTK_NO_INIT; fi
             HOME="$h" DTK_INSTALL_DIR="$RUNNER_TEMP/bin-$mode" sh ./install.sh
             test ! -e "$h/.claude/settings.json"
+            test ! -e "$h/.codex/hooks.json"
             [ "$mode" = noinit ] || test ! -e "$h/.claude"
           done
       - name: Check the result
@@ -74,10 +80,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run install.ps1 (Claude Code's folder exists)
+      - name: Run install.ps1 (the folders of Claude Code and Codex CLI exist)
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.claude') | Out-Null
+          New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.codex') | Out-Null
           $env:DTK_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'bin'
           ./install.ps1
       - name: The installer registered the hook
@@ -88,17 +95,20 @@ jobs:
           Write-Host $out
           if ($out -notmatch 'PostToolUse hook registered') { exit 1 }
           if (-not (Test-Path (Join-Path $env:USERPROFILE '.claude\settings.json'))) { exit 1 }
+          if (-not (Select-String -Path (Join-Path $env:USERPROFILE '.codex\hooks.json') -Pattern 'hook codex' -Quiet)) { Write-Host 'Codex has no dtk hook'; exit 1 }
           exit 0
       - name: No registration with DTK_NO_INIT=1
         shell: pwsh
         run: |
           $h = Join-Path $env:RUNNER_TEMP 'home-noinit'
           New-Item -ItemType Directory -Force (Join-Path $h '.claude') | Out-Null
+          New-Item -ItemType Directory -Force (Join-Path $h '.codex') | Out-Null
           $env:USERPROFILE = $h
           $env:DTK_NO_INIT = '1'
           $env:DTK_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'bin-noinit'
           ./install.ps1
           if (Test-Path (Join-Path $h '.claude\settings.json')) { Write-Host 'settings.json was written'; exit 1 }
+          if (Test-Path (Join-Path $h '.codex\hooks.json')) { Write-Host 'hooks.json was written'; exit 1 }
           exit 0
       - name: Check the result
         shell: pwsh

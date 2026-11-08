@@ -256,8 +256,13 @@ pub fn run(args: &[String]) -> i32 {
     };
     let claude_here = crate::hook::home().is_some_and(|h| h.join(".claude").is_dir());
     let mut code = 0;
-    if uninstall || claude_here || others.is_empty() {
+    if uninstall || claude_here {
         code = run_claude(args);
+    } else if others.is_empty() {
+        println!(
+            "dtk: no agent was found on this machine (no ~/.claude, ~/.codex, ~/.gemini, ... folder). Install one, then run: dtk init --global"
+        );
+        return 0;
     } else {
         println!("dtk: Claude Code was not found (no ~/.claude folder), so it is left out");
     }

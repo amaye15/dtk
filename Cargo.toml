@@ -1,9 +1,9 @@
 [package]
 name = "dtk"
-version = "0.21.0"
+version = "0.22.0"
 edition = "2021"
 rust-version = "1.80"
-description = "Data token killer: a hook for Claude Code, Codex, Gemini CLI, Copilot CLI and OpenCode (and `dtk run` for any agent) that turns big tables, CSV, JSON and logs in tool output into lean summaries. Works with rtk."
+description = "Data token killer: one command (dtk init --global) connects Claude Code, Codex, Gemini CLI, Copilot CLI, Vibe, OpenCode, Kilo Code, Pi and Hermes (and `dtk run` serves any agent). It turns big tables, CSV, JSON and logs in tool output into lean summaries. Works with rtk."
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/amaye15/dtk"
@@ -17,7 +17,7 @@ maintainer = "amaye15 <amaye15@users.noreply.github.com>"
 copyright = "2026, dtk contributors"
 license-file = ["LICENSE-MIT", "0"]
 extended-description = """\
-dtk is a hook for Claude Code, Codex, Gemini CLI, Copilot CLI and OpenCode. It finds big tables in command output (CSV, JSON, JSON lines, \
+dtk is a hook for Claude Code, Codex, Gemini CLI, Copilot CLI, Vibe, OpenCode, Kilo Code, Pi and Hermes. It finds big tables in command output (CSV, JSON, JSON lines, \
 logfmt, access logs, polars and psql tables) and replaces them with a short summary that \
 covers every row. It works with rtk."""
 section = "utils"

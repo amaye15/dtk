@@ -40,7 +40,7 @@ The cause is in view: the package was removed, and `/usr/bin/dtk` was still ther
 curl -fsSL https://raw.githubusercontent.com/amaye15/dtk/main/install.sh | sh
 ```
 
-That is all: the installer registers the hook in `~/.claude/settings.json` (with a backup) and chains it to rtk when rtk is installed. Set `DTK_NO_INIT=1` to install without registering. With Homebrew, Scoop, Cargo or a package, register once with `dtk init --global`; `dtk verify` checks detection, the hook and rtk.
+That is all: the installer runs `dtk init --global`. It registers dtk with Claude Code (in `~/.claude/settings.json`, chained to rtk when rtk is installed) and with every other agent that it finds on the machine: Codex CLI, Gemini CLI, Copilot CLI, Mistral Vibe, OpenCode, Kilo Code, Pi and Hermes. Each file that dtk changes keeps the settings that were in it, and a backup is made. Set `DTK_NO_INIT=1` to install without registering. With Homebrew, Scoop, Cargo or a package, register once with `dtk init --global`; `dtk verify` checks detection, the hook and rtk, and `dtk doctor` says which agents have dtk.
 
 Start a new Claude Code session (hooks load at start). To see what dtk would do first, run `dtk discover` (reads your history, changes nothing) or `dtk mode shadow`.
 
@@ -114,15 +114,16 @@ Up to 60 rows become CSV and nothing is dropped, when that is clearly smaller th
 
 ## Works with other agents
 
-The same decision serves any agent that can replace a tool's result after it ran, or that can run a command. `dtk init --agent NAME` connects one; `dtk doctor` says which installed agents have dtk.
+The same decision serves any agent that can replace a tool's result after it ran, or that can run a command. **`dtk init --global` connects Claude Code and every one of these agents that it finds on the machine** (the folder of the agent, such as `~/.codex`, or for the best-known ones its program on the `PATH`), in one step, and `dtk init --uninstall` takes dtk out of all of them. `dtk init --agent NAME` does one agent, `--claude-only` keeps to Claude Code, and `dtk doctor` says which agents have dtk. They work beside rtk: in these agents rtk only has hooks that run before a tool (it rewrites the command), and dtk's run after it, so the two never meet; dtk reads the full copy that rtk saved when rtk cut an output (tried with the real rtk for each adapter).
 
 | Agent | How | Automatic | Tried with the real program |
 |---|---|---|---|
-| Claude Code | hook (`dtk init --global`) | yes | yes |
-| OpenCode | plugin (`dtk init --agent opencode`) | yes | yes (1.18.29; 2.x not tried) |
-| Codex CLI, Gemini CLI, Copilot CLI | hook (`dtk init --agent codex`, `gemini`, `copilot`) | yes | no: written from each one's documentation, and tested with payloads written as that says |
+| Claude Code | hook | yes | yes |
+| OpenCode | plugin | yes | yes (1.18.29; 2.x not tried) |
+| Codex CLI, Gemini CLI, Copilot CLI, Mistral Vibe | hook | yes | no: written from each one's documentation, and tested with payloads written as that says |
+| Kilo Code (a fork of OpenCode), Pi, Hermes | plugin or extension | yes | no: written from the documentation; the code of the Pi extension and the Hermes plugin is run with Node and Python as each agent calls it |
 | Cursor | a rule file (`dtk init --agent cursor`) | no: Cursor's hooks cannot replace a shell output | not applicable |
-| Any other | `dtk run -c 'CMD'`, `CMD \| dtk filter`, or a rule in `AGENTS.md` (`dtk init --agent rules`) | by rule | not applicable |
+| Any other (Cline, Windsurf, Droid, ...) | `dtk run -c 'CMD'`, `CMD \| dtk filter`, or a rule in `AGENTS.md` (`dtk init --agent rules`) | by rule | not applicable |
 
 dtk does not rewrite a command by itself: that would change the text that an agent's allow and deny rules read. [docs/HARNESSES.md](docs/HARNESSES.md) has the reasons, each agent's steps, and what is and is not tried.
 
@@ -143,7 +144,8 @@ All of this is tested against the real rtk binary (`tests/rtk_real.rs`, `tests/r
 
 | Command | Effect |
 |---|---|
-| `dtk init --global [--no-rtk]`, `dtk init --uninstall [--purge]` | Register or remove the hook. `--purge` also deletes dtk's data and config. |
+| `dtk init --global [--no-rtk] [--claude-only]`, `dtk init --uninstall [--purge]` | Register dtk with Claude Code and every other agent found, or remove it from all. `--purge` also deletes dtk's data and config. |
+| `dtk init --agent NAME [--uninstall]` | One agent: `claude`, `codex`, `gemini`, `copilot`, `vibe`, `opencode`, `kilo`, `pi`, `hermes`, `cursor`, `rules`. |
 | `dtk mode shadow`, `dtk mode live` | Shadow decides and logs but changes no output. Live replaces output (the default). |
 | `dtk doctor`, `dtk verify` | Check the setup. `verify` also runs built-in checks of every format. They exit 1 on a warning. |
 | `dtk explain FILE --command CMD` | Say whether dtk would summarize this output, and why. |

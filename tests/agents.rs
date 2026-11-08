@@ -521,14 +521,15 @@ fn init_global_does_not_make_the_folder_of_claude_code_on_a_machine_that_has_onl
     assert!(fs::read_to_string(h.join(".codex/hooks.json"))
         .unwrap()
         .contains("hook codex"));
-    // A machine with no agent at all gets what it always got: the hook of Claude Code.
+    // A machine with no agent at all: nothing is made, and it says what to do.
     let h2 = std::env::temp_dir().join(format!("dtk-agents-none-{}", std::process::id()));
     let _ = fs::remove_dir_all(&h2);
     fs::create_dir_all(&h2).unwrap();
     let h2 = h2.canonicalize().unwrap();
     let o = dtk(&h2, &h2, &["init", "--global"]);
     assert_eq!(o.status.code(), Some(0));
-    assert!(h2.join(".claude/settings.json").exists());
+    assert!(!h2.join(".claude").exists());
+    assert!(String::from_utf8_lossy(&o.stdout).contains("no agent was found"));
 }
 
 #[test]
