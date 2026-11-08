@@ -6,7 +6,7 @@
 
 **Big tables, logs and JSON in command output cost tokens and bury the answer. `dtk` swaps them for a short summary of every row. The full data stays on disk.**
 
-A [Claude Code](https://claude.com/claude-code) hook. One Rust binary (about 1.1 MB, no runtime dependencies) that works with [rtk](https://github.com/rtk-ai/rtk).
+A hook for [Claude Code](https://claude.com/claude-code), and for other agents too ([see below](#works-with-other-agents)). One Rust binary (about 1.1 MB, no runtime dependencies) that works with [rtk](https://github.com/rtk-ai/rtk).
 
 ## Example
 
@@ -111,6 +111,20 @@ Up to 60 rows become CSV and nothing is dropped, when that is clearly smaller th
 - output that rtk cut when rtk's saved copy of it cannot be read (`... (N lines truncated)`): a summary would claim rows that are missing. When the copy can be read, dtk summarizes that (see below)
 - a JSON document that an MCP tool returns: the model asked a server for those values, so only tables are summarized there
 - commands listed in `exclude_commands`; for an MCP tool the name is the tool name (`^mcp__github__`)
+
+## Works with other agents
+
+The same decision serves any agent that can replace a tool's result after it ran, or that can run a command. `dtk init --agent NAME` connects one; `dtk doctor` says which installed agents have dtk.
+
+| Agent | How | Automatic | Tried with the real program |
+|---|---|---|---|
+| Claude Code | hook (`dtk init --global`) | yes | yes |
+| OpenCode | plugin (`dtk init --agent opencode`) | yes | yes (1.18.29; 2.x not tried) |
+| Codex CLI, Gemini CLI, Copilot CLI | hook (`dtk init --agent codex`, `gemini`, `copilot`) | yes | no: written from each one's documentation, and tested with payloads written as that says |
+| Cursor | a rule file (`dtk init --agent cursor`) | no: Cursor's hooks cannot replace a shell output | not applicable |
+| Any other | `dtk run -c 'CMD'`, `CMD \| dtk filter`, or a rule in `AGENTS.md` (`dtk init --agent rules`) | by rule | not applicable |
+
+dtk does not rewrite a command by itself: that would change the text that an agent's allow and deny rules read. [docs/HARNESSES.md](docs/HARNESSES.md) has the reasons, each agent's steps, and what is and is not tried.
 
 ## Works with rtk
 

@@ -357,8 +357,12 @@ fn save_data(ctx: &mut Ctx, t: &Table, text: &str, persisted: Option<&Path>, wri
 
 /// `dtk hook claude [--then CMD ARGS...]`
 pub fn run(args: &[String]) -> i32 {
+    // Another agent: its own event and its own reply (see `harness`).
+    if let Some(agent) = args.first().and_then(|a| crate::harness::Agent::parse(a)) {
+        return crate::harness::run(agent);
+    }
     if args.first().map(String::as_str) != Some("claude") {
-        eprintln!("usage: dtk hook claude [--then CMD ARGS...]");
+        eprintln!("usage: dtk hook claude|codex|gemini|copilot|opencode [--then CMD ARGS...]");
         return 0;
     }
     let then: Vec<String> = match args.iter().position(|a| a == "--then") {
@@ -454,7 +458,7 @@ fn run_chain(argv: &[String], input: &[u8]) -> i32 {
 }
 
 /// The decision for one event. Returns the JSON to print, or `None` to leave the output alone.
-fn handle(input: &str) -> Option<String> {
+pub(crate) fn handle(input: &str) -> Option<String> {
     if std::env::var("DTK_DISABLED")
         .map(|v| v == "1")
         .unwrap_or(false)
@@ -537,7 +541,7 @@ fn handle_mcp(ev: &Value, name: &str) -> Option<String> {
 
 /// Commands that ask for specific rows must get them, not a summary of them.
 /// Is this PostToolUse event the result of one of dtk's own commands?
-fn is_dtk_query_event(event: &str) -> bool {
+pub(crate) fn is_dtk_query_event(event: &str) -> bool {
     let Ok(ev) = serde_json::from_str::<Value>(event) else {
         return false;
     };

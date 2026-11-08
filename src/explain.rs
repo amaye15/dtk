@@ -647,6 +647,49 @@ pub fn verify() -> i32 {
             && ask(&dtk::request::keys(&["nothing matches qqzzxx"])) == plain,
         &with_request,
     );
+    // The other agents: the event that each documents goes in, and the reply that each documents
+    // comes out. No decision is made here, so nothing is written.
+    {
+        use crate::harness::{roundtrip, Agent};
+        let csv = "id,name\n1,a\n2,b\n";
+        let shown = "[dtk] csv: 2 rows";
+        let cases: [(Agent, serde_json::Value, serde_json::Value); 4] = [
+            (
+                Agent::Codex,
+                serde_json::json!({"hook_event_name": "PostToolUse", "tool_name": "Bash",
+                    "tool_input": {"command": "cat a.csv"}, "tool_response": csv}),
+                serde_json::json!({"decision": "block", "reason": shown}),
+            ),
+            (
+                Agent::Gemini,
+                serde_json::json!({"hook_event_name": "AfterTool", "tool_name": "run_shell_command",
+                    "tool_input": {"command": "cat a.csv"},
+                    "tool_response": {"llmContent": format!("Command: cat a.csv\nOutput: {csv}\nError: (none)\nExit Code: 0")}}),
+                serde_json::json!({"decision": "deny", "reason": format!("Command: cat a.csv\nOutput: {shown}\nError: (none)\nExit Code: 0")}),
+            ),
+            (
+                Agent::Copilot,
+                serde_json::json!({"toolName": "bash", "toolArgs": {"command": "cat a.csv"},
+                    "toolResult": {"resultType": "success", "textResultForLlm": csv}}),
+                serde_json::json!({"modifiedResult": {"resultType": "success", "textResultForLlm": shown}}),
+            ),
+            (
+                Agent::OpenCode,
+                serde_json::json!({"tool": "bash", "args": {"command": "cat a.csv"}, "output": {"output": csv}}),
+                serde_json::json!({"output": shown}),
+            ),
+        ];
+        for (agent, event, want) in cases {
+            let got = roundtrip(agent, &event.to_string(), shown);
+            t.check(
+                &format!("understands the {agent:?} event and answers as {agent:?} documents"),
+                got.as_ref().is_some_and(|(cmd, text, reply)| {
+                    cmd == "cat a.csv" && text.trim_end() == csv.trim_end() && *reply == want
+                }),
+                &format!("{got:?}"),
+            );
+        }
+    }
     // A long build log becomes a digest, and a fetched web page becomes its text.
     let mut build = String::new();
     for i in 0..500 {
