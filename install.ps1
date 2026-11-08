@@ -81,22 +81,21 @@ try {
       Info "$dest is not on your PATH. Add it with: [Environment]::SetEnvironmentVariable('PATH', `"`$([Environment]::GetEnvironmentVariable('PATH','User'));$dest`", 'User')   (or rerun with DTK_ADD_TO_PATH=1)"
     }
   }
-  # Register the hook, so that nothing is left to do. Skip with DTK_NO_INIT=1. Claude Code must
-  # be there (its folder exists): dtk init writes into settings.json there and keeps a backup.
+  # Register dtk, so that nothing is left to do. Skip with DTK_NO_INIT=1. dtk init connects Claude
+  # Code and every other agent that it finds (Codex CLI, Gemini CLI, Copilot CLI, OpenCode, Kilo
+  # Code, Pi, Hermes, Mistral Vibe), keeps the settings that are there, and keeps a backup. With
+  # no agent on the machine it changes nothing and says so.
   $dtkExe = Join-Path $dest 'dtk.exe'
-  $claude = Join-Path $env:USERPROFILE '.claude'
   if ($env:DTK_NO_INIT -eq '1') {
-    Info 'DTK_NO_INIT=1 is set: the hook is not registered. When you want it: dtk init --global'
-  } elseif (Test-Path $claude) {
-    Info 'registering the hook in ~\.claude\settings.json (a backup is kept; undo with: dtk init --uninstall)'
+    Info 'DTK_NO_INIT=1 is set: dtk is not registered. When you want it: dtk init --global'
+  } else {
+    Info 'registering dtk with the agents on this machine (backups are kept; undo with: dtk init --uninstall)'
     & $dtkExe init --global
     if ($LASTEXITCODE -eq 0) {
-      Info 'done. Start a new Claude Code session; check the setup with: dtk verify'
+      Info 'done. Start a new session in each agent; check the setup with: dtk verify'
     } else {
-      Info "could not register the hook. Run it yourself and read its message: $dtkExe init --global"
+      Info "could not register dtk with every agent. Read the message above, or run: $dtkExe init --global"
     }
-  } else {
-    Info "Claude Code's folder (~\.claude) was not found. After you install Claude Code, run: dtk init --global"
   }
 } finally {
   Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

@@ -385,3 +385,90 @@ fn a_wrapped_frame_that_the_real_rtk_cut_is_read_whole() {
         "the row in the middle that rtk cut"
     );
 }
+
+/// The same output that the real rtk cut, handed to dtk by each of the other agents in its own
+/// event. rtk cuts the output no matter which agent runs the command, and dtk reads rtk's saved
+/// copy no matter which agent asks, so the digest must cover the lines that rtk cut in all of them.
+#[test]
+fn a_log_that_the_real_rtk_cut_is_digested_whole_for_every_agent() {
+    need_rtk!();
+    use std::io::Write;
+    let home = workdir("every-agent");
+    let log = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/corpus/logs/pytest_260_tests_4_failures.log");
+    let (shown, path) = cut_by_rtk(&home, &log);
+    let command = "uv run pytest -v";
+    let gemini_llm = format!(
+        "Command: {command}\nDirectory: (root)\nOutput: {shown}\nError: (none)\nExit Code: 0"
+    );
+    let cases = [
+        (
+            "codex",
+            serde_json::json!({"hook_event_name": "PostToolUse", "tool_name": "Bash",
+                "tool_input": {"command": command}, "tool_response": shown}),
+            "reason",
+        ),
+        (
+            "gemini",
+            serde_json::json!({"hook_event_name": "AfterTool", "tool_name": "run_shell_command",
+                "tool_input": {"command": command}, "tool_response": {"llmContent": gemini_llm}}),
+            "reason",
+        ),
+        (
+            "copilot",
+            serde_json::json!({"toolName": "bash", "toolArgs": {"command": command},
+                "toolResult": {"resultType": "success", "textResultForLlm": shown}}),
+            "modifiedResult",
+        ),
+        (
+            "vibe",
+            serde_json::json!({"hook_event_name": "post_tool", "tool_name": "bash",
+                "tool_input": {"command": command}, "tool_status": "success",
+                "tool_output": {"stdout": shown, "stderr": "", "returncode": 0},
+                "tool_output_text": shown}),
+            "reason",
+        ),
+        (
+            "opencode",
+            serde_json::json!({"tool": "bash", "args": {"command": command},
+                "output": {"output": shown}}),
+            "output",
+        ),
+        (
+            "plugin",
+            serde_json::json!({"tool": "bash", "args": {"command": command},
+                "output": {"output": shown}}),
+            "output",
+        ),
+    ];
+    for (agent, event, key) in cases {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_dtk"));
+        c.args(["hook", agent]).env("PATH", &path);
+        with_home(&mut c, &home);
+        let mut child = c
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(event.to_string().as_bytes())
+            .unwrap();
+        let out = String::from_utf8_lossy(&child.wait_with_output().unwrap().stdout).to_string();
+        let v: serde_json::Value =
+            serde_json::from_str(&out).unwrap_or_else(|_| panic!("{agent} answered: {out:?}"));
+        let s = match key {
+            "modifiedResult" => v["modifiedResult"]["textResultForLlm"].as_str(),
+            k => v[k].as_str(),
+        }
+        .unwrap_or_else(|| panic!("{agent}: no text in {v}"));
+        assert!(s.contains("[dtk] log digest"), "{agent}: {s}");
+        assert!(
+            s.contains("AssertionError: order 13: total 40 does not match 39"),
+            "{agent}: the digest covers the lines that rtk cut: {s}"
+        );
+    }
+}

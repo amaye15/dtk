@@ -25,6 +25,8 @@ fn dtk(home: &Path, cwd: &Path, args: &[&str]) -> Output {
         .env("USERPROFILE", home)
         .env_remove("CODEX_HOME")
         .env_remove("COPILOT_HOME")
+        .env_remove("HERMES_HOME")
+        .env_remove("VIBE_HOME")
         .env_remove("XDG_CONFIG_HOME")
         .env("PATH", "/usr/bin:/bin")
         .output()
@@ -235,6 +237,7 @@ fn an_unknown_agent_is_refused_and_claude_still_goes_the_old_way() {
     let o = dtk(&h, &h, &["init", "--agent", "nosuchagent"]);
     assert_eq!(o.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&o.stderr).contains("known: claude, codex"));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("vibe, opencode, kilo, pi, hermes"));
     let o = dtk(&h, &h, &["init", "--agent"]);
     assert_eq!(o.status.code(), Some(2));
     // `--agent claude --global` is `--global`.
@@ -256,7 +259,7 @@ fn doctor_names_an_installed_agent_that_dtk_is_or_is_not_registered_with() {
     let before = said(&h);
     assert!(
         before.contains(
-            "codex is installed, and dtk is not registered with it. Run: dtk init --agent codex"
+            "codex is installed, and dtk is not registered with it. Run: dtk init --global"
         ),
         "{before}"
     );
@@ -270,4 +273,279 @@ fn doctor_names_an_installed_agent_that_dtk_is_or_is_not_registered_with() {
         "{}",
         said(&h)
     );
+}
+
+// ---- more agents: a managed block, a plugin or an extension -----------------------------------------
+
+#[test]
+fn vibe_gets_a_block_in_its_hooks_file_beside_the_hooks_that_are_there() {
+    let h = home("vibe");
+    fs::create_dir_all(h.join(".vibe")).unwrap();
+    let before = "[[hooks]]\nname = \"audit\"\ntype = \"pre_tool\"\ncommand = \"./audit.sh\"\n";
+    fs::write(h.join(".vibe/hooks.toml"), before).unwrap();
+    let o = dtk(&h, &h, &["init", "--agent", "vibe"]);
+    assert_eq!(
+        o.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let text = fs::read_to_string(h.join(".vibe/hooks.toml")).unwrap();
+    assert!(text.starts_with(before), "{text}");
+    assert!(text.contains("type = \"post_tool\""), "{text}");
+    assert!(text.contains("match = \"bash\""), "{text}");
+    assert!(text.contains("hook vibe\""), "{text}");
+    assert_eq!(text.matches("[[hooks]]").count(), 2, "{text}");
+    assert_eq!(
+        fs::read_to_string(h.join(".vibe/hooks.toml.dtk-backup")).unwrap(),
+        before
+    );
+    // Twice is once. Out: the file is as it was.
+    dtk(&h, &h, &["init", "--agent", "vibe"]);
+    assert_eq!(
+        fs::read_to_string(h.join(".vibe/hooks.toml")).unwrap(),
+        text
+    );
+    dtk(&h, &h, &["init", "--agent", "vibe", "--uninstall"]);
+    assert_eq!(
+        fs::read_to_string(h.join(".vibe/hooks.toml")).unwrap(),
+        before
+    );
+}
+
+#[test]
+fn kilo_pi_and_hermes_get_their_files_and_uninstall_takes_them_away() {
+    let h = home("kilo-pi-hermes");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("integrations");
+    let same = |a: &Path, b: &str| {
+        assert_eq!(
+            fs::read_to_string(a).unwrap(),
+            fs::read_to_string(root.join(b)).unwrap(),
+            "{}",
+            a.display()
+        )
+    };
+    for agent in ["kilo", "pi", "hermes"] {
+        let o = dtk(&h, &h, &["init", "--agent", agent]);
+        assert_eq!(
+            o.status.code(),
+            Some(0),
+            "{agent}: {}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+    }
+    // Kilo Code is a fork of OpenCode and runs the same plugin.
+    same(&h.join(".config/kilo/plugin/dtk.ts"), "opencode/dtk.ts");
+    same(&h.join(".pi/agent/extensions/dtk.ts"), "pi/dtk.ts");
+    same(
+        &h.join(".hermes/plugins/dtk/__init__.py"),
+        "hermes/__init__.py",
+    );
+    same(
+        &h.join(".hermes/plugins/dtk/plugin.yaml"),
+        "hermes/plugin.yaml",
+    );
+    // Hermes loads a plugin only after it is enabled, and the message says how.
+    let o = dtk(&h, &h, &["init", "--agent", "hermes"]);
+    assert!(
+        String::from_utf8_lossy(&o.stderr).contains("hermes plugins enable dtk"),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    for agent in ["kilo", "pi", "hermes"] {
+        dtk(&h, &h, &["init", "--agent", agent, "--uninstall"]);
+    }
+    assert!(!h.join(".config/kilo/plugin/dtk.ts").exists());
+    assert!(!h.join(".pi/agent/extensions/dtk.ts").exists());
+    assert!(!h.join(".hermes/plugins/dtk").exists());
+}
+
+// ---- `dtk init --global`: Claude Code and every other agent that is there -----------------------------
+
+/// A machine with Codex (and a memory tool's hooks), Gemini CLI (and its settings), OpenCode, Pi,
+/// Hermes and Mistral Vibe (and a hook of its own). There is no Copilot CLI and no Kilo Code.
+fn busy_machine(name: &str) -> (PathBuf, Vec<(PathBuf, String)>) {
+    let h = home(name);
+    let mut originals = Vec::new();
+    let mut put = |rel: &str, text: String| {
+        let p = h.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(&p, &text).unwrap();
+        originals.push((p, text));
+    };
+    put(
+        ".codex/hooks.json",
+        serde_json::to_string_pretty(&remem_codex_hooks()).unwrap(),
+    );
+    put(
+        ".gemini/settings.json",
+        json!({"theme": "dark", "hooks": {"BeforeTool": [{"matcher": "write_file",
+            "hooks": [{"type": "command", "command": "./audit.sh"}]}]}})
+        .to_string(),
+    );
+    put(
+        ".vibe/hooks.toml",
+        "[[hooks]]\nname = \"audit\"\ntype = \"pre_tool\"\ncommand = \"./audit.sh\"\n".into(),
+    );
+    fs::create_dir_all(h.join(".config/opencode")).unwrap();
+    fs::create_dir_all(h.join(".pi/agent")).unwrap();
+    fs::create_dir_all(h.join(".hermes")).unwrap();
+    (h, originals)
+}
+
+#[test]
+fn init_global_connects_every_agent_that_is_there_and_only_those() {
+    let (h, originals) = busy_machine("global");
+    let o = dtk(&h, &h, &["init", "--global"]);
+    let said = String::from_utf8_lossy(&o.stderr).to_string() + &String::from_utf8_lossy(&o.stdout);
+    assert_eq!(o.status.code(), Some(0), "{said}");
+    assert!(
+        said.contains("other agents found: codex, gemini, vibe, opencode, pi, hermes"),
+        "{said}"
+    );
+    // Claude Code, as it always was.
+    assert!(fs::read_to_string(h.join(".claude/settings.json"))
+        .unwrap()
+        .contains("hook claude"));
+    // Codex and Gemini keep what they had.
+    let codex = json_of(&h.join(".codex/hooks.json"));
+    assert_eq!(codex["hooks"]["Stop"], remem_codex_hooks()["hooks"]["Stop"]);
+    assert!(codex["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+        .as_str()
+        .unwrap()
+        .ends_with("hook codex"));
+    let gemini = json_of(&h.join(".gemini/settings.json"));
+    assert_eq!(gemini["theme"], "dark");
+    assert_eq!(
+        gemini["hooks"]["AfterTool"][0]["matcher"],
+        "run_shell_command|mcp_.*"
+    );
+    let vibe = fs::read_to_string(h.join(".vibe/hooks.toml")).unwrap();
+    assert!(
+        vibe.contains("name = \"audit\"") && vibe.contains("name = \"dtk\""),
+        "{vibe}"
+    );
+    assert!(h.join(".config/opencode/plugins/dtk.ts").is_file());
+    assert!(h.join(".pi/agent/extensions/dtk.ts").is_file());
+    assert!(h.join(".hermes/plugins/dtk/__init__.py").is_file());
+    // Not there, so nothing is made for them.
+    assert!(!h.join(".copilot").exists(), "no Copilot CLI here");
+    assert!(!h.join(".config/kilo").exists(), "no Kilo Code here");
+
+    // Again: every file is as it was.
+    let snapshot = |h: &Path| -> Vec<(String, String)> {
+        let mut v = Vec::new();
+        for rel in [
+            ".codex/hooks.json",
+            ".gemini/settings.json",
+            ".vibe/hooks.toml",
+            ".config/opencode/plugins/dtk.ts",
+            ".pi/agent/extensions/dtk.ts",
+            ".hermes/plugins/dtk/__init__.py",
+            ".hermes/plugins/dtk/plugin.yaml",
+            ".claude/settings.json",
+        ] {
+            v.push((rel.to_string(), fs::read_to_string(h.join(rel)).unwrap()));
+        }
+        v
+    };
+    let once = snapshot(&h);
+    let o = dtk(&h, &h, &["init", "--global"]);
+    assert_eq!(o.status.code(), Some(0));
+    assert_eq!(snapshot(&h), once, "twice is once");
+
+    // `doctor` sees dtk in each of them.
+    let doctor = String::from_utf8_lossy(&dtk(&h, &h, &["doctor"]).stdout).to_string();
+    for agent in ["codex", "gemini", "vibe", "opencode", "pi", "hermes"] {
+        assert!(
+            doctor.contains(&format!("{agent}: dtk is registered")),
+            "{doctor}"
+        );
+    }
+
+    // Out: every file that was there is as it was, and the files that dtk made are gone.
+    let o = dtk(&h, &h, &["init", "--uninstall"]);
+    assert_eq!(o.status.code(), Some(0));
+    for (p, text) in &originals {
+        let now: Value =
+            serde_json::from_str(&fs::read_to_string(p).unwrap_or_default()).unwrap_or(Value::Null);
+        let was: Value = serde_json::from_str(text).unwrap_or(Value::Null);
+        if was.is_null() {
+            assert_eq!(&fs::read_to_string(p).unwrap(), text, "{}", p.display());
+        } else {
+            assert_eq!(now, was, "{}", p.display());
+        }
+    }
+    assert!(!h.join(".config/opencode/plugins/dtk.ts").exists());
+    assert!(!h.join(".pi/agent/extensions/dtk.ts").exists());
+    assert!(!h.join(".hermes/plugins/dtk").exists());
+}
+
+#[test]
+fn init_global_can_keep_to_claude_code() {
+    let (h, _) = busy_machine("claude-only");
+    let o = dtk(&h, &h, &["init", "--global", "--claude-only"]);
+    let said = String::from_utf8_lossy(&o.stdout).to_string();
+    assert_eq!(o.status.code(), Some(0), "{said}");
+    assert!(h.join(".claude/settings.json").exists());
+    assert!(!h.join(".config/opencode/plugins/dtk.ts").exists());
+    assert!(!fs::read_to_string(h.join(".codex/hooks.json"))
+        .unwrap()
+        .contains("hook codex"));
+    // It still says which agents have no dtk, and how to change that.
+    assert!(
+        said.contains(
+            "codex is installed, and dtk is not registered with it. Run: dtk init --global"
+        ),
+        "{said}"
+    );
+}
+
+#[test]
+fn init_global_does_not_make_the_folder_of_claude_code_on_a_machine_that_has_only_other_agents() {
+    let h = std::env::temp_dir().join(format!("dtk-agents-nocc-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&h);
+    fs::create_dir_all(h.join(".codex")).unwrap();
+    let h = h.canonicalize().unwrap();
+    let o = dtk(&h, &h, &["init", "--global"]);
+    assert_eq!(
+        o.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    assert!(
+        !h.join(".claude").exists(),
+        "Claude Code is not here, so no folder is made for it"
+    );
+    assert!(fs::read_to_string(h.join(".codex/hooks.json"))
+        .unwrap()
+        .contains("hook codex"));
+    // A machine with no agent at all: nothing is made, and it says what to do.
+    let h2 = std::env::temp_dir().join(format!("dtk-agents-none-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&h2);
+    fs::create_dir_all(&h2).unwrap();
+    let h2 = h2.canonicalize().unwrap();
+    let o = dtk(&h2, &h2, &["init", "--global"]);
+    assert_eq!(o.status.code(), Some(0));
+    assert!(!h2.join(".claude").exists());
+    assert!(String::from_utf8_lossy(&o.stdout).contains("no agent was found"));
+}
+
+#[test]
+fn one_agent_that_cannot_be_changed_does_not_stop_the_others() {
+    let (h, _) = busy_machine("broken");
+    fs::write(h.join(".gemini/settings.json"), "{ not json").unwrap();
+    let o = dtk(&h, &h, &["init", "--global"]);
+    assert_eq!(o.status.code(), Some(1), "the broken file is reported");
+    assert_eq!(
+        fs::read_to_string(h.join(".gemini/settings.json")).unwrap(),
+        "{ not json",
+        "and not touched"
+    );
+    assert!(fs::read_to_string(h.join(".codex/hooks.json"))
+        .unwrap()
+        .contains("hook codex"));
+    assert!(h.join(".pi/agent/extensions/dtk.ts").is_file());
+    assert!(h.join(".claude/settings.json").exists());
 }

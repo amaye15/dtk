@@ -5,9 +5,17 @@
 //! | `codex` | `~/.codex/hooks.json` (or `$CODEX_HOME`) | `PostToolUse` hook |
 //! | `gemini` | `~/.gemini/settings.json` | `AfterTool` hook |
 //! | `copilot` | `~/.copilot/hooks/dtk.json` (or `$COPILOT_HOME`) | `postToolUse` hook |
+//! | `vibe` | `~/.vibe/hooks.toml` (or `$VIBE_HOME`) | a `post_tool` hook, in a block that dtk manages |
 //! | `opencode` | `~/.config/opencode/plugins/dtk.ts` | a plugin, `tool.execute.after` |
+//! | `kilo` | `~/.config/kilo/plugin/dtk.ts` | the same plugin (Kilo Code is a fork of OpenCode) |
+//! | `pi` | `~/.pi/agent/extensions/dtk.ts` | an extension, `tool_result` |
+//! | `hermes` | `~/.hermes/plugins/dtk/` (or `$HERMES_HOME`) | a plugin, `transform_tool_result` |
 //! | `cursor` | `.cursor/rules/dtk.mdc` in this folder | a rule: Cursor's hooks cannot replace output |
 //! | `rules` | a managed block in `AGENTS.md` (or `--file PATH`) | a rule, for any agent that reads one |
+//!
+//! `dtk init --global` runs this for every agent of the list that it finds on the machine (see
+//! `found`), after it has done Claude Code. rtk needs nothing here: in these agents rtk only has
+//! hooks that run before a tool, and dtk's run after it, so the two never meet.
 //!
 //! A file that already holds other hooks keeps them: dtk's entry is added next to them, a backup
 //! of the file is made once, and running the command again changes nothing. `--uninstall` takes
@@ -19,9 +27,27 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const OPENCODE_PLUGIN: &str = include_str!("../integrations/opencode/dtk.ts");
+const PI_EXTENSION: &str = include_str!("../integrations/pi/dtk.ts");
+const HERMES_PLUGIN: &str = include_str!("../integrations/hermes/__init__.py");
+const HERMES_MANIFEST: &str = include_str!("../integrations/hermes/plugin.yaml");
+
+/// The two lines that mark a block of text that dtk manages inside a file of the user.
+#[derive(Clone, Copy)]
+struct Marks {
+    start: &'static str,
+    end: &'static str,
+}
 
 const BLOCK_START: &str = "<!-- dtk:start -->";
 const BLOCK_END: &str = "<!-- dtk:end -->";
+const MARKDOWN: Marks = Marks {
+    start: BLOCK_START,
+    end: BLOCK_END,
+};
+const TOML: Marks = Marks {
+    start: "# dtk:start",
+    end: "# dtk:end",
+};
 
 /// The advice that an agent without a usable hook is given in a rules file.
 const RULE: &str = "## dtk: say data output in fewer tokens
@@ -64,11 +90,45 @@ fn copilot_dir() -> Option<PathBuf> {
     env_dir("COPILOT_HOME", ".copilot")
 }
 
-fn opencode_dir() -> Option<PathBuf> {
+fn xdg_dir(name: &str) -> Option<PathBuf> {
     match std::env::var_os("XDG_CONFIG_HOME") {
-        Some(d) if !d.is_empty() => Some(PathBuf::from(d).join("opencode")),
-        _ => home().map(|h| h.join(".config/opencode")),
+        Some(d) if !d.is_empty() => Some(PathBuf::from(d).join(name)),
+        _ => home().map(|h| h.join(".config").join(name)),
     }
+}
+
+fn opencode_dir() -> Option<PathBuf> {
+    xdg_dir("opencode")
+}
+
+fn kilo_dir() -> Option<PathBuf> {
+    xdg_dir("kilo")
+}
+
+fn pi_dir() -> Option<PathBuf> {
+    home().map(|h| h.join(".pi").join("agent"))
+}
+
+fn hermes_dir() -> Option<PathBuf> {
+    env_dir("HERMES_HOME", ".hermes")
+}
+
+fn vibe_dir() -> Option<PathBuf> {
+    env_dir("VIBE_HOME", ".vibe")
+}
+
+/// Is there a program of this name on the PATH?
+fn on_path(name: &str) -> bool {
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+    let exts: &[&str] = if cfg!(windows) {
+        &[".exe", ".cmd", ".bat", ".com"]
+    } else {
+        &[""]
+    };
+    std::env::split_paths(&path)
+        .any(|d| exts.iter().any(|e| d.join(format!("{name}{e}")).is_file()))
 }
 
 /// Is this handler dtk's for `agent`? (`.../dtk hook codex`)
@@ -147,19 +207,19 @@ fn edit_hooks_file(
     }
     let unchanged = root == read_object(path).unwrap_or(json!({})) && path.exists();
     if unchanged {
-        return Ok("already");
+        return Ok("dtk is already in");
     }
     if removed_only && !had {
-        return Ok("absent");
+        return Ok("dtk was not in");
     }
     let _ = before;
     write_json(path, &root)?;
     Ok(if removed_only {
-        "removed"
+        "removed dtk from"
     } else if had {
-        "updated"
+        "updated dtk in"
     } else {
-        "added"
+        "added dtk to"
     })
 }
 
@@ -173,10 +233,10 @@ fn fail(msg: &str) -> i32 {
 }
 
 /// Takes a managed block out of `text`.
-fn without_block(text: &str) -> String {
-    match (text.find(BLOCK_START), text.find(BLOCK_END)) {
+fn without_marks(text: &str, m: Marks) -> String {
+    match (text.find(m.start), text.find(m.end)) {
         (Some(a), Some(b)) if a < b => {
-            let end = b + BLOCK_END.len();
+            let end = b + m.end.len();
             let mut out = String::new();
             out.push_str(text[..a].trim_end());
             let rest = text[end..].trim_start_matches('\n');
@@ -193,23 +253,35 @@ fn without_block(text: &str) -> String {
     }
 }
 
-fn with_block(text: &str) -> String {
-    let mut out = without_block(text);
+/// Puts the block (or the new version of it) at the end of `text`.
+fn with_marks(text: &str, m: Marks, body: &str) -> String {
+    let mut out = without_marks(text, m);
     if !out.is_empty() && !out.ends_with("\n\n") {
         out.push_str(if out.ends_with('\n') { "\n" } else { "\n\n" });
     }
-    out.push_str(&format!("{BLOCK_START}\n{RULE}{BLOCK_END}\n"));
+    out.push_str(&format!("{}\n{body}{}\n", m.start, m.end));
     out
 }
 
-fn install_rules_block(path: &Path, uninstall: bool) -> i32 {
+#[cfg(test)]
+fn without_block(text: &str) -> String {
+    without_marks(text, MARKDOWN)
+}
+
+#[cfg(test)]
+fn with_block(text: &str) -> String {
+    with_marks(text, MARKDOWN, RULE)
+}
+
+/// Writes (or takes out) a block that dtk manages in a text file of the user.
+fn install_block(label: &str, path: &Path, m: Marks, body: &str, uninstall: bool) -> i32 {
     let current = fs::read_to_string(path).unwrap_or_default();
     if uninstall {
-        if !current.contains(BLOCK_START) {
+        if !current.contains(m.start) {
             eprintln!("dtk: nothing to remove in {}", path.display());
             return 0;
         }
-        let rest = without_block(&current);
+        let rest = without_marks(&current, m);
         let r = if rest.trim().is_empty() {
             fs::remove_file(path)
         } else {
@@ -217,26 +289,98 @@ fn install_rules_block(path: &Path, uninstall: bool) -> i32 {
         };
         return match r {
             Ok(()) => {
-                say("rules", "removed the block from", path);
+                say(label, "removed the block from", path);
                 0
             }
             Err(e) => fail(&format!("cannot write {}: {e}", path.display())),
         };
     }
-    let new = with_block(&current);
+    let new = with_marks(&current, m, body);
     if new == current {
-        say("rules", "already up to date:", path);
+        say(label, "already up to date:", path);
         return 0;
     }
     if let Some(dir) = path.parent() {
         let _ = fs::create_dir_all(dir);
     }
+    let backup = PathBuf::from(format!("{}.dtk-backup", path.display()));
+    if path.exists() && !backup.exists() {
+        let _ = fs::copy(path, &backup);
+    }
     match fs::write(path, new) {
         Ok(()) => {
-            say("rules", "wrote the block in", path);
+            say(label, "wrote the block in", path);
             0
         }
         Err(e) => fail(&format!("cannot write {}: {e}", path.display())),
+    }
+}
+
+fn install_rules_block(path: &Path, uninstall: bool) -> i32 {
+    install_block("rules", path, MARKDOWN, RULE, uninstall)
+}
+
+/// Writes one file (a plugin or an extension), or takes it away.
+fn install_file(label: &str, path: &Path, content: &str, uninstall: bool) -> i32 {
+    if uninstall {
+        return match fs::remove_file(path) {
+            Ok(()) => {
+                say(label, "removed", path);
+                0
+            }
+            Err(_) => {
+                eprintln!("dtk: nothing to remove at {}", path.display());
+                0
+            }
+        };
+    }
+    if fs::read_to_string(path).is_ok_and(|t| t == content) {
+        say(label, "already up to date:", path);
+        return 0;
+    }
+    if let Some(dir) = path.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    if let Err(e) = fs::write(path, content) {
+        return fail(&format!("cannot write {}: {e}", path.display()));
+    }
+    say(label, "wrote", path);
+    0
+}
+
+/// The plugins and extensions find `dtk` on the PATH of their own agent. Said once per run.
+fn warn_if_not_on_path() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static SAID: AtomicBool = AtomicBool::new(false);
+    if !crate::hook::dtk_on_path() && !SAID.swap(true, Ordering::Relaxed) {
+        eprintln!("dtk: the plugins and extensions find `dtk` on the PATH of their agent, and `dtk` is not on yours; put it on the PATH (Homebrew and the install script do)");
+    }
+}
+
+/// Runs a program of another tool with a time limit. True when it ended with success.
+fn run_quietly(program: &str, args: &[&str]) -> bool {
+    use std::process::{Command, Stdio};
+    let Ok(mut child) = Command::new(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if start.elapsed() < std::time::Duration::from_secs(15) => {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            _ => {
+                let _ = child.kill();
+                return false;
+            }
+        }
     }
 }
 
@@ -292,52 +436,63 @@ pub fn init(agent: &str, args: &[String]) -> i32 {
         "copilot" => {
             let Some(dir) = copilot_dir() else { return 1 };
             let path = dir.join("hooks").join("dtk.json");
-            if uninstall {
-                return match fs::remove_file(&path) {
-                    Ok(()) => {
-                        say("copilot", "removed", &path);
-                        0
-                    }
-                    Err(_) => {
-                        eprintln!("dtk: nothing to remove at {}", path.display());
-                        0
-                    }
-                };
-            }
             let cmd = format!("{exe} hook copilot");
             let v = json!({"version": 1, "hooks": {"postToolUse": [
                 {"type": "command", "bash": cmd, "powershell": cmd, "timeoutSec": 15}]}});
-            match write_json(&path, &v) {
-                Ok(()) => {
-                    say("copilot", "wrote", &path);
-                    0
-                }
-                Err(e) => fail(&e),
-            }
+            let text = serde_json::to_string_pretty(&v).expect("json") + "\n";
+            install_file("copilot", &path, &text, uninstall)
         }
-        "opencode" => {
-            let Some(dir) = opencode_dir() else { return 1 };
-            let path = dir.join("plugins").join("dtk.ts");
+        "vibe" => {
+            let Some(dir) = vibe_dir() else { return 1 };
+            let cmd = serde_json::to_string(&format!("{exe} hook vibe")).expect("a string");
+            let body = format!(
+                "# Managed by dtk. Take it out with: dtk init --uninstall\n[[hooks]]\nname = \"dtk\"\ntype = \"post_tool\"\nmatch = \"bash\"\ncommand = {cmd}\ntimeout = 15\n"
+            );
+            install_block("vibe", &dir.join("hooks.toml"), TOML, &body, uninstall)
+        }
+        "opencode" | "kilo" | "pi" => {
+            let (dir, sub, content) = match agent {
+                "opencode" => (opencode_dir(), "plugins", OPENCODE_PLUGIN),
+                "kilo" => (kilo_dir(), "plugin", OPENCODE_PLUGIN),
+                _ => (pi_dir(), "extensions", PI_EXTENSION),
+            };
+            let Some(dir) = dir else { return 1 };
+            let path = dir.join(sub).join("dtk.ts");
+            let code = install_file(agent, &path, content, uninstall);
+            if !uninstall && code == 0 {
+                warn_if_not_on_path();
+            }
+            code
+        }
+        "hermes" => {
+            let Some(dir) = hermes_dir() else { return 1 };
+            let folder = dir.join("plugins").join("dtk");
             if uninstall {
-                return match fs::remove_file(&path) {
-                    Ok(()) => {
-                        say("opencode", "removed", &path);
-                        0
-                    }
-                    Err(_) => {
-                        eprintln!("dtk: nothing to remove at {}", path.display());
-                        0
-                    }
-                };
+                let code = install_file("hermes", &folder.join("__init__.py"), "", true)
+                    + install_file("hermes", &folder.join("plugin.yaml"), "", true);
+                let _ = fs::remove_dir(&folder);
+                if on_path("hermes") {
+                    run_quietly("hermes", &["plugins", "disable", "dtk"]);
+                }
+                return i32::from(code != 0);
             }
-            let _ = fs::create_dir_all(path.parent().expect("a folder"));
-            if let Err(e) = fs::write(&path, OPENCODE_PLUGIN) {
-                return fail(&format!("cannot write {}: {e}", path.display()));
+            let code =
+                install_file(
+                    "hermes",
+                    &folder.join("plugin.yaml"),
+                    HERMES_MANIFEST,
+                    false,
+                ) + install_file("hermes", &folder.join("__init__.py"), HERMES_PLUGIN, false);
+            if code != 0 {
+                return 1;
             }
-            say("opencode", "wrote", &path);
-            if !crate::hook::dtk_on_path() {
-                eprintln!("dtk: opencode: the plugin finds dtk on OpenCode's PATH, and `dtk` is not on yours; put it on the PATH (Homebrew and the install script do)");
+            // Hermes loads a plugin of the user only after it is enabled.
+            if on_path("hermes") && run_quietly("hermes", &["plugins", "enable", "dtk"]) {
+                eprintln!("dtk: hermes: enabled the plugin (hermes plugins enable dtk)");
+            } else {
+                eprintln!("dtk: hermes: Hermes loads the plugin only when it is enabled. Run: hermes plugins enable dtk");
             }
+            warn_if_not_on_path();
             0
         }
         "cursor" => {
@@ -373,67 +528,144 @@ pub fn init(agent: &str, args: &[String]) -> i32 {
             install_rules_block(&path, uninstall)
         }
         other => {
-            eprintln!("dtk init --agent: unknown agent {other}\nknown: claude, codex, gemini, copilot, opencode, cursor, rules");
+            eprintln!("dtk init --agent: unknown agent {other}\nknown: claude, codex, gemini, copilot, vibe, opencode, kilo, pi, hermes, cursor, rules");
             2
         }
     }
 }
 
+/// An agent that dtk can connect with by itself: where it keeps its files, the program that it is
+/// (only when no other well-known program has the same name: `kilo` is also a text editor, and
+/// `hermes` is also a JavaScript engine), and how to tell that dtk is in it.
+struct Spec {
+    name: &'static str,
+    dir: fn() -> Option<PathBuf>,
+    program: Option<&'static str>,
+    registered: fn(&Path) -> bool,
+}
+
+fn in_hooks(dir: &Path, file: &str, event: &str, agent: &str) -> bool {
+    read_object(&dir.join(file)).ok().is_some_and(|v| {
+        v["hooks"][event]
+            .as_array()
+            .is_some_and(|l| l.iter().any(|g| group_is_ours(g, agent)))
+    })
+}
+
+fn specs() -> Vec<Spec> {
+    vec![
+        Spec {
+            name: "codex",
+            dir: codex_dir,
+            program: Some("codex"),
+            registered: |d| in_hooks(d, "hooks.json", "PostToolUse", "codex"),
+        },
+        Spec {
+            name: "gemini",
+            dir: gemini_dir,
+            program: Some("gemini"),
+            registered: |d| in_hooks(d, "settings.json", "AfterTool", "gemini"),
+        },
+        Spec {
+            name: "copilot",
+            dir: copilot_dir,
+            program: Some("copilot"),
+            registered: |d| d.join("hooks").join("dtk.json").is_file(),
+        },
+        Spec {
+            name: "vibe",
+            dir: vibe_dir,
+            program: None,
+            registered: |d| {
+                fs::read_to_string(d.join("hooks.toml")).is_ok_and(|t| t.contains(TOML.start))
+            },
+        },
+        Spec {
+            name: "opencode",
+            dir: opencode_dir,
+            program: Some("opencode"),
+            registered: |d| d.join("plugins").join("dtk.ts").is_file(),
+        },
+        Spec {
+            name: "kilo",
+            dir: kilo_dir,
+            program: None,
+            registered: |d| d.join("plugin").join("dtk.ts").is_file(),
+        },
+        Spec {
+            name: "pi",
+            dir: pi_dir,
+            program: None,
+            registered: |d| d.join("extensions").join("dtk.ts").is_file(),
+        },
+        Spec {
+            name: "hermes",
+            dir: hermes_dir,
+            program: None,
+            registered: |d| d.join("plugins").join("dtk").join("__init__.py").is_file(),
+        },
+    ]
+}
+
+/// The agents that `dtk init --global` connects, or (for `--uninstall`) leaves. To connect: the
+/// agent has a folder here, or its program is on the PATH. To leave: dtk is registered in it.
+pub fn found(uninstall: bool) -> Vec<&'static str> {
+    specs()
+        .into_iter()
+        .filter(|s| {
+            let dir = (s.dir)().filter(|d| d.is_dir());
+            if uninstall {
+                dir.is_some_and(|d| (s.registered)(&d))
+            } else {
+                dir.is_some() || s.program.is_some_and(on_path)
+            }
+        })
+        .map(|s| s.name)
+        .collect()
+}
+
+/// Connects (or leaves) each of `names`. The worst exit code: one agent that cannot be changed
+/// (a settings file with a mistake in it) does not stop the others.
+pub fn init_all(names: &[&str], uninstall: bool) -> i32 {
+    let args: Vec<String> = if uninstall {
+        vec!["--uninstall".into()]
+    } else {
+        Vec::new()
+    };
+    names
+        .iter()
+        .map(|n| init(n, &args))
+        .max()
+        .unwrap_or_default()
+}
+
 /// What `dtk doctor` says about the other agents: only for those that seem to be installed.
 pub fn status() -> Vec<(&'static str, String)> {
     let mut out = Vec::new();
-    let mut check = |name: &str,
-                     dir: Option<PathBuf>,
-                     registered: &dyn Fn(&Path) -> bool,
-                     fix: &str| {
-        let Some(dir) = dir.filter(|d| d.is_dir()) else {
-            return;
-        };
-        if registered(&dir) {
-            out.push((
+    for s in specs() {
+        let dir = (s.dir)().filter(|d| d.is_dir());
+        match dir {
+            Some(d) if (s.registered)(&d) => out.push((
                 "ok",
-                format!("{name}: dtk is registered ({})", dir.display()),
-            ));
-        } else {
-            out.push((
+                format!("{}: dtk is registered ({})", s.name, d.display()),
+            )),
+            Some(_) => out.push((
                 "--",
-                format!("{name} is installed, and dtk is not registered with it. Run: dtk init --agent {fix}"),
-            ));
+                format!(
+                    "{} is installed, and dtk is not registered with it. Run: dtk init --global",
+                    s.name
+                ),
+            )),
+            None if s.program.is_some_and(on_path) => out.push((
+                "--",
+                format!(
+                    "{} is on the PATH, and dtk is not registered with it. Run: dtk init --global",
+                    s.name
+                ),
+            )),
+            None => {}
         }
-    };
-    let in_hooks = |file: &'static str, event: &'static str, agent: &'static str| {
-        move |dir: &Path| {
-            read_object(&dir.join(file)).ok().is_some_and(|v| {
-                v["hooks"][event]
-                    .as_array()
-                    .is_some_and(|l| l.iter().any(|g| group_is_ours(g, agent)))
-            })
-        }
-    };
-    check(
-        "codex",
-        codex_dir(),
-        &in_hooks("hooks.json", "PostToolUse", "codex"),
-        "codex",
-    );
-    check(
-        "gemini",
-        gemini_dir(),
-        &in_hooks("settings.json", "AfterTool", "gemini"),
-        "gemini",
-    );
-    check(
-        "copilot",
-        copilot_dir(),
-        &|d| d.join("hooks").join("dtk.json").is_file(),
-        "copilot",
-    );
-    check(
-        "opencode",
-        opencode_dir(),
-        &|d| d.join("plugins").join("dtk.ts").is_file(),
-        "opencode",
-    );
+    }
     out
 }
 

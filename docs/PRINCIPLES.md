@@ -92,6 +92,11 @@ an agent's allow and deny rules read, and a rewrite can stop a deny rule from ma
 result after the command ran. Where an agent cannot do that, give a rule or `dtk run`, and say that it
 is not automatic. **Say what was tried with the real program** and what was written from
 documentation; never claim more than the tests show. Every adapter fails open and exits with 0.
+**One command connects all of them.** `dtk init --global` registers dtk with Claude Code and every
+other supported agent that it finds on the machine, as `rtk init -g` does for its agents, and
+`dtk init --uninstall` takes dtk out of all of them. It keeps every setting that the files already
+hold, makes a backup once, changes nothing when run again, and one agent that it cannot change does
+not stop the others. It works beside rtk in each agent, and that is tried with the real rtk.
 
 ### 6. One small program
 Pure Rust, one binary, few dependencies (`serde_json`, `csv`, `sha2`, `toml`), Rust 1.80 and newer.
