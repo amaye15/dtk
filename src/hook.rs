@@ -362,7 +362,7 @@ pub fn run(args: &[String]) -> i32 {
         return crate::harness::run(agent);
     }
     if args.first().map(String::as_str) != Some("claude") {
-        eprintln!("usage: dtk hook claude|codex|gemini|copilot|opencode [--then CMD ARGS...]");
+        eprintln!("usage: dtk hook claude|codex|gemini|copilot|vibe|opencode [--then CMD ARGS...]");
         return 0;
     }
     let then: Vec<String> = match args.iter().position(|a| a == "--then") {

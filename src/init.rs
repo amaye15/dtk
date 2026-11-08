@@ -226,7 +226,7 @@ pub fn run(args: &[String]) -> i32 {
     // Another agent: `dtk init --agent codex`.
     if let Some(i) = args.iter().position(|a| a == "--agent") {
         let Some(agent) = args.get(i + 1).map(String::as_str) else {
-            eprintln!("usage: dtk init --agent claude|codex|gemini|copilot|opencode|cursor|rules");
+            eprintln!("usage: dtk init --agent claude|codex|gemini|copilot|vibe|opencode|kilo|pi|hermes|cursor|rules");
             return 2;
         };
         if agent == "claude" {
@@ -241,11 +241,48 @@ pub fn run(args: &[String]) -> i32 {
         return crate::agents::init(agent, args);
     }
     let uninstall = args.iter().any(|a| a == "--uninstall");
-    let no_rtk = args.iter().any(|a| a == "--no-rtk");
     if !args.iter().any(|a| a == "--global") && !uninstall {
-        eprintln!("usage: dtk init --global [--no-rtk] | dtk init --uninstall [--purge]");
+        eprintln!(
+            "usage: dtk init --global [--no-rtk] [--claude-only] | dtk init --uninstall [--purge]\n       dtk init --agent NAME [--uninstall]"
+        );
         return 2;
     }
+    // `--global` connects Claude Code and every other agent that dtk finds on this machine.
+    // `--uninstall` leaves every agent that has dtk in it. `--claude-only` keeps to Claude Code.
+    let others = if args.iter().any(|a| a == "--claude-only") {
+        Vec::new()
+    } else {
+        crate::agents::found(uninstall)
+    };
+    let claude_here = crate::hook::home().is_some_and(|h| h.join(".claude").is_dir());
+    let mut code = 0;
+    if uninstall || claude_here || others.is_empty() {
+        code = run_claude(args);
+    } else {
+        println!("dtk: Claude Code was not found (no ~/.claude folder), so it is left out");
+    }
+    if !others.is_empty() {
+        println!(
+            "dtk: {} {}",
+            if uninstall {
+                "leaving the agents that have dtk:"
+            } else {
+                "other agents found:"
+            },
+            others.join(", ")
+        );
+        code = code.max(crate::agents::init_all(&others, uninstall));
+        if !uninstall {
+            println!("dtk: restart each agent (or start a new session) to load dtk");
+        }
+    }
+    code
+}
+
+/// Claude Code: the hook in `~/.claude/settings.json`, chained to rtk.
+fn run_claude(args: &[String]) -> i32 {
+    let uninstall = args.iter().any(|a| a == "--uninstall");
+    let no_rtk = args.iter().any(|a| a == "--no-rtk");
     let Some(path) = settings_path() else {
         return 1;
     };
@@ -432,11 +469,12 @@ pub fn run(args: &[String]) -> i32 {
             backup.display()
         );
         println!("dtk: restart Claude Code (or start a new session) to load it");
-        // Other agents on this machine: dtk says how to connect them and does not change their
-        // configuration by itself (see docs/HARNESSES.md).
-        for (tag, text) in crate::agents::status() {
-            if tag == "--" {
-                println!("dtk: {text}");
+        // `--claude-only`: say which other agents on this machine have no dtk.
+        if args.iter().any(|a| a == "--claude-only") {
+            for (tag, text) in crate::agents::status() {
+                if tag == "--" {
+                    println!("dtk: {text}");
+                }
             }
         }
     }
