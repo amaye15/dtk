@@ -653,7 +653,7 @@ pub fn verify() -> i32 {
         use crate::harness::{roundtrip, Agent};
         let csv = "id,name\n1,a\n2,b\n";
         let shown = "[dtk] csv: 2 rows";
-        let cases: [(Agent, serde_json::Value, serde_json::Value); 4] = [
+        let cases: [(Agent, serde_json::Value, serde_json::Value); 5] = [
             (
                 Agent::Codex,
                 serde_json::json!({"hook_event_name": "PostToolUse", "tool_name": "Bash",
@@ -672,6 +672,14 @@ pub fn verify() -> i32 {
                 serde_json::json!({"toolName": "bash", "toolArgs": {"command": "cat a.csv"},
                     "toolResult": {"resultType": "success", "textResultForLlm": csv}}),
                 serde_json::json!({"modifiedResult": {"resultType": "success", "textResultForLlm": shown}}),
+            ),
+            (
+                Agent::Vibe,
+                serde_json::json!({"hook_event_name": "post_tool", "tool_name": "bash",
+                    "tool_input": {"command": "cat a.csv"}, "tool_status": "success",
+                    "tool_output": {"stdout": csv, "stderr": "", "returncode": 0},
+                    "tool_output_text": format!("stdout: {csv}")}),
+                serde_json::json!({"decision": "deny", "reason": shown}),
             ),
             (
                 Agent::OpenCode,

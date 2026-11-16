@@ -15,7 +15,12 @@
 //! | Codex CLI | `PostToolUse` | `Bash`, `mcp__*` | `{"decision":"block","reason":TEXT}` |
 //! | Gemini CLI | `AfterTool` | `run_shell_command`, `mcp_*` | `{"decision":"deny","reason":TEXT}` |
 //! | Copilot CLI | `postToolUse` | `bash` | `{"modifiedResult":{...TEXT}}` |
-//! | OpenCode | `tool.execute.after` (a plugin) | `bash`, MCP tools | the plugin sets the output |
+//! | Mistral Vibe | `post_tool` | `bash` | `{"decision":"deny","reason":TEXT}` |
+//! | OpenCode, Kilo Code | `tool.execute.after` (a plugin) | `bash`, MCP tools | the plugin sets the output |
+//! | Pi, Hermes | an extension or a plugin, after the tool | `bash`, `terminal` | the shim sets the output |
+//!
+//! OpenCode, Kilo Code, Pi and Hermes have no hook that runs a program, so each has a small shim
+//! that calls `dtk hook opencode` (the name `plugin` is the same) with `{"tool","args","output"}`.
 //!
 //! Only Claude Code and OpenCode were tried with the real program; the others follow the
 //! documentation of each agent, and are tested with payloads written as that documentation says.
@@ -28,6 +33,7 @@ pub enum Agent {
     Codex,
     Gemini,
     Copilot,
+    Vibe,
     OpenCode,
 }
 
@@ -37,7 +43,8 @@ impl Agent {
             "codex" => Some(Agent::Codex),
             "gemini" => Some(Agent::Gemini),
             "copilot" => Some(Agent::Copilot),
-            "opencode" => Some(Agent::OpenCode),
+            "vibe" => Some(Agent::Vibe),
+            "opencode" | "plugin" => Some(Agent::OpenCode),
             _ => None,
         }
     }
@@ -240,6 +247,53 @@ fn seen_copilot(ev: &Value) -> Option<Seen> {
     })
 }
 
+/// Mistral Vibe `post_tool`: `tool_name`, `tool_input`, `tool_status`, `tool_output` (a structured
+/// object) and `tool_output_text` (what the model will see). A shell command that fails still has
+/// the status `success`, so the exit code in `tool_output` is read, and a failure is left alone.
+/// When `tool_output` holds `stdout`, that is the text; the reply replaces the whole text.
+fn seen_vibe(ev: &Value) -> Option<Seen> {
+    if ev.get("tool_name")?.as_str()? != "bash" {
+        return None;
+    }
+    if ev
+        .get("tool_status")
+        .and_then(Value::as_str)
+        .unwrap_or("success")
+        != "success"
+    {
+        return None;
+    }
+    let out = ev.get("tool_output").filter(|o| o.is_object());
+    let failed = out.is_some_and(|o| {
+        ["returncode", "return_code", "exit_code", "exitCode"]
+            .iter()
+            .any(|k| o.get(k).and_then(Value::as_i64).is_some_and(|c| c != 0))
+            || o.get("stderr")
+                .and_then(Value::as_str)
+                .is_some_and(|e| !e.trim().is_empty())
+    });
+    if failed {
+        return None;
+    }
+    let text = out
+        .and_then(|o| o.get("stdout"))
+        .and_then(Value::as_str)
+        .map(String::from)
+        .or_else(|| {
+            ev.get("tool_output_text")
+                .and_then(Value::as_str)
+                .map(String::from)
+        })?;
+    let input = ev.get("tool_input")?;
+    Some(Seen {
+        tool: "Bash".into(),
+        command: input.get("command")?.as_str()?.into(),
+        description: None,
+        text,
+        reply: Reply::Text,
+    })
+}
+
 /// OpenCode has no hook that runs a program. A plugin (`integrations/opencode/dtk.ts`) calls
 /// `dtk hook opencode` with `{"tool", "args", "output"}`, where `output` is what the tool returned:
 /// for `bash` `{"output": TEXT, ...}`, for an MCP tool `{"content": [{"type": "text", ...}]}`.
@@ -318,7 +372,7 @@ fn reply(agent: Agent, seen: &Seen, text: &str) -> Value {
         (Agent::Gemini, Reply::GeminiShell { before, after }) => {
             json!({"decision": "deny", "reason": format!("{before}{text}{after}")})
         }
-        (Agent::Gemini, _) => json!({"decision": "deny", "reason": text}),
+        (Agent::Gemini, _) | (Agent::Vibe, _) => json!({"decision": "deny", "reason": text}),
         (Agent::Copilot, Reply::CopilotPascal) => json!({"modifiedResult":
             {"result_type": "success", "text_result_for_llm": text}}),
         (Agent::Copilot, _) => json!({"modifiedResult":
@@ -333,6 +387,7 @@ fn translate(agent: Agent, ev: &Value) -> Option<Seen> {
         Agent::Codex => seen_codex(ev),
         Agent::Gemini => seen_gemini(ev),
         Agent::Copilot => seen_copilot(ev),
+        Agent::Vibe => seen_vibe(ev),
         Agent::OpenCode => seen_opencode(ev),
     }
 }

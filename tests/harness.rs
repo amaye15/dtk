@@ -349,6 +349,110 @@ fn copilot_leaves_a_failure_another_tool_and_small_output_alone() {
     assert!(hook(&h, "copilot", &view, &[]).1.is_none());
 }
 
+// ---- Mistral Vibe: `post_tool`, `{"decision":"deny","reason":TEXT}` ---------------------------------
+
+fn vibe(tool: &str, input: Value, status: &str, output: Value, text: &str) -> String {
+    json!({"session_id": "s1", "transcript_path": "/tmp/t.jsonl", "cwd": "/tmp",
+           "hook_event_name": "post_tool", "tool_name": tool, "tool_call_id": "c1",
+           "tool_input": input, "tool_status": status, "tool_output": output,
+           "tool_output_text": text, "duration_ms": 0})
+    .to_string()
+}
+
+#[test]
+fn vibe_gets_a_deny_with_the_summary_in_place_of_the_text_the_model_sees() {
+    let h = home("vibe");
+    // `stdout` of the structured output is what dtk reads, not the rendering of it.
+    let out =
+        json!({"command": "cat orders.csv", "stdout": orders(), "stderr": "", "returncode": 0});
+    let (code, reply) = hook(
+        &h,
+        "vibe",
+        &vibe(
+            "bash",
+            json!({"command": "cat orders.csv"}),
+            "success",
+            out,
+            "rendered by vibe",
+        ),
+        &[],
+    );
+    assert_eq!(code, 0);
+    let r = reply.expect("a reply");
+    assert_eq!(r["decision"], "deny");
+    assert_summary(r["reason"].as_str().unwrap());
+    // With no structured output, the text that the model sees is read.
+    let (_, reply) = hook(
+        &h,
+        "vibe",
+        &vibe(
+            "bash",
+            json!({"command": "cat orders.csv"}),
+            "success",
+            Value::Null,
+            &orders(),
+        ),
+        &[],
+    );
+    assert_summary(reply.expect("a reply")["reason"].as_str().unwrap());
+}
+
+#[test]
+fn vibe_leaves_alone_a_failed_command_another_tool_and_small_output() {
+    let h = home("vibe-alone");
+    let ok = json!({"stdout": orders(), "stderr": "", "returncode": 0});
+    let cmd = json!({"command": "cat orders.csv"});
+    // Vibe reports the status `success` for a command that failed: the exit code decides.
+    let failed = json!({"stdout": orders(), "stderr": "", "returncode": 2});
+    let noisy = json!({"stdout": orders(), "stderr": "warning: x", "returncode": 0});
+    for (what, ev) in [
+        (
+            "a failed command",
+            vibe("bash", cmd.clone(), "success", failed, ""),
+        ),
+        (
+            "a command with output on stderr",
+            vibe("bash", cmd.clone(), "success", noisy, ""),
+        ),
+        (
+            "a tool that failed",
+            vibe("bash", cmd.clone(), "failure", ok.clone(), ""),
+        ),
+        (
+            "another tool",
+            vibe(
+                "read_file",
+                json!({"path": "orders.csv"}),
+                "success",
+                ok.clone(),
+                "",
+            ),
+        ),
+        (
+            "small output",
+            vibe(
+                "bash",
+                cmd.clone(),
+                "success",
+                json!({"stdout": "a,b\n1,2\n", "returncode": 0}),
+                "",
+            ),
+        ),
+        (
+            "rows that were asked for",
+            vibe(
+                "bash",
+                json!({"command": "head -n 200 orders.csv"}),
+                "success",
+                ok.clone(),
+                "",
+            ),
+        ),
+    ] {
+        assert_eq!(hook(&h, "vibe", &ev, &[]), (0, None), "{what}");
+    }
+}
+
 // ---- OpenCode: the plugin calls `dtk hook opencode` ------------------------------------------------
 
 fn opencode(tool: &str, args: Value, output: Value) -> String {
@@ -413,7 +517,7 @@ fn opencode_mcp_results_keep_their_shape_and_images_are_left_alone() {
 #[test]
 fn every_agent_exits_with_zero_on_anything() {
     let h = home("zero");
-    for agent in ["codex", "gemini", "copilot", "opencode"] {
+    for agent in ["codex", "gemini", "copilot", "vibe", "opencode", "plugin"] {
         for input in ["", "{}", "[]", "null", "{\"tool_name\":", "\u{0}\u{1}"] {
             let (code, reply) = hook(&h, agent, input, &[]);
             assert_eq!((code, reply), (0, None), "{agent} {input:?}");
@@ -473,6 +577,27 @@ fn every_fixture_gets_the_same_summary_in_every_agent() {
             &[],
         )
         .1;
+        let vibe = hook(
+            &h,
+            "vibe",
+            &vibe(
+                "bash",
+                json!({"command": command}),
+                "success",
+                json!({"stdout": text, "stderr": "", "returncode": 0}),
+                "",
+            ),
+            &[],
+        )
+        .1;
+        let plugin = hook(
+            &h,
+            "plugin",
+            &json!({"tool": "bash", "args": {"command": command}, "output": {"output": text}})
+                .to_string(),
+            &[],
+        )
+        .1;
         let gemini_llm = format!(
             "Command: {command}\nDirectory: (root)\nOutput: {text}\nError: (none)\nExit Code: 0"
         );
@@ -503,6 +628,14 @@ fn every_fixture_gets_the_same_summary_in_every_agent() {
             (
                 "opencode",
                 opencode.and_then(|r| r["output"].as_str().map(String::from)),
+            ),
+            (
+                "plugin",
+                plugin.and_then(|r| r["output"].as_str().map(String::from)),
+            ),
+            (
+                "vibe",
+                vibe.and_then(|r| r["reason"].as_str().map(String::from)),
             ),
             (
                 "gemini",

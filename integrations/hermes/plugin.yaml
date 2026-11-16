@@ -1,0 +1,5 @@
+name: dtk
+version: "1.0"
+description: Says big tables, CSV, JSON, logs and web pages in fewer tokens (dtk, https://github.com/amaye15/dtk).
+provides_hooks:
+  - transform_tool_result
