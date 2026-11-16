@@ -119,7 +119,7 @@ The same decision serves any agent that can replace a tool's result after it ran
 | Agent | How | Automatic | Tried with the real program |
 |---|---|---|---|
 | Claude Code | hook | yes | yes |
-| OpenCode | plugin | yes | yes (1.18.29; 2.x not tried) |
+| OpenCode | plugin | yes | yes (1.18.29 and 2.3.0, with a real model; in 2.x for shell commands) |
 | Codex CLI, Gemini CLI, Copilot CLI, Mistral Vibe | hook | yes | no: written from each one's documentation, and tested with payloads written as that says |
 | Kilo Code (a fork of OpenCode), Pi, Hermes | plugin or extension | yes | no: written from the documentation; the code of the Pi extension and the Hermes plugin is run with Node and Python as each agent calls it |
 | Cursor | a rule file (`dtk init --agent cursor`) | no: Cursor's hooks cannot replace a shell output | not applicable |

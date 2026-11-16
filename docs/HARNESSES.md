@@ -41,7 +41,7 @@ folder counts). Restart each agent after the command, so that it reads its confi
 | Agent | How it is connected | Automatic | Tried with the real program |
 |---|---|---|---|
 | Claude Code | `PostToolUse` hook, chained to rtk | yes | yes (every release) |
-| OpenCode | plugin `~/.config/opencode/plugins/dtk.ts`, `tool.execute.after` | yes | yes: OpenCode 1.18.29 with a real model (`scripts/opencode-test.sh`: the tool returned 218 tokens, not 2,050, and the model answered right). OpenCode 2.x (the `setup()` entry of the plugin) is written from the documentation and tried only with a stand-in in Node: the real 2.2.6 could not be driven in a clean environment (it gave no events), so it is not tried. |
+| OpenCode | plugin `~/.config/opencode/plugins/dtk.ts`, `tool.execute.after` | yes | yes, with a real model (`scripts/opencode-test.sh`, which installs the plugin with `dtk init --agent opencode`): OpenCode 1.18.29 (the tool returned 218 tokens, not 2,050, and the model answered right) and OpenCode 2.3.0 (230 tokens, not 2,050, right answer, with rtk's own OpenCode plugin loaded beside dtk's). In 2.x dtk handles the shell tool only: its result is `{output, content, metadata}`, the model reads `content`, and the plugin replaces that (a plugin that changed `output` alone had no effect). MCP results are not handled in 2.x. |
 | Codex CLI | `PostToolUse` hook in `~/.codex/hooks.json`, the summary is returned as the feedback that replaces the result | yes | no: written from the documentation |
 | Gemini CLI | `AfterTool` hook in `~/.gemini/settings.json` | yes | no: written from the documentation |
 | Copilot CLI | `postToolUse` hook, `modifiedResult`, in `~/.copilot/hooks/dtk.json` | yes | no: written from the documentation |

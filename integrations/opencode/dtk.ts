@@ -88,9 +88,38 @@ export async function afterTool(tool: unknown, args: unknown, output: any): Prom
 }
 
 /**
+ * OpenCode 2.x. The result of a tool is `{output, content, metadata}`. For the shell tool `output`
+ * is an object (`{output: TEXT, exitCode, wallTimeSeconds}`), and the model is given `content`,
+ * a list of text blocks: so the blocks are what is read, and what is replaced. (Setting `output`
+ * to a string was seen to change nothing.) Only the shell tool is handled here, and only when
+ * the command succeeded and every block is text; the results of other tools are left alone.
+ */
+export async function afterShell(tool: unknown, args: unknown, result: any): Promise<void> {
+  if (process.env.DTK_DISABLED === "1") return
+  if ((tool !== "shell" && tool !== "bash") || !result || typeof result !== "object") return
+  const blocks = result.content
+  if (!Array.isArray(blocks) || blocks.length === 0) return
+  if (!blocks.every((b: any) => b?.type === "text" && typeof b.text === "string")) return
+  const code = result.output?.exitCode
+  if (code !== undefined && code !== 0) return
+  const bin = resolveDtk()
+  if (!bin) return
+  const answer = await callDtk(bin, {
+    tool,
+    args,
+    output: { output: blocks.map((b: any) => b.text).join("\n") },
+  })
+  if (!answer || typeof answer !== "object" || typeof answer.output !== "string") return
+  result.content = [{ type: "text", text: answer.output }]
+  if (result.output && typeof result.output === "object" && typeof result.output.output === "string") {
+    result.output.output = answer.output
+  }
+}
+
+/**
  * OpenCode 1.x (>= 1.18.29) and 2.x: a plain object, as the loader of 2.x requires. `server()` is
  * the 1.x entry (`tool.execute.after` gets the tool and its arguments, and the result to change);
- * `setup()` is the 2.x entry.
+ * `setup()` is the 2.x entry (tried with 2.3.0).
  */
 const DtkOpenCodePlugin = {
   id: "dtk",
@@ -98,7 +127,7 @@ const DtkOpenCodePlugin = {
   async setup(ctx: any) {
     await ctx?.tool?.hook?.("execute.after", async (e: any) => {
       if (e?.status !== "completed" || !e?.result) return
-      await afterTool(e?.tool, e?.input, e.result)
+      await afterShell(e?.tool, e?.input, e.result)
     })
   },
 

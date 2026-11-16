@@ -68,16 +68,41 @@ mcp = { content: [{ type: "text", text: rows }, { type: "image", data: "AAAA" }]
 await after({ tool: "db_query", args: {} }, mcp)
 check("an MCP result with an image is not changed", mcp.content.length === 2 && mcp.content[0].text === rows)
 
-// The 2.x entry: setup(ctx) registers execute.after on ctx.tool.
+// The 2.x entry: setup(ctx) registers execute.after on ctx.tool. In OpenCode 2.3.0 (seen with a
+// probe plugin) the event is {tool, input, status, result: {output, content, metadata}}; for the
+// shell tool `output` is an object and the model reads `content`.
 let registered
 await plugin.setup({ tool: { hook: async (name, fn) => { registered = { name, fn } } } })
 check("setup() registers execute.after", registered && registered.name === "execute.after")
-const event = { status: "completed", tool: "bash", input: { command: "cat orders.csv" }, result: { output: orders } }
+const shellResult = (text, code = 0) => ({
+  output: { output: text, exitCode: code, wallTimeSeconds: 0.01 },
+  content: [{ type: "text", text }],
+  metadata: { status: "completed" },
+})
+let event = { status: "completed", tool: "shell", input: { command: "cat orders.csv" }, result: shellResult(orders) }
 await registered.fn(event)
-check("the 2.x event is changed in place", event.result.output.startsWith("[dtk] csv: 300 rows"), String(event.result.output).slice(0, 60))
-const failedEvent = { status: "failed", tool: "bash", input: { command: "cat orders.csv" }, result: { output: orders } }
-await registered.fn(failedEvent)
-check("a failed tool is not changed", failedEvent.result.output === orders)
+check("the 2.x content (what the model reads) is the summary", event.result.content.length === 1 && event.result.content[0].text.startsWith("[dtk] csv: 300 rows"), JSON.stringify(event.result.content).slice(0, 80))
+check("the 2.x output text is the summary too, and the exit code stays", event.result.output.output.startsWith("[dtk] csv: 300 rows") && event.result.output.exitCode === 0 && event.result.metadata.status === "completed")
+event = { status: "completed", tool: "shell", input: { command: "cat orders.csv" }, result: shellResult(orders, 2) }
+await registered.fn(event)
+check("a 2.x command that failed is not changed", event.result.content[0].text === orders)
+event = { status: "completed", tool: "shell", input: { command: "head -n 100 orders.csv" }, result: shellResult(orders) }
+await registered.fn(event)
+check("2.x rows that were asked for exactly are not changed", event.result.content[0].text === orders)
+event = { status: "completed", tool: "read", input: { path: "orders.csv" }, result: shellResult(orders) }
+await registered.fn(event)
+check("a 2.x tool that is not the shell is not changed", event.result.content[0].text === orders)
+event = { status: "completed", tool: "shell", input: { command: "cat orders.csv" }, result: { ...shellResult(orders), content: [{ type: "text", text: orders }, { type: "image", data: "AAAA" }] } }
+await registered.fn(event)
+check("a 2.x result with an image is not changed", event.result.content.length === 2 && event.result.content[0].text === orders)
+event = { status: "failed", tool: "shell", input: { command: "cat orders.csv" }, result: shellResult(orders) }
+await registered.fn(event)
+check("a 2.x tool that failed is not changed", event.result.content[0].text === orders)
+event = { status: "completed", tool: "shell", input: { command: "cat orders.csv" }, result: shellResult(orders) }
+process.env.DTK_DISABLED = "1"
+await registered.fn(event)
+delete process.env.DTK_DISABLED
+check("DTK_DISABLED=1 changes nothing in 2.x", event.result.content[0].text === orders)
 
 // Everything that can go wrong leaves the result as it was.
 process.env.DTK_DISABLED = "1"
